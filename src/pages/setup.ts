@@ -1,4 +1,4 @@
-import { createAvailabilityStore } from "../lib/availability-store";
+import { createAvailabilityStore, availabilitySessionCache } from "../lib/availability-store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BookingTask, FallbackOrder, SelectOption, ShellPrefs, Sport, Venue } from "../types";
 import {
@@ -232,7 +232,8 @@ export async function renderSetup(panel: Element) {
   let availabilityRecovering = false;
   let availabilityLoginId: string | undefined;
   let availabilityTimer = 0;
-  const availabilityStore=createAvailabilityStore((target,force)=>invoke<Availability>("get_venue_availability",{...target,force}),Date.now,target=>scope.current() && !busy && !availabilityRecovering && target.sport===sportSelect.getValue() && target.venue===venueSelect.getValue());
+  const availabilityStore=createAvailabilityStore((target,force)=>invoke<Availability>("get_venue_availability",{...target,force}),Date.now,target=>scope.current() && !busy && !availabilityRecovering && target.sport===sportSelect.getValue() && target.venue===venueSelect.getValue(),availabilitySessionCache);
+  availabilityNeedsLogin=availabilityStore.needsLogin();
   const availabilityTarget=()=>({sport:sportSelect.getValue(),venue:venueSelect.getValue(),date:getTargetIso()});
   const escape = (value:string) => value.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
   const stateKey = () => JSON.stringify([sportSelect.getValue(),venueSelect.getValue(),getTargetIso()]);
@@ -299,6 +300,7 @@ export async function renderSetup(panel: Element) {
     const date=getTargetIso();
     const difference=(Date.parse(`${date}T00:00:00+08:00`)-Date.parse(`${todayISO()}T00:00:00+08:00`))/86400_000;
     if (busy || availabilityRecovering || ![0,1].includes(difference)) { paintAvailability(); return; }
+    if (!force && availabilityNeedsLogin) {paintAvailability();return;}
     const cached=availabilityStore.peek(availabilityTarget());
     if (!force && cached) {
       availability=cached; availabilityKey=key; availabilityLoading=false;
@@ -324,7 +326,7 @@ export async function renderSetup(panel: Element) {
         availabilityNeedsLogin=availabilityAuthNeeded(response ?? {});
         throw new Error(availabilityNeedsLogin ? "登录已失效" : response?.message || "未取得场次状态");
       }
-      availability=response; availabilityKey=key; if (!response.cached) availabilityNeedsLogin=false;
+      availability=response; availabilityKey=key; availabilityNeedsLogin=availabilityStore.needsLogin();
       syncAvailabilityOptions();
     } catch(error) {
       if (!scope.current() || generation!==availabilityGeneration || key!==stateKey()) return;
@@ -363,7 +365,7 @@ export async function renderSetup(panel: Element) {
     syncAvailabilityOptions();
     paintAvailability();
     updateSummary();
-    if (!cached) availabilityTimer=window.setTimeout(()=>{void loadAvailability();},250);
+    if (!cached && !availabilityNeedsLogin) availabilityTimer=window.setTimeout(()=>{void loadAvailability();},250);
   }
   scope.onDispose(()=>{availabilityStore.dispose();cancelAvailabilityLogin();window.clearTimeout(availabilityTimer);availabilityGeneration++;});
 

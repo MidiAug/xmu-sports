@@ -107,6 +107,23 @@ try {
     }
   }
   assert.equal(await page.evaluate(()=>window.__queries.length),beforeSwitch,"Date switching must not invoke the host");
+  await page.evaluate(()=>{
+    window.__tabRefreshing=0;
+    window.__availabilityObserver=new MutationObserver(()=>{
+      if(document.querySelector('#availability_panel')?.textContent.includes('刷新中')) window.__tabRefreshing++;
+    });
+    window.__availabilityObserver.observe(document.querySelector('#panel'),{childList:true,subtree:true,characterData:true});
+  });
+  for(const tab of ["live","history","settings","history","live"]) {
+    await page.locator(`.nav-tabs [data-tab="${tab}"]`).click();await page.clock.runFor(100);
+    await page.locator('.nav-tabs [data-tab="setup"]').click();await page.clock.runFor(700);
+    assert.equal((await panel.locator('[data-refresh-availability]').innerText()).trim(),"刷新");
+    assert.equal(await page.evaluate(()=>window.__queries.length),beforeSwitch,"Returning from another tab must not query availability");
+    assert.match(await slot.locator('.shell-select-value').innerText(),/全部锁定/);
+    assert.equal(await page.locator('#setup_primary').isDisabled(),true);
+  }
+  assert.equal(await page.evaluate(()=>window.__tabRefreshing),0,"Tab remount must never flash Refreshing");
+  await page.evaluate(()=>window.__availabilityObserver.disconnect());
   const noPoll=await page.evaluate(()=>window.__queries.length);
   await page.clock.runFor(60_000);
   assert.equal(await page.evaluate(()=>window.__queries.length),noPoll);
@@ -180,6 +197,11 @@ try {
   await panel.getByRole('button',{name:'重新登录',exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>window.__authCalls.length),0);
   assert.match(await slot.locator('.shell-select-value').innerText(),/已满/);
+  const expiredRequests=await page.evaluate(()=>window.__queries.length);
+  await page.locator('.nav-tabs [data-tab="history"]').click();await page.clock.runFor(31000);
+  await page.locator('.nav-tabs [data-tab="setup"]').click();await page.clock.runFor(700);
+  assert.equal(await panel.getByRole('button',{name:'重新登录',exact:true}).count(),1);
+  assert.equal(await page.evaluate(()=>window.__queries.length),expiredRequests,"Known expired credentials do not trigger another automatic query after navigation");
   const beforeLogin=await page.evaluate(()=>window.__queries.length);
   await panel.getByRole('button',{name:'重新登录',exact:true}).evaluate(button=>{button.click();button.click();});
   await page.clock.runFor(50);
@@ -204,12 +226,12 @@ try {
   assert.equal(await page.evaluate(()=>window.__cancelCalls.length),1);
   assert.equal(await page.evaluate(()=>window.__queries.length),beforeCancel);
   await panel.getByRole('button',{name:'重新登录',exact:true}).click();await page.clock.runFor(20);
-  await page.locator('[data-tab="history"]').click();
+  await page.locator('.nav-tabs [data-tab="history"]').click();
   await page.evaluate(()=>window.__finishLogin());await page.clock.runFor(300);
   assert.equal(await page.evaluate(()=>window.__cancelCalls.length),2);
   assert.equal(await page.evaluate(()=>window.__queries.length),beforeCancel);
   await page.evaluate(()=>{window.__holdLogin=false;window.__authExpired=false;});
-  await page.locator('[data-tab="setup"]').click();
+  await page.locator('.nav-tabs [data-tab="setup"]').click();
   await page.locator('[data-date="2026-10-24"]').click();await page.clock.runFor(700);
   assert.equal(await page.evaluate(()=>window.__bookingCalls.length),0);
   const count=await page.evaluate(()=>window.__queries.length);
@@ -224,7 +246,7 @@ try {
   await page.locator('[data-date="2026-10-25"]').click();
   await page.clock.runFor(500);
   assert.equal(await panel.isHidden(),true);
-  await page.locator('[data-tab="history"]').click();
+  await page.locator('.nav-tabs [data-tab="history"]').click();
   assert.equal(await page.locator('.run-card-body .run-stages').count(),0,"Collapsed history does not render step DOM");
   await page.locator('[data-toggle-run="0"]').click();
   const labels=await page.locator(".run-flow-label").allTextContents();
@@ -244,14 +266,14 @@ try {
   await page.setViewportSize({width:550,height:900});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.evaluate(()=>window.__holdHistory=true);
-  await page.locator('[data-tab="live"]').click();
-  await page.locator('[data-tab="history"]').click();
+  await page.locator('.nav-tabs [data-tab="live"]').click();
+  await page.locator('.nav-tabs [data-tab="history"]').click();
   await page.locator('[data-toggle-run="0"]').waitFor();
   assert.equal(await page.locator('.run-card-body .run-stages').count(),0);
   assert.doesNotMatch(await page.locator('#panel').innerText(),/正在读取运行记录/);
   const requests=await page.evaluate(()=>window.__historyRequests);
-  await page.locator('[data-tab="live"]').click();
-  await page.locator('[data-tab="history"]').click();
+  await page.locator('.nav-tabs [data-tab="live"]').click();
+  await page.locator('.nav-tabs [data-tab="history"]').click();
   await page.locator('[data-toggle-run="0"]').waitFor();
   assert.equal(await page.evaluate(()=>window.__historyRequests),requests,"Reentry shares an in-flight refresh");
   await page.locator('[data-toggle-run="0"]').click();

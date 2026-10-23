@@ -5,7 +5,7 @@ const availabilityJs=ts.transpileModule(readFileSync("src/lib/availability.ts","
 const availabilityUrl=`data:text/javascript;base64,${Buffer.from(availabilityJs).toString('base64')}`;
 const source=readFileSync("src/lib/availability-store.ts","utf8").replace('"./availability"',JSON.stringify(availabilityUrl));
 const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
-const {createAvailabilityStore}=await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const {createAvailabilityStore,createAvailabilityCache}=await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 let clock=0, calls=0;
 const today={sport:"运动",venue:"场馆",date:"2026-10-23"}, tomorrow={...today,date:"2026-10-24"};
 const row=(t,extra={})=>({ok:true,state:"availability_ready",cached:false,fetched_at:"fixture",slots:[],...t,...extra});
@@ -49,3 +49,43 @@ const a=serial.get({...today,venue:"first"});selected="skipped";
 const b=serial.get({...today,venue:"skipped"});selected="last";
 const c=serial.get({...today,venue:"last"});releaseFirst();await Promise.allSettled([a,b,c]);
 assert.deepEqual(serialCalls,["first","last"],"Only the latest selected venue may leave the queue");
+
+const shared=createAvailabilityCache();let tabRequests=0;
+const sharedFetch=async t=>{tabRequests++;return both(t);};
+const mounted=createAvailabilityStore(sharedFetch,()=>clock,()=>true,shared);
+await mounted.get(today);mounted.dispose();
+for(let i=0;i<5;i++) {
+  const remounted=createAvailabilityStore(sharedFetch,()=>clock,()=>true,shared);
+  assert.ok(remounted.peek(tomorrow));await remounted.get(tomorrow);remounted.dispose();
+}
+assert.equal(tabRequests,1,"Remounting tabs reuses the same snapshots");
+let lateResolve, lateCalls=0;
+const retained=createAvailabilityCache();
+const lateFetch=t=>{lateCalls++;return new Promise(resolve=>lateResolve=()=>resolve(both(t)));};
+const oldView=createAvailabilityStore(lateFetch,()=>clock,()=>true,retained);
+const oldQuery=oldView.get(today);oldView.dispose();
+const newView=createAvailabilityStore(lateFetch,()=>clock,()=>true,retained);
+const joined=newView.get(tomorrow);lateResolve();await Promise.all([oldQuery,joined]);
+assert.equal(lateCalls,1,"An unfinished query survives navigation and is joined on return");
+assert.ok(newView.peek(today));
+const retainedFailure=createAvailabilityCache();let expiredCalls=0;
+const expiredFetch=async t=>{expiredCalls++;return {...row(t),ok:false,code:"SESSION_EXPIRED"};};
+const expiredView=createAvailabilityStore(expiredFetch,()=>clock,()=>true,retainedFailure);
+await expiredView.get(today);expiredView.dispose();
+const retryView=createAvailabilityStore(expiredFetch,()=>clock,()=>true,retainedFailure);
+assert.equal(retryView.needsLogin(),true);await retryView.get(tomorrow);assert.equal(expiredCalls,1);
+const refreshed=createAvailabilityCache();let refreshes=0;
+const freshFetch=async t=>{refreshes++;return both(t);};
+const refreshView=createAvailabilityStore(freshFetch,()=>clock,()=>true,refreshed);
+await refreshView.get(today,true);refreshView.dispose();
+const returnView=createAvailabilityStore(freshFetch,()=>clock,()=>true,refreshed);
+await returnView.get(tomorrow,true);assert.equal(refreshes,1,"Navigation cannot bypass refresh cooldown");
+console.log("Availability tab lifecycle checks passed: retained cache, pending query, expired login and cooldown");
+
+let preLoginFinish;
+const loginCache=createAvailabilityCache();
+const beforeLogin=createAvailabilityStore(t=>new Promise(resolve=>preLoginFinish=()=>resolve(row(t,{account_fingerprint:"before"}))),()=>clock,()=>true,loginCache);
+const preLoginQuery=beforeLogin.get(today);beforeLogin.dispose();
+const afterLogin=createAvailabilityStore(async t=>row(t,{account_fingerprint:"after"}),()=>clock,()=>true,loginCache);
+afterLogin.reset();await afterLogin.get(today);preLoginFinish();await preLoginQuery;
+assert.equal(afterLogin.peek(today).account_fingerprint,"after","A former tab cannot overwrite login reset with an old response");
