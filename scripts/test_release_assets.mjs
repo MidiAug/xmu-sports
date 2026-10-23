@@ -14,7 +14,10 @@ const canonical=`XMU.Sports_${version}_x64-setup.exe`;
 const payload=Buffer.from('fake installer; never execute');
 writeFileSync(join(root,original),payload);
 const psLiteral=value=>"'"+value.replaceAll('\\','/').replaceAll("'","''")+"'";
-const source=block.replace(/^          /gm,'').replaceAll('src-tauri/target/release/bundle/nsis',psLiteral(root)).replaceAll('artifacts/release-notes.txt',psLiteral(join(root,'release-notes.txt')));
+const source="$ErrorActionPreference='Stop'\n"+block.replace(/^          /gm,'')
+  .replaceAll('src-tauri/target/release/bundle/nsis/SHA256SUMS.txt',psLiteral(join(root,'SHA256SUMS.txt')))
+  .replaceAll('src-tauri/target/release/bundle/nsis',psLiteral(root))
+  .replaceAll('artifacts/release-notes.txt',psLiteral(join(root,'release-notes.txt')));
 const file=join(root,'prepare.ps1');writeFileSync(file,source);
 execFileSync('pwsh',['-NoProfile','-NonInteractive','-File',file],{windowsHide:true,stdio:'pipe',env:{...process.env,GITHUB_SHA:'release-test-source'}});
 assert.equal(existsSync(join(root,original)),false);
