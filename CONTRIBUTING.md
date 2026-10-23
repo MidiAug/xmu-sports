@@ -22,3 +22,12 @@
 ## 版本
 
 日常修改写入 CHANGELOG 的 Unreleased。准备发行时同步 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` 与 `src-tauri/tauri.conf.json` 的应用版本，并补充对应版本更新记录。CI/CD 使用说明见 [.github/CI_CD.md](.github/CI_CD.md)。
+
+
+## 生成公开示意图
+
+先运行 `npm run build`，在另一个终端启动 `npm run preview -- --host 127.0.0.1 --port 1421`，然后执行 `node scripts/render_readme_preview.mjs`。可用 `XMU_TEST_BASE_URL` 指定其他本地端口；Playwright 依赖按前述 `PLAYWRIGHT_MODULE` 配置。
+
+脚本通过假 Tauri 边界和固定示例数据渲染页面，并进行交互验收，再将图片写入 `.github/assets/`。不会访问桌面宿主、微信或学校接口。不要用真实账号截图替换这些公开示意图。
+
+只读历史性能测量可设置 `XMU_HISTORY_BENCH_ROOT` 为本机 runs 目录，然后运行 `cargo test --manifest-path src-tauri/Cargo.toml -p xmu-sports --lib benchmark_history_read -- --ignored --nocapture`，仅输出记录数量及冷读、缓存读取耗时。

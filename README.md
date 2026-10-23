@@ -1,5 +1,7 @@
 # XMU Sports
 
+![XMU Sports](.github/assets/hero.svg)
+
 [![Checks](https://github.com/MidiAug/xmu-sports/actions/workflows/checks.yml/badge.svg)](https://github.com/MidiAug/xmu-sports/actions/workflows/checks.yml)
 
 厦大体育场馆预约辅助桌面应用，面向 Windows 10/11。使用 Tauri 2、TypeScript、Rust 和 Python HTTP 执行器。非学校官方应用，仅用于本人或已授权账号，请遵守学校的预约规则。
@@ -10,8 +12,17 @@
 - 查询今天和明天的场次。管理员锁定与人数已满分开显示：全锁时段不可选，部分锁定标记具体场地，已满仍可选。
 - 场次按账号、场馆和实际日期持久缓存，重启及跨天可复用；手动刷新更新快照，正式预约另查实时余量。
 - 凭证过期后可单独重新登录，成功后自动刷新场次；这个入口不执行预约。
-- 历史按阶段展示执行过程、时间和耗时；上游错误回复经脱敏后保存在本地诊断中。
+- 历史先显示摘要，展开时加载过程；按阶段展示执行过程、时间和耗时；上游错误回复经脱敏后保存在本地诊断中。
 - 提交响应不明时先查单确认，无法确认则保留待确认状态，避免盲目重下。
+
+## 界面预览
+
+以下图片由程序使用**模拟数据**渲染，不含真实账号、预约记录或微信截图。
+
+| 预约配置 | 历史记录 |
+| --- | --- |
+| ![预约配置示意](.github/assets/booking-demo.png) | ![历史记录示意](.github/assets/history-demo.png) |
+| 日期、时段、场地与锁定状态 | 阶段过程、开始时间与耗时 |
 
 ## 使用
 

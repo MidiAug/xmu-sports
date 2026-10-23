@@ -21,7 +21,13 @@ try {
       if(cmd==="read_task_raw") return task;
       if(cmd==="save_task") return task={...args.task,revision:task.revision+1};
       if(cmd==="get_live_status") return {task,armed:false,running:false,recent_events:[]};
-      if(cmd==="list_recent_events") return events;
+      if(cmd==="list_recent_events") {
+        window.__historyRequests=(window.__historyRequests ?? 0)+1;
+        const snapshot=window.__historyCleared ? [] : events;
+        if(window.__holdHistory) return new Promise(resolve=>window.__finishHistory=()=>resolve(snapshot));
+        return snapshot;
+      }
+      if(cmd==="clear_run_history") {window.__historyCleared=true;return "已清空";}
       if(cmd==="get_shell_prefs") return {theme:"light",close_mode:"tray",favorite_sport_ids:[],venue_slot_prefs:{}};
       if(cmd==="reauthenticate_availability") {
         window.__authCalls.push(args);
@@ -196,6 +202,7 @@ try {
   await page.clock.runFor(500);
   assert.equal(await panel.isHidden(),true);
   await page.locator('[data-tab="history"]').click();
+  assert.equal(await page.locator('.run-card-body .run-stages').count(),0,"Collapsed history does not render step DOM");
   await page.locator('[data-toggle-run="0"]').click();
   const labels=await page.locator(".run-flow-label").allTextContents();
   for (const text of ["登录","已有预约","验证码","实时场次","发送预约","匹配订单"]) assert.ok(labels.some(label=>label.includes(text)));
@@ -213,5 +220,24 @@ try {
   await page.screenshot({path:resolve(artifacts,"history.png"),fullPage:true});
   await page.setViewportSize({width:550,height:900});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await page.evaluate(()=>window.__holdHistory=true);
+  await page.locator('[data-tab="live"]').click();
+  await page.locator('[data-tab="history"]').click();
+  await page.locator('[data-toggle-run="0"]').waitFor();
+  assert.equal(await page.locator('.run-card-body .run-stages').count(),0);
+  assert.doesNotMatch(await page.locator('#panel').innerText(),/正在读取运行记录/);
+  const requests=await page.evaluate(()=>window.__historyRequests);
+  await page.locator('[data-tab="live"]').click();
+  await page.locator('[data-tab="history"]').click();
+  await page.locator('[data-toggle-run="0"]').waitFor();
+  assert.equal(await page.evaluate(()=>window.__historyRequests),requests,"Reentry shares an in-flight refresh");
+  await page.locator('[data-toggle-run="0"]').click();
+  assert.ok(await page.locator('.run-stage-row').count()>0,"Cached details open before the refresh resolves");
+  await page.locator('#history_filter_clear').click();
+  await page.locator('[data-confirm-ok]').click();
+  assert.equal(await page.locator('.run-card').count(),0);
+  await page.evaluate(()=>window.__finishHistory());
+  await page.clock.runFor(100);
+  assert.equal(await page.locator('.run-card').count(),0,"Old refresh cannot resurrect cleared history");
   console.log("History/availability browser checks passed: admin vs full, cache stamp, refresh, date range, stale reply, compact selectors, court locks, quota, keyboard and history stages");
 } finally { await browser.close(); }

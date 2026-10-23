@@ -912,17 +912,44 @@ pub fn collect_history_events(runs_root: &Path) -> Result<Vec<HistoryEvent>, Str
     Ok(all)
 }
 
+#[derive(Clone)]
+struct CachedHistoryFile {
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+    events: Vec<HistoryEvent>,
+}
+type HistoryFiles = std::collections::HashMap<PathBuf, CachedHistoryFile>;
+static HISTORY_FILES: OnceLock<Mutex<HistoryFiles>> = OnceLock::new();
+fn history_files() -> &'static Mutex<HistoryFiles> {
+    HISTORY_FILES.get_or_init(|| Mutex::new(HistoryFiles::new()))
+}
+
 fn append_events_file(path: &Path, out: &mut Vec<HistoryEvent>) -> Result<(), String> {
-    let f = File::open(path).map_err(|e| e.to_string())?;
-    for line in BufReader::new(f).lines() {
-        let line = line.map_err(|e| e.to_string())?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        if let Some(ev) = history_event_from_line(&line) {
-            out.push(ev);
+    let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
+    let modified = metadata.modified().ok();
+    {
+        let cache = history_files().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = cache.get(path).filter(|entry| entry.len == metadata.len() && entry.modified == modified) {
+            out.extend(entry.events.iter().cloned());
+            return Ok(());
         }
     }
+    let f = File::open(path).map_err(|e| e.to_string())?;
+    let mut events = Vec::new();
+    for line in BufReader::new(f).lines() {
+        let line = line.map_err(|e| e.to_string())?;
+        if let Some(event) = history_event_from_line(&line) { events.push(event); }
+    }
+    // Cache only complete snapshots; an in-progress append is reread next time.
+    let after = fs::metadata(path).map_err(|e| e.to_string())?;
+    if after.len() == metadata.len() && after.modified().ok() == modified && events.len() <= 20_000 {
+        let mut cache = history_files().lock().unwrap_or_else(|e| e.into_inner());
+        if cache.len() >= 128 || cache.values().map(|entry| entry.events.len()).sum::<usize>() + events.len() > 20_000 {
+            cache.clear();
+        }
+        cache.insert(path.to_owned(), CachedHistoryFile { len: metadata.len(), modified, events: events.clone() });
+    }
+    out.extend(events);
     Ok(())
 }
 
@@ -979,6 +1006,7 @@ pub fn read_recent_run_events(runs_root: &Path, task_id: &str, limit: usize) -> 
 
 /// Delete events.jsonl under both layouts (history clear).
 pub fn clear_all_events(runs_root: &Path) -> Result<usize, String> {
+    history_files().lock().unwrap_or_else(|error| error.into_inner()).retain(|path, _| !path.starts_with(runs_root));
     live_events().lock().unwrap_or_else(|error| error.into_inner()).retain(|path, _| !path.starts_with(runs_root));
     let mut n = 0usize;
     if !runs_root.is_dir() {
@@ -1096,6 +1124,46 @@ mod tests {
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(&p).unwrap();
         p
+    }
+
+    #[test]
+    fn history_file_cache_observes_append_delete_and_clear() {
+        let root = tmp_root("history-cache");
+        let dir = root.join("task/run");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("events.jsonl");
+        let first = json!({"ts":"2026-10-23T07:00:00+08:00","task_id":"task","action":"spawn"}).to_string();
+        let last = json!({"ts":"2026-10-23T07:00:01+08:00","task_id":"task","action":"done"}).to_string();
+        fs::write(&path, format!("{first}\n")).unwrap();
+        assert_eq!(collect_history_events(&root).unwrap().len(), 1);
+        assert_eq!(collect_history_events(&root).unwrap().len(), 1);
+        OpenOptions::new().append(true).open(&path).unwrap().write_all(format!("{last}\n").as_bytes()).unwrap();
+        let updated = collect_history_events(&root).unwrap();
+        assert_eq!(updated.len(), 2);
+        assert_eq!(updated[0].action.as_deref(), Some("done"));
+        fs::remove_file(&path).unwrap();
+        assert!(collect_history_events(&root).unwrap().is_empty());
+        fs::write(&path, format!("{last}\n")).unwrap();
+        assert_eq!(collect_history_events(&root).unwrap()[0].action.as_deref(), Some("done"));
+        clear_all_events(&root).unwrap();
+        assert!(collect_history_events(&root).unwrap().is_empty());
+        assert!(!history_files().lock().unwrap().contains_key(&path));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// Opt-in read-only profiling; prints counts/timings, never user content.
+    #[test]
+    #[ignore]
+    fn benchmark_history_read() {
+        let root = PathBuf::from(std::env::var("XMU_HISTORY_BENCH_ROOT").expect("Set XMU_HISTORY_BENCH_ROOT to a runs directory"));
+        let cold_start = Instant::now();
+        let cold = collect_history_events(&root).unwrap();
+        let cold_ms = cold_start.elapsed().as_secs_f64() * 1000.;
+        let warm_start = Instant::now();
+        let warm = collect_history_events(&root).unwrap();
+        let warm_ms = warm_start.elapsed().as_secs_f64() * 1000.;
+        assert_eq!(cold.len(), warm.len());
+        println!("history events={} cold_ms={cold_ms:.2} cached_ms={warm_ms:.2}", cold.len());
     }
 
     #[test]

@@ -26,6 +26,25 @@ type HistoryListState = {
   visibleCount?: number;
 };
 
+let cachedRuns: RunSummary[] | undefined;
+let pendingHistory: Promise<RunSummary[]> | undefined;
+let historyEpoch = 0;
+export function preloadHistory(): Promise<RunSummary[]> { return loadHistory(); }
+async function loadHistory(): Promise<RunSummary[]> {
+  if (pendingHistory) return pendingHistory;
+  const epoch = historyEpoch;
+  const request = invoke<RunEvent[]>("list_recent_events", { limit: 0 }).then(events => {
+    const runs = groupEventsIntoRuns(events);
+    if (epoch !== historyEpoch) return cachedRuns ?? [];
+    // Preserve the rendered view and open details if disk data did not change.
+    if (!cachedRuns || JSON.stringify(cachedRuns) !== JSON.stringify(runs)) cachedRuns = runs;
+    return cachedRuns;
+  });
+  pendingHistory = request;
+  try { return await request; }
+  finally { if (pendingHistory === request) pendingHistory = undefined; }
+}
+
 const KIND_OPTS: SelectOption[] = [
   { value: "all", label: "全部结果" },
   { value: "success", label: "成功" },
@@ -88,12 +107,27 @@ function filterRuns(runs: RunSummary[], f: HistoryFilters, now = new Date()): Ru
 function cardHtml(run: RunSummary, index: number): string {
   const o = run.outcome;
   const title = o?.title ?? "运行记录";
-  const detail = o?.detail ?? "";
   const kind = o?.kind ?? "info";
   const when = formatEventTimeHuman(run.endedAt);
   const page = o?.pageId ? pageLabelZh(o.pageId) : null;
   const metaSafe = page ? `${when}  ${page}` : when;
 
+  return `
+    <article class="run-card ${kindClass(kind)}" data-run-idx="${index}">
+      <button type="button" class="run-card-head" aria-expanded="false" data-toggle-run="${index}">
+        <span class="run-card-dot" aria-hidden="true"></span>
+        <span class="run-card-text">
+          <span class="run-card-title">${escText(title)}</span>
+          <span class="run-card-meta">${escText(metaSafe)}</span>
+        </span>
+        <span class="run-card-chevron" aria-hidden="true"></span>
+      </button>
+      <div class="run-card-body" hidden></div>
+    </article>`;
+}
+
+function cardBodyHtml(run: RunSummary): string {
+  const detail = run.outcome?.detail ?? "";
   const blocks = historyStages(run.events);
   const target = historyTargetParts(run.events);
   const duration = Math.max(0,Date.parse(run.endedAt)-Date.parse(run.startedAt))/1000;
@@ -107,22 +141,9 @@ function cardHtml(run: RunSummary, index: number): string {
   }).join("")}</ol>` : '<p class="run-flow-empty">没有过程步骤</p>';
   const extraDetail=detail && !blocks.some(block=>block.steps.some(step=>step.lines.some(line=>line.line.includes(detail))));
 
-  return `
-    <article class="run-card ${kindClass(kind)}" data-run-idx="${index}">
-      <button type="button" class="run-card-head" aria-expanded="false" data-toggle-run="${index}">
-        <span class="run-card-dot" aria-hidden="true"></span>
-        <span class="run-card-text">
-          <span class="run-card-title">${escText(title)}</span>
-          <span class="run-card-meta">${escText(metaSafe)}</span>
-        </span>
-        <span class="run-card-chevron" aria-hidden="true"></span>
-      </button>
-      <div class="run-card-body" hidden>
-        <div class="run-overview"><div>${target ? `<p class="run-target"><strong>${escText(target.sport)}</strong><span>${escText(target.venue)}</span></p><p class="run-target-meta"><span>${escText(target.date)}</span><span>${escText(target.time)}</span>${target.court && target.court!==target.venue ? `<span>${escText(target.court)}</span>` : ""}</p>` : ""}</div><div class="run-total"><span>总用时</span><strong>${duration.toFixed(1)}<small> 秒</small></strong></div></div>
+  return `        <div class="run-overview"><div>${target ? `<p class="run-target"><strong>${escText(target.sport)}</strong><span>${escText(target.venue)}</span></p><p class="run-target-meta"><span>${escText(target.date)}</span><span>${escText(target.time)}</span>${target.court && target.court!==target.venue ? `<span>${escText(target.court)}</span>` : ""}</p>` : ""}</div><div class="run-total"><span>总用时</span><strong>${duration.toFixed(1)}<small> 秒</small></strong></div></div>
         ${extraDetail ? `<p class="run-card-why">${escText(detail)}</p>` : ""}
-        ${stepsHtml}
-      </div>
-    </article>`;
+        ${stepsHtml}`;
 }
 
 function emptyAllHtml(): string {
@@ -141,7 +162,7 @@ function emptyFilterHtml(): string {
     </div>`;
 }
 
-function bindExpand(root: Element) {
+function bindExpand(root: Element, runs: RunSummary[]) {
   root.querySelectorAll<HTMLButtonElement>("[data-toggle-run]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const card = btn.closest(".run-card");
@@ -149,7 +170,13 @@ function bindExpand(root: Element) {
       const body = card.querySelector(".run-card-body");
       if (!body) return;
       const open = body.hasAttribute("hidden");
-      if (open) body.removeAttribute("hidden");
+      if (open) {
+        if (!body.hasAttribute("data-loaded")) {
+          body.innerHTML = cardBodyHtml(runs[Number(btn.dataset.toggleRun)]);
+          body.setAttribute("data-loaded", "");
+        }
+        body.removeAttribute("hidden");
+      }
       else body.setAttribute("hidden", "");
       btn.setAttribute("aria-expanded", open ? "true" : "false");
       card.classList.toggle("open", open);
@@ -170,7 +197,7 @@ function paintList(panel: Element, state: HistoryListState, filters: HistoryFilt
     const count = state.visibleCount ?? 30;
     listHost.innerHTML = filtered.slice(0, count).map((r, i) => cardHtml(r, i)).join("") +
       (filtered.length > count ? `<button type="button" class="btn ghost" id="history_more">加载更多（已显示 ${count} / ${filtered.length}）</button>` : "");
-    bindExpand(listHost);
+    bindExpand(listHost, filtered);
     listHost.querySelector<HTMLButtonElement>("#history_more")?.addEventListener("click", () => { state.visibleCount = count + 30; paintList(panel, state, filters); });
   }
 }
@@ -209,6 +236,9 @@ function mountFilters(
       const cleared = state.allRuns.length;
       try {
         await invoke<string>("clear_run_history");
+        historyEpoch++;
+        cachedRuns = [];
+        pendingHistory = undefined;
         state.allRuns = [];
         paintList(panel, state, filters);
         toastSuccess(
@@ -224,16 +254,10 @@ function mountFilters(
 
 export async function renderHistory(panel: Element) {
   const scope = mountPage(panel);
-  panel.innerHTML = `<div class="page-stack"><p class="msg">加载中…</p></div>`;
+  const state: HistoryListState = { allRuns: cachedRuns ?? [] };
+  const filters: HistoryFilters = { kind: "all", range: "all" };
+  const epoch = historyEpoch;
   try {
-    // limit 0 = 全量；再按 run 切分后只留最近 30 张卡（避免 200 条截断顶掉前缀步骤）
-    const events = await invoke<RunEvent[]>("list_recent_events", { limit: 0 });
-    if (!scope.current()) return;
-    const state: HistoryListState = {
-      allRuns: groupEventsIntoRuns(events),
-    };
-    const filters: HistoryFilters = { kind: "all", range: "all" };
-
     panel.innerHTML = `
       <div class="page-stack history-page">
         <div class="history-summary-group">
@@ -252,9 +276,18 @@ export async function renderHistory(panel: Element) {
       </div>
     `;
     mountFilters(panel, state, filters);
-    paintList(panel, state, filters);
+    if (cachedRuns) paintList(panel, state, filters);
+    else panel.querySelector("#history_list")!.innerHTML = '<p class="msg" role="status">正在读取运行记录…</p>';
+    const runs = await loadHistory();
+    if (!scope.current() || epoch !== historyEpoch) return;
+    // Keep expanded cards when an unchanged background response arrives.
+    if (runs !== state.allRuns) {
+      state.allRuns = runs;
+      paintList(panel, state, filters);
+    }
   } catch (e) {
-    if (!scope.current()) return;
-    panel.innerHTML = `<div class="page-stack"><p class="msg err">${escText(String(e))}</p></div>`;
+    if (!scope.current() || epoch !== historyEpoch) return;
+    if (cachedRuns) toastError("历史更新失败", String(e));
+    else panel.querySelector("#history_list")!.innerHTML = `<p class="msg err">${escText(String(e))}</p>`;
   }
 }

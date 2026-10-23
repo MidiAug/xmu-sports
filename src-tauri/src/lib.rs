@@ -823,17 +823,19 @@ fn get_live_status(state: State<'_, AppState>) -> Result<LiveStatus, String> {
 }
 
 #[tauri::command]
-fn list_recent_events(limit: usize) -> Result<Vec<RunEvent>, String> {
-    ensure_dirs()?;
-    let mut all: Vec<RunEvent> = run_trace::collect_history_events(&runs_dir())?
-        .into_iter()
-        .map(history_to_run_event)
-        .collect();
-    // limit == 0：不截断（历史页需整次 run 全量事件，否则步数超限刷屏会顶掉前缀）
-    if limit > 0 {
-        all.truncate(limit);
-    }
-    Ok(all)
+async fn list_recent_events(limit: usize) -> Result<Vec<RunEvent>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        ensure_dirs()?;
+        let mut all: Vec<RunEvent> = run_trace::collect_history_events(&runs_dir())?
+            .into_iter()
+            .map(history_to_run_event)
+            .collect();
+        // limit == 0：不截断（历史页需整次 run 全量事件，否则步数超限刷屏会顶掉前缀）
+        if limit > 0 {
+            all.truncate(limit);
+        }
+        Ok(all)
+    }).await.map_err(|error| format!("历史读取任务失败: {error}"))?
 }
 
 /// 导出诊断 zip 到系统 Downloads（日志 + 近期 runs 事件）。

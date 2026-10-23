@@ -8,6 +8,7 @@ import { attachAppConsole, log } from "./lib/log";
 import { ingestLiveStatus, seedRunFeedback } from "./lib/run-feedback";
 import { render, syncMaximized, win } from "./ui/chrome";
 import { showCloseAsk } from "./ui/close-ask";
+import { preloadHistory } from "./pages/history";
 import { renderLive } from "./pages/live";
 import { renderSetup } from "./pages/setup";
 import { closeShellSelects } from "./ui/select";
@@ -110,3 +111,8 @@ void invoke<LiveStatus>("get_live_status")
   })
   .catch((e) => log.warn("boot", "get_live_status_failed", { err: String(e) }));
 render();
+
+// Warm the read-only history cache after the first paint, never block app startup.
+const warmHistory = () => void preloadHistory().catch(error => log.debug("history", "preload_failed", {err:String(error)}));
+if ("requestIdleCallback" in window) window.requestIdleCallback(warmHistory, {timeout:1500});
+else setTimeout(warmHistory, 400);
