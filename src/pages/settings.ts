@@ -14,6 +14,7 @@ import { SVG } from "../ui/icons";
 import { mountShellSelect } from "../ui/select";
 import { mountPage } from "../lib/page-lifecycle";
 import { updatePrefs } from "../lib/prefs-store";
+import { renderAbout } from "./about";
 
 function themeCubesHtml(): string {
   const pref = currentThemePref();
@@ -130,10 +131,13 @@ export async function renderSettings(panel: Element) {
           </div>
         </div>
       </details>
-      <footer class="settings-about"><div><strong>XMU Sports</strong><span>v${version}</span></div><p>在本机为本人或已授权账号预约场馆</p></footer>
+      <button type="button" class="preference-card settings-about-entry"><div><strong>关于 XMU Sports</strong><span>版本 ${version}　项目地址与应用更新</span></div><span aria-hidden="true">›</span></button>
       <p class="msg" id="settings_msg"></p>
     </div>
   `;
+  panel.querySelector<HTMLButtonElement>(".settings-about-entry")!.onclick = () => {
+    void renderAbout(panel, () => { void renderSettings(panel); });
+  };
 
   panel.querySelectorAll("[data-theme]").forEach((btn) => {
     btn.addEventListener("click", () => {

@@ -13,6 +13,7 @@ use tauri::webview::PageLoadEvent;
 use tauri::{Emitter, Manager, State, WindowEvent};
 
 mod atomic_fs;
+mod updates;
 mod booking_eligibility;
 mod task_config;
 mod scheduled_run;
@@ -1275,6 +1276,9 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            updates::check_app_update,
+            updates::download_app_update,
+            updates::open_update_folder,
             save_task,
             availability::get_venue_availability,
             availability::reauthenticate_availability,

@@ -4,7 +4,7 @@
   "version": "0.1.25",
   "type": "module",
   "scripts": {
-    "test": "node scripts/test_booking_eligibility.mjs && node scripts/test_booking_progress.mjs && node scripts/test_ui_reliability.mjs && node scripts/test_history_availability.mjs && node scripts/test_availability_requests.mjs",
+    "test": "node scripts/test_booking_eligibility.mjs && node scripts/test_booking_progress.mjs && node scripts/test_ui_reliability.mjs && node scripts/test_history_availability.mjs && node scripts/test_availability_requests.mjs && node scripts/test_app_update.mjs",
     "test:installer": "node scripts/test_windows_upgrade.mjs",
     "test:select": "node scripts/test_select_popup.mjs",
     "dev": "vite",
