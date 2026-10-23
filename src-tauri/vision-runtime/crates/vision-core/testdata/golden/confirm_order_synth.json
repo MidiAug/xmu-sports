@@ -1,0 +1,18 @@
+{
+  "id": "golden-confirm-order-synth-001",
+  "platform": "synthetic",
+  "source": "hand-authored OCR hits (no PII)",
+  "frame": { "width": 420, "height": 760 },
+  "ocr_hits": [
+    { "text": "验证码", "x": 30, "y": 220, "w": 60, "h": 20, "score": 0.95 },
+    { "text": "确定预约", "x": 160, "y": 680, "w": 90, "h": 28, "score": 0.95 },
+    { "text": "订单信息", "x": 30, "y": 120, "w": 80, "h": 18, "score": 0.9 }
+  ],
+  "captcha_input_chars": "ab12",
+  "keyboard_open": false,
+  "expected": {
+    "page": "confirm_order",
+    "captcha": "idle_full",
+    "min_confidence": 0.9
+  }
+}

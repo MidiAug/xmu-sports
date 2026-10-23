@@ -1,0 +1,28 @@
+{
+    "pack_version":  "0.1.13",
+    "protocol_version":  1,
+    "minimum_app_version":  "0.1.0",
+    "target_triple":  "x86_64-pc-windows-msvc",
+    "ocr_backend":  "installer_bundled_onnx",
+    "files":  [
+                  {
+                      "path":  "templates/page_rules.json",
+                      "sha256":  "6e738d7c93846682849a042283b61650c05cc94eca81c4764be141b2638f72de",
+                      "size":  358
+                  },
+                  {
+                      "path":  "health.ok",
+                      "sha256":  "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df",
+                      "size":  2
+                  }
+              ],
+    "model_versions":  {
+
+                       },
+    "required_capabilities":  [
+                                  "ocr",
+                                  "captcha"
+                              ],
+    "signature":  "7a72c35f8ac850e3c6f51d82aa7d00ffe46f638bdab9610fea1d546a41909a45",
+    "key_id":  "bundled-installer-key"
+}

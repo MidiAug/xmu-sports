@@ -1,0 +1,128 @@
+﻿@media (max-width: 720px) {
+  .shell-row {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .shell-main {
+    min-height: 0;
+  }
+
+  .shell-main > .titlebar {
+    display: none;
+  }
+
+  .nav {
+    flex-direction: column;
+    align-items: stretch;
+    border-right: none;
+    border-bottom: 1px solid var(--color-line);
+    padding: 0 0 6px;
+    gap: 0;
+  }
+
+  /* 单行品牌 + 固定高度，避免副标题撑破 titlebar 导致相对左上角抖动 */
+  .nav-brand {
+    width: 100%;
+    height: var(--titlebar-h);
+    min-height: var(--titlebar-h);
+    max-height: var(--titlebar-h);
+    padding: 0 0 0 12px;
+    margin: 0;
+    overflow: hidden;
+    align-items: center;
+  }
+
+  .nav-brand-text {
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+
+  .nav-brand h1 {
+    line-height: var(--titlebar-h);
+  }
+
+  .nav-win {
+    display: flex;
+    margin: 0;
+  }
+
+  .nav-tabs {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    padding: 2px 8px 0;
+    gap: 0;
+  }
+
+  .nav-tabs > button {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding: 8px 6px;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .nav-tabs > button:hover {
+    background: transparent;
+    color: var(--color-ink);
+  }
+
+  .nav-tabs > button.active {
+    background: transparent;
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .nav-tabs > button.active.has-run-dot .nav-tab-label::after {
+    box-shadow: 0 0 0 2px var(--color-canvas);
+  }
+
+  .nav-foot {
+    display: none;
+  }
+
+  .content {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 12px;
+  }
+
+  /* 保持左右布局：标签左、控件右；仅收紧控件最小宽度 */
+  .shell-select,
+  .settings-control,
+  .stepper {
+    width: 160px;
+    min-width: 0;
+    max-width: 48%;
+    flex: 0 1 auto;
+  }
+
+  .seg-shell,
+  .seg-shell--wide {
+    width: auto;
+    min-width: 0;
+    max-width: 55%;
+    flex: 0 1 auto;
+  }
+
+  .settings-sport-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .settings-sport-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .switch,
+  .switch::after,
+  .shell-select-chevron {
+    transition: none;
+  }
+}

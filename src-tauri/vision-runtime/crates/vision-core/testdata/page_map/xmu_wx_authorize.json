@@ -1,0 +1,33 @@
+{
+  "id": "page-map-xmu-wx-authorize-001",
+  "platform": "windows",
+  "kind": "page_map_annotated",
+  "ocr_source": "annotated",
+  "page_label": "xmu_wx_authorize",
+  "label_source": "annotated_fixture",
+  "human_confirmed": true,
+  "source": "User screenshot 2026-09-18: 登录→微信授权；需先勾选协议再点授权登录",
+  "nav_note": "勾选用户协议左侧单选 → 授权登录 → 等待中动画 3~5s → 厦大体育首页",
+  "frame": { "width": 390, "height": 780 },
+  "ocr_hits": [
+    { "text": "登录", "x": 170, "y": 56, "w": 50, "h": 22, "score": 0.93 },
+    { "text": "微信授权", "x": 80, "y": 160, "w": 80, "h": 18, "score": 0.92 },
+    { "text": "身份认证", "x": 230, "y": 160, "w": 80, "h": 18, "score": 0.9 },
+    { "text": "阅读并同意以下协议", "x": 50, "y": 420, "w": 160, "h": 18, "score": 0.9 },
+    { "text": "用户协议", "x": 200, "y": 420, "w": 70, "h": 18, "score": 0.92 },
+    { "text": "隐私政策", "x": 280, "y": 420, "w": 70, "h": 18, "score": 0.92 },
+    { "text": "授权登录", "x": 70, "y": 480, "w": 250, "h": 44, "score": 0.95 },
+    { "text": "取消登录", "x": 150, "y": 550, "w": 90, "h": 22, "score": 0.9 }
+  ],
+  "key_boxes": [
+    { "label": "协议勾选", "x0": 28, "y0": 418, "x1": 48, "y1": 438, "role": "checkbox", "verified": true },
+    { "label": "授权登录", "x0": 70, "y0": 480, "x1": 320, "y1": 524, "role": "primary_cta", "verified": true },
+    { "label": "取消登录", "x0": 150, "y0": 550, "x1": 240, "y1": 572, "role": "cancel", "verified": true }
+  ],
+  "expected": {
+    "page": "xmu_wx_authorize",
+    "min_confidence": 0.85,
+    "refuse_reason": "OBSERVE_ONLY_PENDING_PAGE_MAP",
+    "action_type": "stop"
+  }
+}

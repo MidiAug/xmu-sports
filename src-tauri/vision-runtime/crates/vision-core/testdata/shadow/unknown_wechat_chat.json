@@ -1,0 +1,20 @@
+{
+  "id": "shadow-win-unknown-wechat-chat-001",
+  "platform": "windows",
+  "kind": "annotated_replay",
+  "page_label": "unknown_wechat_chat",
+  "source": "OCR hits shaped like WeChat chat chrome (names redacted; no PII)",
+  "frame": { "width": 1076, "height": 663 },
+  "ocr_hits": [
+    { "text": "微信", "x": 12, "y": 8, "w": 40, "h": 16, "score": 0.85 },
+    { "text": "搜索", "x": 80, "y": 40, "w": 40, "h": 16, "score": 0.8 },
+    { "text": "发送", "x": 980, "y": 620, "w": 48, "h": 22, "score": 0.9 },
+    { "text": "文件传输助手", "x": 60, "y": 120, "w": 100, "h": 18, "score": 0.88 }
+  ],
+  "expected": {
+    "page": "unknown",
+    "min_confidence": 0.0,
+    "refuse_reason": "UNKNOWN_PAGE",
+    "action_type": "stop"
+  }
+}

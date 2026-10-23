@@ -1,0 +1,9 @@
+﻿/* Shell styles barrel — edit modules under src/styles/; order matters */
+@import "./styles/tokens.css";
+@import "./styles/shell.css";
+@import "./styles/forms.css";
+@import "./styles/pages.css";
+@import "./styles/overlays.css";
+@import "./styles/responsive.css";
+@import "./styles/task.css";
+@import "./styles/settings.css";

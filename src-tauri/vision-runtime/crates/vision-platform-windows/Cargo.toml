@@ -1,0 +1,71 @@
+[package]
+name = "vision-platform-windows"
+version = "0.1.0"
+edition = "2021"
+description = "Windows adapter: window identity, WGC capture hooks, SendInput (guarded)"
+license = "MIT"
+
+[[bin]]
+name = "vision-frame-diag"
+path = "src/bin/vision_frame_diag/main.rs"
+required-features = ["diag-bin"]
+
+[[bin]]
+name = "vision-shadow-diag"
+path = "src/bin/vision_shadow_diag/main.rs"
+required-features = ["diag-bin"]
+
+[[bin]]
+name = "vision-captcha-diag"
+path = "src/bin/vision_captcha_diag/main.rs"
+required-features = ["diag-bin"]
+
+[features]
+default = ["diag-bin"]
+diag-bin = []
+
+[dependencies]
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+vision-contracts = { path = "../vision-contracts" }
+vision-platform-api = { path = "../vision-platform-api" }
+vision-core = { path = "../vision-core" }
+vision-pack = { path = "../vision-pack" }
+image = { version = "0.25", default-features = false, features = ["png"] }
+rapidocr-core = "0.2.2"
+ddddocr-core = "0.2.4"
+ddddocr-ort = "0.2.4"
+sha2 = "0.10"
+ureq = "3.4"
+regex = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_System_Threading",
+    "Win32_System_ProcessStatus",
+    "Win32_System_WinRT",
+    "Win32_System_WinRT_Graphics_Capture",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Storage_Xps",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Storage_Streams",
+    "Foundation",
+    "Globalization",
+] }

@@ -1,0 +1,23 @@
+{
+  "id": "shadow-win-select-slot-normal-001",
+  "platform": "windows",
+  "kind": "annotated_replay",
+  "page_label": "select_slot_normal",
+  "source": "OCR hits reconstructed from booking UI layout (no PII / no raw pixels in git)",
+  "frame": { "width": 420, "height": 760 },
+  "ocr_hits": [
+    { "text": "选择场次", "x": 24, "y": 48, "w": 88, "h": 22, "score": 0.94 },
+    { "text": "可预约", "x": 24, "y": 96, "w": 52, "h": 16, "score": 0.91 },
+    { "text": "不可选", "x": 96, "y": 96, "w": 52, "h": 16, "score": 0.9 },
+    { "text": "19:00", "x": 28, "y": 220, "w": 44, "h": 18, "score": 0.92 },
+    { "text": "20:00", "x": 28, "y": 280, "w": 44, "h": 18, "score": 0.91 },
+    { "text": "请先选择场次", "x": 120, "y": 700, "w": 120, "h": 20, "score": 0.88 }
+  ],
+  "expected": {
+    "page": "select_slot",
+    "min_confidence": 0.8,
+    "refuse_reason": "SLOT_GRID_NOT_LOCALIZED",
+    "action_type": "stop",
+    "has_mint_slots": false
+  }
+}

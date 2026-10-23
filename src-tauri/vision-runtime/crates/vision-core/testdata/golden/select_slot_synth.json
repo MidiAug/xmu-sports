@@ -1,0 +1,19 @@
+{
+  "id": "golden-select-slot-synth-001",
+  "platform": "synthetic",
+  "source": "hand-authored OCR hits (no PII)",
+  "frame": { "width": 420, "height": 760 },
+  "ocr_hits": [
+    { "text": "选择场次", "x": 20, "y": 40, "w": 80, "h": 20, "score": 0.95 },
+    { "text": "可预约", "x": 20, "y": 90, "w": 50, "h": 16, "score": 0.9 },
+    { "text": "不可选", "x": 90, "y": 90, "w": 50, "h": 16, "score": 0.9 },
+    { "text": "19:00", "x": 20, "y": 200, "w": 40, "h": 16, "score": 0.9 },
+    { "text": "20:00", "x": 20, "y": 260, "w": 40, "h": 16, "score": 0.9 }
+  ],
+  "has_mint_slots": true,
+  "slot_cta": "need_select",
+  "expected": {
+    "page": "select_slot",
+    "min_confidence": 0.8
+  }
+}

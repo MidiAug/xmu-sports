@@ -1,0 +1,22 @@
+{
+  "id": "shadow-win-popup-notice-001",
+  "platform": "windows",
+  "kind": "annotated_replay",
+  "page_label": "popup_notice",
+  "source": "OCR hits for mid-screen 提示 dialog (no PII)",
+  "frame": { "width": 420, "height": 760 },
+  "ocr_hits": [
+    { "text": "场馆预约", "x": 20, "y": 40, "w": 80, "h": 18, "score": 0.7 },
+    { "text": "提示", "x": 190, "y": 300, "w": 40, "h": 20, "score": 0.95 },
+    { "text": "当前不可预约", "x": 140, "y": 340, "w": 140, "h": 18, "score": 0.9 },
+    { "text": "确定", "x": 120, "y": 400, "w": 48, "h": 24, "score": 0.93 },
+    { "text": "取消", "x": 240, "y": 400, "w": 48, "h": 24, "score": 0.93 }
+  ],
+  "expected": {
+    "page": "unknown",
+    "min_confidence": 0.0,
+    "refuse_reason": "OVERLAY_BLOCKS_ACTION",
+    "action_type": "stop",
+    "overlay": "notice"
+  }
+}

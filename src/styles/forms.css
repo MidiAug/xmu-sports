@@ -1,0 +1,607 @@
+﻿/* ——— Settings cells ——— */
+
+[hidden] { display: none !important; }
+
+button:focus-visible, input:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-group-title {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+}
+
+.settings-group-body {
+  padding: 4px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-panel);
+  box-shadow: none;
+}
+
+.settings-group-body.well-flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+:root[data-shell-theme="dark"] .settings-group-body {
+  background: color-mix(in srgb, var(--color-canvas) 28%, var(--color-panel));
+}
+
+.settings-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-line-strong);
+}
+
+.settings-cell > :first-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-cell:last-child {
+  border-bottom: none;
+}
+
+.settings-cell.stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.settings-cell-title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--color-ink);
+}
+
+.settings-cell-desc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-muted);
+}
+
+.settings-control {
+  appearance: none;
+  height: 36px;
+  min-width: 160px;
+  max-width: 100%;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  outline: none;
+}
+
+.settings-control:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-line-strong));
+}
+
+.settings-control:focus {
+  border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-line-strong));
+}
+
+.settings-control[readonly] {
+  opacity: 0.75;
+  cursor: default;
+}
+
+/* Unified ± stepper — match shell-select trigger */
+.stepper {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  width: 200px;
+  height: 36px;
+  border-radius: 18px;
+  border: 1px solid var(--color-line);
+  background: var(--color-btn-fill);
+  overflow: hidden;
+}
+
+.stepper:hover {
+  background: var(--color-btn-fill-hover);
+  border-color: var(--color-line-strong);
+}
+
+.stepper:focus-within {
+  border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-line-strong));
+}
+
+.stepper-btn {
+  appearance: none;
+  width: 34px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stepper-btn:hover:not(:disabled) {
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-ink) 6%, transparent);
+}
+
+.stepper-btn:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-ink) 10%, transparent);
+}
+
+.stepper-btn:focus-visible {
+  outline: none;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+.stepper-btn:disabled {
+  opacity: 0.28;
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.stepper-value {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 4px;
+  border: none;
+  color: var(--color-ink);
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  user-select: none;
+  text-align: center;
+}
+
+.settings-cell.stack .settings-control {
+  width: 100%;
+  min-width: 0;
+}
+
+/* ——— Shell select (DSH) ——— */
+
+.shell-select {
+  position: relative;
+  width: 200px;
+  min-width: 200px;
+  max-width: 100%;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.shell-select.open {
+  z-index: 30;
+}
+
+.shell-select--wide {
+  width: 100%;
+  min-width: 0;
+}
+
+.shell-select-trigger {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+  background: var(--color-btn-fill);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.shell-select--wide .shell-select-trigger {
+  min-width: 0;
+}
+
+.shell-select-trigger:hover:not(:disabled) {
+  background: var(--color-btn-fill-hover);
+  border-color: var(--color-line-strong);
+}
+
+.shell-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-select--center .shell-select-trigger {
+  position: relative;
+  justify-content: center;
+}
+
+.shell-select--center .shell-select-value {
+  flex: none;
+  max-width: calc(100% - 36px);
+  text-align: center;
+}
+
+.shell-select--center .shell-select-chevron {
+  position: absolute;
+  right: 14px;
+  top: 0;
+  bottom: 0;
+  height: 12px;
+  margin: auto 0;
+  transform: none;
+  transform-origin: center center;
+}
+
+.shell-select-chevron {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--color-muted);
+  transform-origin: center center;
+  transition: transform 0.12s ease;
+}
+
+.shell-select.open .shell-select-chevron,
+.shell-select--center.open .shell-select-chevron {
+  transform: rotate(180deg);
+}
+
+.shell-select-menu {
+  display: none;
+  position: fixed;
+  z-index: 40;
+  inset: auto;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px;
+  gap: 4px;
+  list-style: none;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--color-tooltip-bg);
+  box-shadow: var(--shadow-lv3);
+  max-height: min(360px, calc(100vh - 96px));
+  overflow: auto;
+}
+
+:root[data-shell-theme="light"] .shell-select-menu {
+  background: var(--color-panel);
+  border-color: var(--color-line-strong);
+}
+
+.shell-select.open .shell-select-menu {
+  display: flex;
+}
+
+.shell-select.open .shell-select-menu.shell-select-menu--cols {
+  display: grid;
+  grid-template-columns: repeat(var(--select-columns, 2), minmax(0, 1fr));
+  gap: 4px;
+  padding: 6px;
+}
+
+.shell-select-menu--cols li {
+  min-width: 0;
+}
+
+.shell-select-menu--cols .shell-select-option {
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.shell-select-menu--cols .shell-select-option-label {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.shell-select-menu::-webkit-scrollbar {
+  width: var(--dsh-scrollbar-width);
+}
+
+.shell-select-menu::-webkit-scrollbar-thumb {
+  background: var(--dsh-scrollbar-thumb);
+  border-radius: 999px;
+}
+
+.shell-select-menu li {
+  margin: 0;
+  padding: 0;
+}
+
+.shell-select-option {
+  appearance: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  margin: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+.shell-select-option:hover,
+.shell-select-option:focus-visible {
+  background: var(--color-panel-hover);
+}
+
+.shell-select-option.on {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+.shell-select-option.on:hover,
+.shell-select-option.on:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 26%, transparent);
+}
+
+.shell-select-option.on .shell-select-check {
+  color: var(--color-accent);
+}
+
+.shell-select-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-select-check {
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  color: var(--color-ink);
+}
+
+.shell-select-check.spacer {
+  visibility: hidden;
+}
+
+/* ——— Switch / seg / buttons ——— */
+
+.switch {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  flex: none;
+  border-radius: 12px;
+  background: var(--color-btn-fill);
+  border: 1px solid var(--color-line-strong);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 0.15s ease;
+}
+
+.switch:has(input:checked) {
+  background: var(--color-accent);
+  border-color: transparent;
+}
+
+.switch:has(input:checked)::after {
+  transform: translateX(16px);
+}
+
+.switch:has(input:disabled) {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.switch:has(input:disabled) input {
+  cursor: default;
+}
+
+.seg-shell {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  width: 200px;
+  height: 36px;
+  padding: 3px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  border: 1px solid var(--color-line);
+  background: var(--color-btn-fill);
+}
+
+.seg-shell:hover {
+  background: var(--color-btn-fill-hover);
+  border-color: var(--color-line-strong);
+}
+
+.seg-shell--wide {
+  width: auto;
+  min-width: 260px;
+}
+
+.seg {
+  display: inline-flex;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  flex: 1;
+  min-width: 0;
+}
+
+.seg button {
+  appearance: none;
+  margin: 0;
+  padding: 0 10px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  flex: 1;
+  text-align: center;
+}
+
+.seg button:hover:not(.on) {
+  color: var(--color-ink);
+}
+
+.seg button.on {
+  color: var(--color-ink);
+  font-weight: 500;
+  background: var(--color-panel);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+:root[data-shell-theme="dark"] .seg button.on {
+  background: color-mix(in srgb, var(--color-ink) 12%, var(--color-btn-fill));
+}
+
+.seg.seg-block {
+  display: flex;
+  width: 100%;
+}
+
+.seg.seg-block button {
+  flex: 1;
+  text-align: center;
+  padding: 6px 10px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+.btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-btn-fill);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  cursor: pointer;
+  border-radius: 18px;
+  transition: background 0.12s ease;
+}
+
+.btn:hover {
+  background: var(--color-btn-fill-hover);
+}
+
+.btn.ghost {
+  background: transparent;
+}
+
+.btn.ghost:hover {
+  background: var(--color-nav-hover);
+}
+
+.btn.primary {
+  border-color: rgba(103, 158, 254, 0.45);
+  background: rgba(103, 158, 254, 0.22);
+  color: var(--color-ink);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: rgba(103, 158, 254, 0.32);
+}
+
+:root[data-shell-theme="light"] .btn.primary {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.14);
+}
+
+:root[data-shell-theme="light"] .btn.primary:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.22);
+}
+
+.msg {
+  min-height: 1.2em;
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--color-muted);
+}
+
+.msg.ok {
+  color: var(--color-ok);
+}
+
+.msg.err {
+  color: var(--color-danger);
+}

@@ -1,0 +1,180 @@
+﻿/* ——— Close ask (tray) ——— */
+
+.close-ask-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.36);
+}
+
+.close-ask {
+  width: min(360px, 100%);
+  padding: 20px 20px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-panel);
+  box-shadow: var(--shadow-lv3);
+}
+
+.close-ask-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.close-ask-lead {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--color-muted);
+}
+
+.close-ask-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--color-ink);
+  cursor: pointer;
+  user-select: none;
+}
+
+.close-ask-remember input {
+  margin: 0;
+}
+
+.close-ask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: flex-end;
+}
+
+.confirm-ask-danger {
+  border-color: color-mix(in srgb, var(--color-danger) 40%, var(--color-line-strong));
+  color: var(--color-danger);
+}
+
+.confirm-ask-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+
+/* ——— App toast (in-window; not OS notification) ——— */
+
+.toast-host {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--color-line-strong);
+  background: var(--color-panel);
+  box-shadow: var(--shadow-lv3);
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.toast.toast-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast.toast-leave {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-title {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.toast-text {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--color-muted);
+}
+
+.toast-close {
+  flex: none;
+  margin: -4px -4px 0 0;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toast-close:hover {
+  background: var(--color-panel-hover);
+  color: var(--color-ink);
+}
+
+.toast-success {
+  border-color: color-mix(in srgb, var(--color-ok) 45%, var(--color-line-strong));
+}
+
+.toast-success .toast-title {
+  color: var(--color-ok);
+}
+
+.toast-error {
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-line-strong));
+}
+
+.toast-error .toast-title {
+  color: var(--color-danger);
+}
+
+.toast-warn {
+  border-color: color-mix(in srgb, #eab308 50%, var(--color-line-strong));
+}
+
+.toast-warn .toast-title {
+  color: #ca8a04;
+}
+
+:root[data-shell-theme="dark"] .toast-warn .toast-title {
+  color: #facc15;
+}
+
+.toast-info .toast-title {
+  color: var(--color-accent);
+}

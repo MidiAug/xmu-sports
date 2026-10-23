@@ -1,0 +1,11 @@
+{
+  "case_id": "mp_panel_open_xmu",
+  "schema_version": 1,
+  "platform": "windows",
+  "kind": "replay_case",
+  "tags": [],
+  "page_label": "wechat_mp_panel",
+  "notes": "Seed from shadow/wechat_mp_panel; rules-only, not E2E",
+  "label_source": "annotated_fixture",
+  "human_confirmed": true
+}

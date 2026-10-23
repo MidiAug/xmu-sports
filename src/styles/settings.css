@@ -1,0 +1,63 @@
+.preference-card { padding: 20px; border: 1px solid var(--color-line-strong); border-radius: 14px; background: var(--color-panel); }
+.preference-card-heading { margin-bottom: 16px; }
+.preference-card-heading h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.preference-card-heading p { margin: 4px 0 0; font-size: 12px; color: var(--color-muted); line-height: 1.6; }
+.settings-page .settings-sport-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.settings-page .settings-sport-cell { position: relative; min-height: 44px; padding: 10px 25px 10px 10px; border-radius: 8px; box-shadow: none; font-size: 12px; }
+.settings-page .settings-sport-cell.on { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line-strong)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-panel)); }
+.settings-page .settings-sport-cell.on .settings-sport-cell-label { color: var(--color-accent); font-weight: 500; }
+.settings-page .settings-sport-cell:disabled { padding-right: 10px; }
+.settings-sport-check { position: absolute; right: 8px; top: 50%; display: flex; transform: translateY(-50%); color: var(--color-accent); visibility: hidden; }
+.settings-sport-check svg { width: 13px; height: 13px; }
+.settings-sport-cell.on .settings-sport-check { visibility: visible; }
+.settings-page .settings-sport-cell-hint { font-size: 10px; }
+.settings-page .settings-theme-cubes { gap: 12px; }
+.settings-page .settings-theme-cube { border-radius: 9px; padding: 8px; gap: 10px; }
+.settings-page .settings-theme-cube.on { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 5%, var(--color-panel)); }
+.settings-page .theme-preview { position: relative; display: block; width: 100%; height: 58px; border-radius: 5px; overflow: hidden; border: 1px solid rgb(130 140 155 / 20%); background: #f3f4f7; }
+.theme-preview i { display: block; position: absolute; border-radius: 3px; }
+.theme-preview i:nth-child(1) { inset: 0 auto 0 0; width: 22%; background: #e2e6ed; border-radius: 0; }
+.theme-preview i:nth-child(2) { top: 11px; left: 31%; right: 10%; height: 8px; background: #a8b6cc; }
+.theme-preview i:nth-child(3) { top: 26px; bottom: 9px; left: 31%; right: 10%; background: #fff; }
+.settings-page .theme-preview-dark { background: #25282e; }
+.theme-preview-dark i:nth-child(1) { background: #363b44; }
+.theme-preview-dark i:nth-child(2) { background: #66748b; }
+.theme-preview-dark i:nth-child(3) { background: #414650; }
+.settings-page .theme-preview-system { background: linear-gradient(90deg, #f3f4f7 50%, #25282e 50%); background-repeat: no-repeat; background-clip: padding-box; }
+.theme-preview-system i:nth-child(3) { background: linear-gradient(90deg, #fff 32%, #414650 32%); }
+.settings-page .theme-option-label { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; font-size: 12px; color: var(--color-muted); }
+.theme-option-label > svg { width: 14px; height: 14px; }
+.settings-page .theme-option-check { display: flex; color: var(--color-accent); visibility: hidden; }
+.theme-option-check svg { width: 13px; height: 13px; }
+.settings-theme-cube.on .theme-option-check { visibility: visible; }
+.settings-page .settings-cell { border-color: var(--color-line); padding: 16px 0; }
+.settings-page .settings-cell-title { font-size: 13px; font-weight: 500; }
+.settings-page .settings-cell-desc { font-size: 11px; }
+.settings-page #settings_theme_host + .settings-cell { margin-top: 18px; padding-bottom: 0; border-top: 1px solid var(--color-line); }
+.settings-page .shell-select-trigger { height: 36px; border-radius: 8px; font-size: 12px; }
+.settings-page .btn { border-radius: 8px; font-size: 12px; }
+.settings-diagnostics { padding: 0; }
+.settings-diagnostics summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; cursor: pointer; }
+.settings-diagnostics summary::-webkit-details-marker { display: none; }
+.settings-diagnostics summary strong { display: block; font-size: 13px; font-weight: 500; }
+.settings-diagnostics summary div > span { display: block; margin-top: 3px; color: var(--color-muted); font-size: 11px; }
+.settings-disclosure { color: var(--color-muted); font-size: 16px; }
+.settings-diagnostics[open] .settings-disclosure { transform: rotate(180deg); }
+.settings-diagnostics-body { padding: 0 20px; border-top: 1px solid var(--color-line); }
+.settings-about { padding: 4px 2px; }
+.settings-about > div { display: flex; align-items: baseline; gap: 8px; }
+.settings-about strong { color: var(--color-muted); font-size: 12px; font-weight: 600; }
+.settings-about span { color: var(--color-muted); font-size: 11px; }
+.settings-about p { margin: 4px 0 0; color: var(--color-muted); font-size: 11px; }
+.settings-page .msg:empty { display: none; }
+@media (max-width: 580px) {
+  .preference-card { padding: 16px; }
+  .settings-page .settings-sport-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-page .settings-theme-cubes { gap: 8px; }
+  .settings-page .settings-theme-cube { padding: 6px; gap: 8px; }
+  .settings-page .theme-option-label { gap: 3px; font-size: 11px; }
+  .theme-option-label > svg { display: none; }
+  .settings-diagnostics { padding: 0; }
+  .settings-diagnostics summary { padding: 16px; }
+  .settings-diagnostics-body { padding: 0 16px; }
+}

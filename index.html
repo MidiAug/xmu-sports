@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XMU Sports</title>
+    <script>
+      (function () {
+        try {
+          var pref = localStorage.getItem("xmu.shellTheme") || "system";
+          var dark =
+            pref === "dark" ||
+            (pref !== "light" &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var theme = dark ? "dark" : "light";
+          document.documentElement.setAttribute("data-shell-theme", theme);
+          document.documentElement.style.colorScheme = theme;
+          document.documentElement.style.background = dark
+            ? "rgb(21, 21, 23)"
+            : "rgb(245, 245, 247)";
+        } catch (e) {}
+        // 启动分段：HTML 内联最早点；供 main.ts 对比模块图耗时
+        try {
+          var nav = performance.getEntriesByType("navigation")[0];
+          window.__xmuBoot = {
+            html_ms: Math.round(performance.now()),
+            href: String(location.href || ""),
+            nav: nav
+              ? {
+                  connect_ms: Math.round(nav.connectEnd - nav.connectStart),
+                  ttfb_ms: Math.round(nav.responseStart - nav.requestStart),
+                  response_ms: Math.round(nav.responseEnd - nav.responseStart),
+                  dom_ms: Math.round(nav.domInteractive - nav.fetchStart),
+                  transfer_size: nav.transferSize || 0,
+                }
+              : null,
+          };
+        } catch (e) {
+          window.__xmuBoot = { html_ms: -1, href: "", nav: null };
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

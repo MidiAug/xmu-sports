@@ -1,0 +1,19 @@
+{
+  "id": "wechat_mp_panel_synth",
+  "kind": "shadow_fixture",
+  "page_label": "wechat_mp_panel",
+  "frame": { "width": 930, "height": 658 },
+  "ocr_hits": [
+    { "text": "发现", "x": 80, "y": 20, "w": 40, "h": 18, "score": 0.9 },
+    { "text": "朋友圈", "x": 80, "y": 80, "w": 60, "h": 18, "score": 0.9 },
+    { "text": "小程序", "x": 80, "y": 220, "w": 60, "h": 18, "score": 0.95 },
+    { "text": "最近使用", "x": 280, "y": 100, "w": 80, "h": 18, "score": 0.9 },
+    { "text": "厦大体育", "x": 300, "y": 160, "w": 80, "h": 18, "score": 0.95 },
+    { "text": "我的常用", "x": 280, "y": 280, "w": 80, "h": 18, "score": 0.9 }
+  ],
+  "expected": {
+    "page": "wechat_mp_panel",
+    "refuse_reason": "OBSERVE_ONLY_PENDING_PAGE_MAP",
+    "action_type": "stop"
+  }
+}

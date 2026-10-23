@@ -1,0 +1,92 @@
+name: Windows package
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional new vX.Y.Z tag; empty = artifact only, otherwise draft Release'
+        required: false
+        default: ''
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: windows-package-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+  package:
+    needs: checks
+    runs-on: windows-2022
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Validate release request
+        shell: python
+        run: |
+          import os, re, sys, urllib.request, urllib.error
+          sys.path.insert(0, 'scripts')
+          from check_public_tree import check
+          version = check()
+          tag = os.environ['RELEASE_TAG']
+          if tag:
+              assert re.fullmatch(r'v\d+\.\d+\.\d+', tag), 'Use vX.Y.Z'
+              assert tag == 'v' + version, 'Tag must match application version'
+              assert os.environ['GITHUB_REF'] == 'refs/heads/main', 'Draft releases require main'
+              from pathlib import Path
+              assert re.search(r'^## ' + re.escape(version) + r'(?:\s|$)', Path('CHANGELOG.md').read_text(encoding='utf-8'), re.M), 'Missing changelog entry'
+              for suffix in ('git/ref/tags/' + tag, 'releases/tags/' + tag):
+                  req = urllib.request.Request('https://api.github.com/repos/' + os.environ['GITHUB_REPOSITORY'] + '/' + suffix, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+                  try:
+                      with urllib.request.urlopen(req) as response:
+                          raise RuntimeError('Tag or release already exists')
+                  except urllib.error.HTTPError as error:
+                      if error.code != 404: raise
+      - run: npm ci
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal --no-self-update
+      - name: Build NSIS installer
+        run: npm run tauri:build
+      - name: Audit frozen worker
+        run: src-tauri/sidecars/http-booking/.venv/Scripts/python.exe scripts/test_lite_bundle.py
+      - name: Installer upgrade decisions
+        run: npm run test:installer
+      - name: Generate checksums and provenance
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -LiteralPath src-tauri/target/release/bundle/nsis -Filter '*-setup.exe')
+          if ($files.Count -eq 0) { throw 'No installer produced' }
+          $lines = $files | ForEach-Object { "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
+          $lines | Set-Content src-tauri/target/release/bundle/nsis/SHA256SUMS.txt -Encoding utf8
+          "Source commit: $env:GITHUB_SHA`nUnsigned Windows installer. Review before publishing." | Set-Content artifacts/release-notes.txt -Encoding utf8
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-nsis-${{ github.sha }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+            artifacts/release-notes.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Create draft release
+        if: inputs.release_tag != ''
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem -LiteralPath src-tauri/target/release/bundle/nsis -File | Where-Object { $_.Name -like '*-setup.exe' -or $_.Name -eq 'SHA256SUMS.txt' } | ForEach-Object { $_.FullName })
+          gh release create "$env:RELEASE_TAG" @files --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --draft --title "XMU Sports $env:RELEASE_TAG" --notes-file artifacts/release-notes.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed' }

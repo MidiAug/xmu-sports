@@ -1,0 +1,21 @@
+{
+  "id": "shadow-win-select-slot-empty-001",
+  "platform": "windows",
+  "kind": "annotated_replay",
+  "page_label": "select_slot_empty",
+  "source": "OCR hits: slot page with 暂无场次 and no time cells (no PII)",
+  "frame": { "width": 420, "height": 760 },
+  "ocr_hits": [
+    { "text": "选择场次", "x": 24, "y": 48, "w": 88, "h": 22, "score": 0.94 },
+    { "text": "可预约", "x": 24, "y": 96, "w": 52, "h": 16, "score": 0.9 },
+    { "text": "不可选", "x": 96, "y": 96, "w": 52, "h": 16, "score": 0.9 },
+    { "text": "暂无场次", "x": 150, "y": 360, "w": 100, "h": 22, "score": 0.92 }
+  ],
+  "expected": {
+    "page": "select_slot",
+    "min_confidence": 0.8,
+    "refuse_reason": "NO_AVAILABLE_SLOTS",
+    "action_type": "stop",
+    "has_mint_slots": false
+  }
+}

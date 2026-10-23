@@ -1,0 +1,26 @@
+{
+  "pack_version": "0.0.1-dev",
+  "protocol_version": 1,
+  "minimum_app_version": "0.1.0",
+  "target_triple": "x86_64-pc-windows-msvc",
+  "ocr_backend": "download_onnx_baseline",
+  "files": [
+    {
+      "path": "templates/page_rules.json",
+      "size": 337,
+      "sha256": "4e248316af1b9ff4b89a116f4e2fbc5aa579f6eb6bb96316c72c396e17587edf"
+    },
+    {
+      "path": "health.ok",
+      "size": 2,
+      "sha256": "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df"
+    }
+  ],
+  "model_versions": {},
+  "required_capabilities": [
+    "ocr",
+    "captcha"
+  ],
+  "signature": "3cad38c79eeaf69d08e07993feb725c793843a77fbe13ed2f7ff3acc27994d3e",
+  "key_id": "dev-test-key"
+}

@@ -1,0 +1,1119 @@
+{
+  "sports": [
+    {
+      "id": "pingpong",
+      "label": "乒乓球",
+      "ocr_label": "乒乓球",
+      "enabled": true,
+      "venues": [
+        {
+          "id": "xa-pingpong",
+          "label": "翔安校区乒乓球室",
+          "ocr_label": "翔安校区乒乓球室",
+          "location": "翔安校区",
+          "has_courts": true,
+          "court_count_hint": 18,
+          "stadium_id": "15",
+          "venue_id": "13",
+          "category_id": "2",
+          "time_slots": [
+            {
+              "start": "09:00",
+              "end": "10:30"
+            },
+            {
+              "start": "10:30",
+              "end": "12:00"
+            },
+            {
+              "start": "12:00",
+              "end": "13:30"
+            },
+            {
+              "start": "13:30",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:30"
+            },
+            {
+              "start": "16:30",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:30"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ],
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [
+            {
+              "id": "49",
+              "name": "01"
+            },
+            {
+              "id": "50",
+              "name": "02"
+            },
+            {
+              "id": "51",
+              "name": "03"
+            },
+            {
+              "id": "52",
+              "name": "04"
+            },
+            {
+              "id": "53",
+              "name": "05"
+            },
+            {
+              "id": "54",
+              "name": "06"
+            },
+            {
+              "id": "55",
+              "name": "07"
+            },
+            {
+              "id": "56",
+              "name": "08"
+            },
+            {
+              "id": "57",
+              "name": "09"
+            },
+            {
+              "id": "58",
+              "name": "10"
+            },
+            {
+              "id": "59",
+              "name": "11"
+            },
+            {
+              "id": "60",
+              "name": "12"
+            },
+            {
+              "id": "61",
+              "name": "13"
+            },
+            {
+              "id": "62",
+              "name": "14"
+            },
+            {
+              "id": "63",
+              "name": "15"
+            },
+            {
+              "id": "64",
+              "name": "16"
+            },
+            {
+              "id": "65",
+              "name": "17"
+            },
+            {
+              "id": "66",
+              "name": "18"
+            }
+          ],
+          "capacity_hint": 1,
+          "observed_time_slots": [
+            {
+              "start": "09:00",
+              "end": "10:30"
+            },
+            {
+              "start": "10:30",
+              "end": "12:00"
+            },
+            {
+              "start": "12:00",
+              "end": "13:30"
+            },
+            {
+              "start": "13:30",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:30"
+            },
+            {
+              "start": "16:30",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:30"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "badminton",
+      "label": "羽毛球",
+      "ocr_label": "羽毛球",
+      "enabled": true,
+      "venues": [
+        {
+          "id": "xa-badminton",
+          "label": "翔安校区羽毛球场",
+          "ocr_label": "翔安校区羽毛球场",
+          "location": "翔安校区",
+          "has_courts": true,
+          "court_count_hint": 10,
+          "stadium_id": "13",
+          "venue_id": "11",
+          "category_id": "3",
+          "time_slots": [
+            {
+              "start": "09:00",
+              "end": "10:00"
+            },
+            {
+              "start": "10:00",
+              "end": "11:00"
+            },
+            {
+              "start": "11:00",
+              "end": "12:00"
+            },
+            {
+              "start": "12:00",
+              "end": "13:00"
+            },
+            {
+              "start": "13:00",
+              "end": "14:00"
+            },
+            {
+              "start": "14:00",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ],
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [
+            {
+              "id": "29",
+              "name": "01"
+            },
+            {
+              "id": "30",
+              "name": "02"
+            },
+            {
+              "id": "41",
+              "name": "03"
+            },
+            {
+              "id": "42",
+              "name": "04"
+            },
+            {
+              "id": "43",
+              "name": "05"
+            },
+            {
+              "id": "44",
+              "name": "06"
+            },
+            {
+              "id": "45",
+              "name": "07"
+            },
+            {
+              "id": "46",
+              "name": "08"
+            },
+            {
+              "id": "47",
+              "name": "09"
+            },
+            {
+              "id": "48",
+              "name": "10"
+            }
+          ],
+          "capacity_hint": 1,
+          "observed_time_slots": [
+            {
+              "start": "09:00",
+              "end": "10:00"
+            },
+            {
+              "start": "10:00",
+              "end": "11:00"
+            },
+            {
+              "start": "11:00",
+              "end": "12:00"
+            },
+            {
+              "start": "12:00",
+              "end": "13:00"
+            },
+            {
+              "start": "13:00",
+              "end": "14:00"
+            },
+            {
+              "start": "14:00",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ]
+        },
+        {
+          "id": "sm-fengyu-badminton",
+          "label": "思明校区风雨球馆",
+          "ocr_label": "思明校区风雨球馆",
+          "location": "思明校区",
+          "has_courts": true,
+          "capacity_hint": 1,
+          "time_slots": [
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 4,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [
+            {
+              "id": "23",
+              "name": "1号场地"
+            },
+            {
+              "id": "24",
+              "name": "2号场地"
+            },
+            {
+              "id": "25",
+              "name": "3号场地"
+            },
+            {
+              "id": "26",
+              "name": "4号场地"
+            }
+          ],
+          "observed_time_slots": [
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "swimming",
+      "label": "游泳馆",
+      "ocr_label": "游泳馆",
+      "enabled": true,
+      "venues": [
+        {
+          "id": "xa-swimming",
+          "label": "翔安校区游泳馆",
+          "ocr_label": "翔安校区游泳馆",
+          "location": "翔安校区",
+          "has_courts": false,
+          "capacity_hint": 150,
+          "time_slots": [
+            {
+              "start": "09:30",
+              "end": "11:00"
+            },
+            {
+              "start": "12:00",
+              "end": "14:00"
+            },
+            {
+              "start": "14:30",
+              "end": "16:00"
+            },
+            {
+              "start": "16:30",
+              "end": "18:00"
+            },
+            {
+              "start": "18:30",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 1,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [],
+          "observed_time_slots": [
+            {
+              "start": "09:30",
+              "end": "11:00"
+            },
+            {
+              "start": "12:00",
+              "end": "14:00"
+            },
+            {
+              "start": "14:30",
+              "end": "16:00"
+            },
+            {
+              "start": "16:30",
+              "end": "18:00"
+            },
+            {
+              "start": "18:30",
+              "end": "21:00"
+            }
+          ]
+        },
+        {
+          "id": "sm-wqm-roof-pool",
+          "label": "王清明游泳馆顶楼泳池",
+          "ocr_label": "王清明游泳馆顶楼泳池",
+          "location": "思明校区",
+          "has_courts": false,
+          "capacity_hint": 150,
+          "time_slots": [
+            {
+              "start": "14:30",
+              "end": "16:00"
+            },
+            {
+              "start": "16:30",
+              "end": "18:30"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 1,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [],
+          "observed_time_slots": [
+            {
+              "start": "14:30",
+              "end": "16:00"
+            },
+            {
+              "start": "16:30",
+              "end": "18:30"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ]
+        },
+        {
+          "id": "sm-wqm-1f-pool",
+          "label": "王清明游泳馆一楼泳池",
+          "ocr_label": "王清明游泳馆一楼泳池",
+          "location": "思明校区",
+          "has_courts": false,
+          "capacity_hint": 40,
+          "time_slots": [
+            {
+              "start": "14:30",
+              "end": "16:00"
+            },
+            {
+              "start": "16:30",
+              "end": "18:30"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 1,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [],
+          "observed_time_slots": [
+            {
+              "start": "14:30",
+              "end": "16:00"
+            },
+            {
+              "start": "16:30",
+              "end": "18:30"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spinning",
+      "label": "动感单车室",
+      "ocr_label": "动感单车室",
+      "enabled": true,
+      "venues": [
+        {
+          "id": "sm-wqm-spinning",
+          "label": "动感单车室(动感单车朋辈课堂)",
+          "ocr_label": "动感单车室(动感单车朋辈课堂)",
+          "location": "思明校区王清明游泳馆二楼",
+          "has_courts": false,
+          "capacity_hint": 32,
+          "time_slots": [
+            {
+              "start": "19:30",
+              "end": "20:30"
+            }
+          ],
+          "court_count_hint": 1,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [],
+          "observed_time_slots": [
+            {
+              "start": "19:30",
+              "end": "20:30"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gym",
+      "label": "健身房",
+      "ocr_label": "健身房",
+      "enabled": true,
+      "venues": [
+        {
+          "id": "xa-gym",
+          "label": "翔安校区健身房",
+          "ocr_label": "翔安校区健身房",
+          "location": "翔安校区",
+          "has_courts": false,
+          "stadium_id": "16",
+          "venue_id": "14",
+          "category_id": "8",
+          "time_slots": [
+            {
+              "start": "09:00",
+              "end": "10:30"
+            },
+            {
+              "start": "10:30",
+              "end": "12:00"
+            },
+            {
+              "start": "12:00",
+              "end": "13:30"
+            },
+            {
+              "start": "13:30",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:30"
+            },
+            {
+              "start": "16:30",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:30"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 1,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [],
+          "capacity_hint": 95,
+          "observed_time_slots": [
+            {
+              "start": "10:30",
+              "end": "12:00"
+            },
+            {
+              "start": "12:00",
+              "end": "13:30"
+            },
+            {
+              "start": "13:30",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:30"
+            },
+            {
+              "start": "16:30",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:30"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ]
+        },
+        {
+          "id": "sm-gym",
+          "label": "思明校区健身房",
+          "ocr_label": "思明校区健身房",
+          "location": "思明校区",
+          "has_courts": false,
+          "capacity_hint": 50,
+          "time_slots": [
+            {
+              "start": "14:30",
+              "end": "16:10"
+            },
+            {
+              "start": "16:40",
+              "end": "18:20"
+            },
+            {
+              "start": "18:30",
+              "end": "19:20"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 1,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [],
+          "observed_time_slots": [
+            {
+              "start": "14:30",
+              "end": "16:10"
+            },
+            {
+              "start": "16:40",
+              "end": "18:20"
+            },
+            {
+              "start": "18:30",
+              "end": "19:20"
+            },
+            {
+              "start": "19:30",
+              "end": "21:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tennis",
+      "label": "网球",
+      "ocr_label": "网球",
+      "enabled": true,
+      "venues": [
+        {
+          "id": "xa-tennis-phase1",
+          "label": "翔安校区一期网球场",
+          "ocr_label": "翔安校区一期网球场",
+          "location": "翔安校区",
+          "has_courts": true,
+          "capacity_hint": 1,
+          "time_slots": [
+            {
+              "start": "12:00",
+              "end": "13:00"
+            },
+            {
+              "start": "13:00",
+              "end": "14:00"
+            },
+            {
+              "start": "14:00",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 10,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [
+            {
+              "id": "31",
+              "name": "1号场"
+            },
+            {
+              "id": "32",
+              "name": "2号场"
+            },
+            {
+              "id": "33",
+              "name": "3号场"
+            },
+            {
+              "id": "34",
+              "name": "4号场"
+            },
+            {
+              "id": "35",
+              "name": "5号场"
+            },
+            {
+              "id": "36",
+              "name": "6号场"
+            },
+            {
+              "id": "37",
+              "name": "7号场"
+            },
+            {
+              "id": "38",
+              "name": "8号场"
+            },
+            {
+              "id": "39",
+              "name": "9号场"
+            },
+            {
+              "id": "40",
+              "name": "10号场"
+            }
+          ],
+          "observed_time_slots": [
+            {
+              "start": "12:00",
+              "end": "13:00"
+            },
+            {
+              "start": "13:00",
+              "end": "14:00"
+            },
+            {
+              "start": "14:00",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ]
+        },
+        {
+          "id": "sm-dongyuan-tennis",
+          "label": "思明校区东苑网球场",
+          "ocr_label": "思明校区东苑网球场",
+          "location": "思明校区",
+          "has_courts": true,
+          "capacity_hint": 1,
+          "time_slots": [
+            {
+              "start": "12:00",
+              "end": "13:00"
+            },
+            {
+              "start": "13:00",
+              "end": "14:00"
+            },
+            {
+              "start": "14:00",
+              "end": "15:00"
+            },
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 7,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [
+            {
+              "id": "16",
+              "name": "2号场"
+            },
+            {
+              "id": "17",
+              "name": "3号场"
+            },
+            {
+              "id": "18",
+              "name": "4号场"
+            },
+            {
+              "id": "19",
+              "name": "5号场"
+            },
+            {
+              "id": "20",
+              "name": "6号场"
+            },
+            {
+              "id": "21",
+              "name": "7号场"
+            },
+            {
+              "id": "22",
+              "name": "8号场"
+            }
+          ],
+          "observed_time_slots": [
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "yoga",
+      "label": "瑜伽",
+      "ocr_label": "瑜伽",
+      "enabled": true,
+      "venues": [
+        {
+          "id": "sm-wqm-yoga-b",
+          "label": "B馆教室（瑜伽朋辈课堂）",
+          "ocr_label": "B馆教室（瑜伽朋辈课堂）",
+          "location": "思明校区王清明游泳馆二楼",
+          "has_courts": false,
+          "capacity_hint": 30,
+          "time_slots": [
+            {
+              "start": "14:30",
+              "end": "16:10"
+            },
+            {
+              "start": "16:40",
+              "end": "18:20"
+            },
+            {
+              "start": "19:30",
+              "end": "20:30"
+            }
+          ],
+          "court_count_hint": 1,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [],
+          "observed_time_slots": [
+            {
+              "start": "14:30",
+              "end": "16:10"
+            },
+            {
+              "start": "16:40",
+              "end": "18:20"
+            },
+            {
+              "start": "19:30",
+              "end": "20:30"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pickleball",
+      "label": "匹克球",
+      "ocr_label": "匹克球",
+      "enabled": true,
+      "venues": [
+        {
+          "id": "sm-yanwu-pickleball",
+          "label": "演武室外匹克球场",
+          "ocr_label": "演武室外匹克球场",
+          "location": "思明校区演武运动场",
+          "has_courts": true,
+          "capacity_hint": 1,
+          "time_slots": [
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ],
+          "court_count_hint": 6,
+          "observed_at": "2026-10-13T14:27:50.662664+08:00",
+          "courts": [
+            {
+              "id": "68",
+              "name": "1号场"
+            },
+            {
+              "id": "69",
+              "name": "2号场"
+            },
+            {
+              "id": "70",
+              "name": "3号场"
+            },
+            {
+              "id": "71",
+              "name": "4号场"
+            },
+            {
+              "id": "72",
+              "name": "5号场"
+            },
+            {
+              "id": "73",
+              "name": "6号场"
+            }
+          ],
+          "observed_time_slots": [
+            {
+              "start": "15:00",
+              "end": "16:00"
+            },
+            {
+              "start": "16:00",
+              "end": "17:00"
+            },
+            {
+              "start": "17:00",
+              "end": "18:00"
+            },
+            {
+              "start": "18:00",
+              "end": "19:00"
+            },
+            {
+              "start": "19:00",
+              "end": "20:00"
+            },
+            {
+              "start": "20:00",
+              "end": "21:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "basketball",
+      "label": "篮球",
+      "ocr_label": "篮球",
+      "enabled": false,
+      "venues": []
+    },
+    {
+      "id": "football",
+      "label": "足球",
+      "ocr_label": "足球",
+      "enabled": false,
+      "venues": []
+    },
+    {
+      "id": "volleyball",
+      "label": "排球",
+      "ocr_label": "排球",
+      "enabled": false,
+      "venues": []
+    }
+  ]
+}

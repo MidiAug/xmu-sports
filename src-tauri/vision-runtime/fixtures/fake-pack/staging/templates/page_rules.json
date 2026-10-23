@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "pages": ["select_slot", "confirm_order", "home", "venue_sport_list"],
+  "shadow": {
+    "min_confidence": 0.55,
+    "never_guess_buttons": true,
+    "ocr_backend_preference": ["pack_onnx_download", "windows_media_system"],
+    "note": "ONNX models ship in recognition pack only — not the Tauri main installer"
+  }
+}

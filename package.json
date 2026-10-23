@@ -1,0 +1,29 @@
+{
+  "name": "xmu-sports",
+  "private": true,
+  "version": "0.1.25",
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/test_booking_eligibility.mjs && node scripts/test_booking_progress.mjs && node scripts/test_ui_reliability.mjs && node scripts/test_history_availability.mjs",
+    "test:installer": "node scripts/test_windows_upgrade.mjs",
+    "test:select": "node scripts/test_select_popup.mjs",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "ensure-http-bundle": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/ensure_http_bundle.ps1",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test:recheck": "node scripts/test_order_recheck.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-log": "^2.9.1",
+    "@tauri-apps/plugin-shell": "^2.0.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}

@@ -1,0 +1,101 @@
+# Cursor / OS junk (project agent rules stay local; do not publish)
+.cursor/
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+*.iml
+
+# Local scratch / alternate probes (not product)
+/prototypes/
+
+# Secrets & raw captures
+.env
+.env.*
+*.pem
+*.key
+captures/raw/**
+!captures/raw/.gitkeep
+*.har
+*.saz
+*cookie*
+*token*
+*Full.txt
+*Full*.txt
+testl.txt
+captcha.png
+captcha*.png
+secrets.env
+**/secrets.env
+
+# Build
+node_modules/
+dist/
+build/
+src-tauri/target/
+
+# OCR models for installer (populated by scripts/ensure_ocr_bundle.ps1; do not commit)
+src-tauri/resources/ocr/rapidocr/
+src-tauri/resources/ocr/captcha/
+!src-tauri/resources/ocr/README.md
+
+# Reference clones
+/reference/**
+!/reference/README.md
+
+# Session-capture probe local output (never commit real PHPSESSID)
+tools/session-http-snatch/.local/
+archive/session-http-snatch/.local/
+
+# Runtime / scratch
+/artifacts/
+# Local run/log dumps (never commit)
+/.tmp-logs*/
+# One-off local vision/OCR probe dumps at repo root
+/tmp_*
+src-tauri/sidecars/vision/.venv/
+src-tauri/sidecars/http-booking/.venv/
+src-tauri/resources/http-booking/**
+!src-tauri/resources/http-booking/README.md
+src-tauri/resources/http-booking-build/
+**/__pycache__/
+**/*.pyc
+!src-tauri/sidecars/vision/assets/templates/.gitkeep
+
+# Leftover paths during migration (safe to delete locally)
+/vision/
+/executors/
+
+# CodeGraph
+.codegraph/
+
+# Private collaboration material: keep on disk, never publish
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+**/AGENTS.md
+**/CLAUDE.md
+**/GEMINI.md
+/.agents/
+/.claude/
+/.codex/
+/.cursorignore
+/.codegraphignore
+/codegraph.json
+/docs/
+/images/
+/captures/
+/archive/
+/tools/session-http-snatch/
+/reference/
+/scripts/git-commit-context.ps1
+.pytest_cache/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Historical live captures (not synthetic fixtures)
+/src-tauri/sidecars/vision/fixtures/
+/src-tauri/sidecars/vision/assets/templates/_*.png

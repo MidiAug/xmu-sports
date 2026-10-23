@@ -1,0 +1,7 @@
+{
+  "page": "wechat_mp_panel",
+  "refuse_reason": "OBSERVE_ONLY_PENDING_PAGE_MAP",
+  "shadow_action_type": "stop",
+  "intent_kind": "navigate",
+  "intent_label": "厦大体育"
+}
