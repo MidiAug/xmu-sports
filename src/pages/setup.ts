@@ -1,3 +1,4 @@
+import { createAvailabilityStore } from "../lib/availability-store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BookingTask, FallbackOrder, SelectOption, ShellPrefs, Sport, Venue } from "../types";
 import {
@@ -231,6 +232,8 @@ export async function renderSetup(panel: Element) {
   let availabilityRecovering = false;
   let availabilityLoginId: string | undefined;
   let availabilityTimer = 0;
+  const availabilityStore=createAvailabilityStore((target,force)=>invoke<Availability>("get_venue_availability",{...target,force}),Date.now,target=>scope.current() && !busy && !availabilityRecovering && target.sport===sportSelect.getValue() && target.venue===venueSelect.getValue());
+  const availabilityTarget=()=>({sport:sportSelect.getValue(),venue:venueSelect.getValue(),date:getTargetIso()});
   const escape = (value:string) => value.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
   const stateKey = () => JSON.stringify([sportSelect.getValue(),venueSelect.getValue(),getTargetIso()]);
 
@@ -247,7 +250,7 @@ export async function renderSetup(panel: Element) {
     availabilityHost.hidden=false;
     const current=availabilityKey===stateKey() ? availability : null;
     const stamp=current?.fetched_at ? new Date(current.fetched_at).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:false}) : "";
-    const hint=current ? `上次获取：${stamp}（北京时间）\n按日期缓存，跨天复用。人数是查询时快照；点击刷新更新状态。` : "只读获取学校场次状态";
+    const hint=current ? `上次获取：${stamp}（北京时间）\n按日期缓存，跨天复用。人数是查询时快照；点击刷新更新状态，连续手动刷新间隔5秒。` : "只读获取学校场次状态";
     const warning=availabilityError ? `${availabilityError}${current ? "仍使用上次缓存。" : ""}`
       : current?.state==="date_not_published" ? "学校尚未发布该日期时段。"
       : current?.cache_saved===false ? "缓存写入失败，重开后需重新查询。"
@@ -279,6 +282,7 @@ export async function renderSetup(panel: Element) {
         throw new Error(result?.code==="ACCOUNT_CHANGED" ? "登录账号已变化，未刷新" : result?.reason==="BACKGROUND_LOGIN_UNAVAILABLE" ? "请显示小程序并完成登录" : result?.code==="LOGIN_CONFIRM_REQUIRED" ? "请在微信完成登录确认" : result?.code==="HTTP_AUTH_UNVERIFIED" ? "登录身份未能核实" : "登录未完成，请重试");
       }
       availabilityNeedsLogin=false; availabilityRecovering=false; availabilityLoginId=undefined;
+      availabilityStore.reset();
       await loadAvailability(true);
     } catch(error) {
       if (!scope.current() || generation!==availabilityGeneration) return;
@@ -295,13 +299,27 @@ export async function renderSetup(panel: Element) {
     const date=getTargetIso();
     const difference=(Date.parse(`${date}T00:00:00+08:00`)-Date.parse(`${todayISO()}T00:00:00+08:00`))/86400_000;
     if (busy || availabilityRecovering || ![0,1].includes(difference)) { paintAvailability(); return; }
-    if (!force && availabilityKey===key && availability) { syncAvailabilityOptions(); paintAvailability(); return; }
+    const cached=availabilityStore.peek(availabilityTarget());
+    if (!force && cached) {
+      availability=cached; availabilityKey=key; availabilityLoading=false;
+      syncAvailabilityOptions(); paintAvailability(); updateSummary(); return;
+    }
     const generation=++availabilityGeneration;
     availabilityLoading=true; availabilityError="";
     paintAvailability();
     try {
-      const response=await invoke<Availability>("get_venue_availability",{sport:sportSelect.getValue(),venue:venueSelect.getValue(),date,force});
-      if (!scope.current() || generation!==availabilityGeneration || key!==stateKey()) return;
+      const response=await availabilityStore.get(availabilityTarget(),force);
+      if (!scope.current()) return;
+      if (generation!==availabilityGeneration || key!==stateKey()) {
+        // A completed shared refresh may also update the other visible date.
+        const current=availabilityStore.peek(availabilityTarget());
+        if (!availabilityLoading && !availabilityRecovering && current && response.snapshots?.[getTargetIso()]===current) {
+          availability=current;availabilityKey=stateKey();availabilityError="";
+          if(!response.cached) availabilityNeedsLogin=false;
+          syncAvailabilityOptions();paintAvailability();updateSummary();
+        }
+        return;
+      }
       if (!response?.ok) {
         availabilityNeedsLogin=availabilityAuthNeeded(response ?? {});
         throw new Error(availabilityNeedsLogin ? "登录已失效" : response?.message || "未取得场次状态");
@@ -339,12 +357,15 @@ export async function renderSetup(panel: Element) {
     cancelAvailabilityLogin();
     window.clearTimeout(availabilityTimer);
     // Invalidate an old selection's callback immediately, before debounce expires.
-    availabilityGeneration++; availabilityLoading=false;
+    availabilityGeneration++; availabilityLoading=false; availabilityError="";
+    const cached=availabilityStore.peek(availabilityTarget());
+    if(cached) {availability=cached;availabilityKey=stateKey();}
     syncAvailabilityOptions();
     paintAvailability();
-    availabilityTimer=window.setTimeout(()=>{void loadAvailability();},250);
+    updateSummary();
+    if (!cached) availabilityTimer=window.setTimeout(()=>{void loadAvailability();},250);
   }
-  scope.onDispose(()=>{cancelAvailabilityLogin();window.clearTimeout(availabilityTimer);availabilityGeneration++;});
+  scope.onDispose(()=>{availabilityStore.dispose();cancelAvailabilityLogin();window.clearTimeout(availabilityTimer);availabilityGeneration++;});
 
   type SelectApi = ReturnType<typeof mountShellSelect>;
   let sportSelect!: SelectApi;

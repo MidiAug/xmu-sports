@@ -43,11 +43,12 @@ try {
         if(window.__authExpired) return {ok:false,code:"SESSION_EXPIRED",message:"登录信息失效"};
         if(window.__refreshFails && args.force) throw Error("fixture network failure");
         await new Promise(resolve=>setTimeout(resolve,120));
-        return {ok:true,state:"availability_ready",cached:!args.force,sport:args.sport,venue:args.venue,date:args.date,fetched_at:"2026-10-23T09:00:00+08:00",can_choose:true,slots:[
+        const response={ok:true,state:"availability_ready",account_fingerprint:"fixture-account",cached:!args.force,sport:args.sport,venue:args.venue,date:args.date,fetched_at:"2026-10-23T09:00:00+08:00",can_choose:true,slots:[
           {start:"14:00",end:"15:00",cells:[{court:"03",admin_locked:true,status:"locked",remaining:1,capacity:1,reason:""},{court:"07",admin_locked:!!window.__lockSelected,status:"available",remaining:0,capacity:1,reason:""},{court:"08",admin_locked:false,status:"available",remaining:1,capacity:1,reason:""}]},
           {start:"12:00",end:"13:00",cells:[{court:"01",admin_locked:false,status:"available",remaining:0,capacity:1,reason:""}]},
           {start:"13:00",end:"14:00",cells:[{court:"01",admin_locked:!args.force,status:args.force ? "available":"locked",remaining:1,capacity:1,reason:"课程使用"},{court:"02",admin_locked:!args.force,status:args.force ? "available":"locked",remaining:0,capacity:1,reason:"课程使用"}]}
         ]};
+        return {...response,snapshots:Object.fromEntries(["2026-10-23","2026-10-24"].map(date=>[date,{...response,date}]))};
       }
       if(cmd.includes("version")) return "0.1.25";
       if(cmd.includes("is_maximized")) return false;
@@ -96,6 +97,16 @@ try {
   await page.keyboard.press("Escape");
   await slot.locator('[data-value="13:00|14:00"]').evaluate(button=>button.click());
   assert.equal(await page.locator('#setup_primary').isDisabled(),true);
+  const beforeSwitch=await page.evaluate(()=>window.__queries.length);
+  for(let i=0;i<4;i++) {
+    for(const date of ["2026-10-23","2026-10-24"]) {
+      await page.locator(`[data-date="${date}"]`).click();
+      assert.equal((await panel.locator('button').innerText()).trim(),"刷新");
+      assert.equal(await page.locator('#setup_primary').isDisabled(),true);
+      await page.clock.runFor(500);
+    }
+  }
+  assert.equal(await page.evaluate(()=>window.__queries.length),beforeSwitch,"Date switching must not invoke the host");
   const noPoll=await page.evaluate(()=>window.__queries.length);
   await page.clock.runFor(60_000);
   assert.equal(await page.evaluate(()=>window.__queries.length),noPoll);
@@ -105,12 +116,21 @@ try {
   assert.match(await panel.innerText(),/仍使用上次缓存/);
   assert.equal(await court.locator('.shell-select-trigger').isDisabled(),true);
   await page.evaluate(()=>window.__refreshFails=false);
+  await page.clock.runFor(5100);
   await panel.getByRole("button",{name:"重试",exact:true}).click();
   await page.clock.runFor(300);
   assert.equal(await slot.locator('[data-value="13:00|14:00"]').isEnabled(),true);
   assert.equal(await court.locator('.shell-select-trigger').isEnabled(),true);
   assert.equal(await page.locator('#setup_primary').isEnabled(),true);
   assert.equal(await page.evaluate(()=>window.__queries.at(-1).force),true);
+  const refreshed=await page.evaluate(()=>window.__queries.length);
+  await panel.getByRole("button",{name:"刷新场次状态"}).click();await page.clock.runFor(100);
+  assert.equal(await page.evaluate(()=>window.__queries.length),refreshed,"Rapid manual refresh stays within the cooldown");
+  for(const date of ["2026-10-23","2026-10-24"]) {
+    await page.locator(`[data-date="${date}"]`).click();await page.clock.runFor(300);
+    assert.equal(await slot.locator('[data-value="13:00|14:00"]').isEnabled(),true,"Refresh updates both dates");
+  }
+  assert.equal(await page.evaluate(()=>window.__queries.length),refreshed);
   await choose(slot,"14:00|15:00");
   assert.equal((await slot.locator('.shell-select-badge').first().textContent()),"部分锁定");
   assert.equal(await slot.locator('.shell-select-option-hint').count(),0);
@@ -130,6 +150,7 @@ try {
   await page.screenshot({path:resolve(artifacts,"courts.png"),fullPage:true});
   await page.keyboard.press('Escape');
   await page.evaluate(()=>window.__lockSelected=true);
+  await page.clock.runFor(5100);
   await panel.getByRole("button",{name:"刷新场次状态"}).click();
   await page.clock.runFor(300);
   assert.match(await court.locator('.shell-select-value').innerText(),/已锁/);
@@ -153,6 +174,7 @@ try {
   assert.doesNotMatch(await page.locator('.setup-page').innerText(),/[·•]/);
   // Authentication recovery has its own IPC and never starts a booking operation.
   await page.evaluate(()=>window.__authExpired=true);
+  await page.clock.runFor(5100);
   await panel.locator('[data-refresh-availability]').click();
   await page.clock.runFor(300);
   await panel.getByRole('button',{name:'重新登录',exact:true}).waitFor();
@@ -169,6 +191,7 @@ try {
   assert.equal(await page.evaluate(()=>window.__queries.length),beforeLogin+1);
   assert.equal(await page.evaluate(()=>window.__queries.at(-1).force),true);
   await page.evaluate(()=>{window.__authExpired=true;window.__authFailure=true;});
+  await page.clock.runFor(5100);
   await panel.locator('[data-refresh-availability]').click();await page.clock.runFor(300);
   await panel.getByRole('button',{name:'重新登录',exact:true}).click();await page.clock.runFor(300);
   assert.match(await panel.innerText(),/重新登录/);

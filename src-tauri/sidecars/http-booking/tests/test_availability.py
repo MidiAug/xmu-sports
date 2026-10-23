@@ -40,6 +40,8 @@ def test_fetch_caches_both_dates_and_tomorrow_is_reused_after_midnight(tmp_path,
     calls,_=runtime
     first=av.query(tmp_path,"健身房","场馆","2026-10-23",now=NOW)
     assert first["ok"] and not first["cached"]
+    assert set(first["snapshots"])=={"2026-10-23","2026-10-24"}
+    assert all(value["account_fingerprint"]==first["account_fingerprint"] for value in first["snapshots"].values())
     count=len(calls)
     tomorrow=av.query(tmp_path,"健身房","场馆","2026-10-24",now=NOW)
     crossed=av.query(tmp_path,"健身房","场馆","2026-10-24",now=NOW+timedelta(days=1))
@@ -60,7 +62,7 @@ def test_out_of_range_never_reads_credentials(tmp_path,monkeypatch):
     with pytest.raises(BookingError) as error: av.query(tmp_path,"运动","场馆","2026-10-25",now=NOW)
     assert error.value.code=="INVALID_AVAILABILITY_TARGET"
 
-def test_missing_date_is_not_negatively_cached(tmp_path,runtime,monkeypatch):
+def test_missing_date_has_short_negative_cache_and_force_bypasses(tmp_path,runtime,monkeypatch):
     original=payload
     def today_only():
         data=original(); data["date_list"]=[{"date_int":"2026-10-23"}]
@@ -69,7 +71,11 @@ def test_missing_date_is_not_negatively_cached(tmp_path,runtime,monkeypatch):
     monkeypatch.setattr(__import__(__name__,fromlist=["payload"]),"payload",today_only)
     for _ in range(2):
         assert av.query(tmp_path,"运动","场馆","2026-10-24",now=NOW)["state"]=="date_not_published"
+    assert runtime[0].count("intervals")==1
+    av.query(tmp_path,"运动","场馆","2026-10-24",force=True,now=NOW)
     assert runtime[0].count("intervals")==2
+    av.query(tmp_path,"运动","场馆","2026-10-24",now=NOW+timedelta(seconds=31))
+    assert runtime[0].count("intervals")==3
 
 @pytest.mark.parametrize("path",["/index/Stadium/addOrder","/index/stadium/chooseVerify","/index/index/captcha"])
 def test_readonly_client_rejects_mutations_before_network(path):

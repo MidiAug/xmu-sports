@@ -64,8 +64,24 @@ def query(root, sport, venue, date, force=False, now=None):
     cached_days=cache.get("days",{}) if isinstance(cache.get("days"),dict) else {}
     days={k:v for k,v in cached_days.items() if k in valid and isinstance(v,dict)
           and v.get("date")==k and isinstance(v.get("slots"),list) and isinstance(v.get("fetched_at"),str)}
-    if not force and date in days:
-        return {"ok":True,"state":"availability_ready","cached":True,"sport":sport,"venue":venue,**days[date]}
+    unpublished={}
+    for day, stamp in (cache.get("unpublished",{}) if isinstance(cache.get("unpublished"),dict) else {}).items():
+        try:
+            age=(now-datetime.fromisoformat(stamp)).total_seconds()
+            if day in valid and 0 <= age < 30: unpublished[day]=stamp
+        except (ValueError,TypeError):
+            continue
+
+    def result(cached, cache_saved=True):
+        common={"ok":True,"cached":cached,"cache_saved":cache_saved,"sport":sport,"venue":venue,
+                "account_fingerprint":account}
+        snapshots={day:{**common,"state":"availability_ready",**value} for day,value in days.items()}
+        snapshots.update({day:{**common,"state":"date_not_published","date":day,"fetched_at":stamp,"slots":[]}
+                          for day,stamp in unpublished.items()})
+        return {**snapshots[date],"snapshots":snapshots}
+
+    if not force and (date in days or date in unpublished):
+        return result(True)
     client=AvailabilityClient(ticket)
     try:
         auth=client.login()
@@ -81,14 +97,13 @@ def query(root, sport, venue, date, force=False, now=None):
         # A successful refresh may show a previously published day was withdrawn.
         for day in valid-published:
             days.pop(day,None)
+            unpublished[day]=fetched_at
+        for day in published: unpublished.pop(day,None)
         try:
-            write_json(path,{"schema_version":1,"sport":sport,"venue":venue,"days":days})
+            write_json(path,{"schema_version":1,"sport":sport,"venue":venue,"days":days,"unpublished":unpublished})
             cache_saved=True
         except OSError:
             cache_saved=False
-        result={"ok":True,"cached":False,"cache_saved":cache_saved,"sport":sport,"venue":venue}
-        if date not in fresh:
-            return {**result,"state":"date_not_published","date":date,"fetched_at":fetched_at,"slots":[]}
-        return {**result,"state":"availability_ready",**fresh[date]}
+        return result(False,cache_saved)
     finally:
         client.http.close()

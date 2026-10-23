@@ -1,6 +1,6 @@
 export type AvailabilityCell = {court:string;admin_locked:boolean;status:string;reason:string;remaining:number;capacity:number};
 export type AvailabilitySlot = {start:string;end:string;cells:AvailabilityCell[]};
-export type Availability = {ok:boolean;state:string;message?:string;code?:string;date:string;sport:string;venue:string;cached:boolean;cache_saved?:boolean;fetched_at:string;slots:AvailabilitySlot[];can_choose?:boolean;notice?:string};
+export type Availability = {ok:boolean;state:string;message?:string;code?:string;date:string;sport:string;venue:string;cached:boolean;cache_saved?:boolean;account_fingerprint?:string;snapshots?:Record<string,Availability>;fetched_at:string;slots:AvailabilitySlot[];can_choose?:boolean;notice?:string};
 
 const cellsFor = (slot:AvailabilitySlot,court="") => court ? slot.cells.filter(cell=>cell.court===court) : slot.cells;
 // Some sports return numeric IDs, others already include “号场” or a room name.
