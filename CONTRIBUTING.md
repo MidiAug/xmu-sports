@@ -6,7 +6,7 @@
 
 - 前端逻辑：`npm test`；类型和静态资源：`npm run build`。
 - Rust 宿主：`cargo test --manifest-path src-tauri/Cargo.toml -p xmu-sports --lib`。
-- HTTP 执行器：在其目录使用 Python 3.12 环境运行 `python -m pytest -q`；测试依赖为运行依赖与 pytest。
+- HTTP 执行器：在其目录使用 Python 3.12 环境运行 `python -m pytest -q`；测试依赖见 requirements-dev.txt，包含历史通道模拟测试所需 websockets 与单测超时保护。
 - 浏览器交互：先构建前端，配置 `PLAYWRIGHT_MODULE` 为 Playwright 模块路径，再执行 `npm run test:select` 或相关 `scripts/test_*_ui.mjs`。需要安装 Edge，部分脚本有开发机路径回退，应显式覆盖。
 - 安装升级检查：`npm run test:installer`，需要先有一次本机 Tauri NSIS 构建生成工具和辅助文件；测试只执行隔离的安装判断函数。
 - 打包审计：准备已打包执行器后，使用执行器 Python 环境运行 `scripts/test_lite_bundle.py`。

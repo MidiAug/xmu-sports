@@ -40,7 +40,7 @@ npm test
 npm run build
 cargo test --manifest-path src-tauri/Cargo.toml -p xmu-sports --lib
 cd src-tauri/sidecars/http-booking
-.venv/Scripts/python.exe -m pip install pytest
+.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
 .venv/Scripts/python.exe -m pytest -q
 ```
 

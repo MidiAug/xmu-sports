@@ -32,10 +32,10 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Install worker test dependencies
-        run: python -m pip install -r src-tauri/sidecars/http-booking/requirements.txt "pytest>=8,<10"
+        run: python -m pip install -r src-tauri/sidecars/http-booking/requirements-dev.txt
       - name: Worker offline tests
         working-directory: src-tauri/sidecars/http-booking
-        run: python -m pytest -q
+        run: python -m pytest -vv --timeout=30
       - name: Rust toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update
       - name: Host unit tests

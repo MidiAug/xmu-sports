@@ -1,0 +1,5 @@
+-r requirements.txt
+pytest>=8,<10
+pytest-timeout>=2.3,<3
+# Legacy runtime-channel offline fixtures only; excluded from the shipped worker.
+websockets>=14,<17
