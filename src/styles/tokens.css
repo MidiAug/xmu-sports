@@ -1,0 +1,117 @@
+﻿:root,
+:root[data-shell-theme="dark"] {
+  color-scheme: dark;
+  --color-canvas: rgb(21, 21, 23);
+  --color-titlebar: rgb(21, 21, 23);
+  --color-panel: rgb(44, 44, 46);
+  --color-panel-2: rgb(53, 54, 56);
+  --color-panel-hover: rgba(255, 255, 255, 0.08);
+  --color-line: rgba(255, 255, 255, 0.06);
+  --color-line-strong: rgba(255, 255, 255, 0.12);
+  --color-ink: rgb(249, 250, 251);
+  --color-muted: rgb(173, 178, 184);
+  --color-accent: #679efe;
+  --color-danger: #f25a5a;
+  --color-ok: #3dd68c;
+  --color-btn-fill: rgb(53, 54, 56);
+  --color-btn-fill-hover: rgb(67, 69, 74);
+  --color-nav-hover: rgba(255, 255, 255, 0.08);
+  --color-nav-active: rgba(255, 255, 255, 0.14);
+  --color-tooltip-bg: rgb(67, 69, 74);
+  --color-tooltip-ink: rgb(249, 250, 251);
+  --shadow-lv3:
+    0 0 1px 0 rgba(0, 0, 0, 0.2), 0 0 4px 0 rgba(0, 0, 0, 0.02),
+    0 12px 32px 0 rgba(0, 0, 0, 0.08);
+  --titlebar-h: 35px;
+  --nav-w: 200px;
+  --dsh-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --dsh-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+  --dsh-scrollbar-width: 6px;
+  --mono: Consolas, "Cascadia Mono", "SF Mono", ui-monospace, monospace;
+
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-shell-theme="light"] {
+  color-scheme: light;
+  --color-canvas: rgb(245, 245, 247);
+  --color-titlebar: rgb(245, 245, 247);
+  --color-panel: #ffffff;
+  --color-panel-2: rgb(250, 250, 252);
+  --color-panel-hover: rgba(0, 0, 0, 0.04);
+  --color-line: rgba(0, 0, 0, 0.06);
+  --color-line-strong: rgba(0, 0, 0, 0.12);
+  --color-ink: rgb(28, 28, 30);
+  --color-muted: rgb(110, 110, 115);
+  --color-accent: #3b82f6;
+  --color-danger: #e11d48;
+  --color-ok: #16a34a;
+  --color-btn-fill: rgb(245, 246, 247);
+  --color-btn-fill-hover: rgb(241, 243, 245);
+  --color-nav-hover: rgba(0, 0, 0, 0.05);
+  --color-nav-active: rgba(0, 0, 0, 0.09);
+  --color-tooltip-bg: rgb(55, 55, 58);
+  --color-tooltip-ink: rgb(249, 250, 251);
+  --shadow-lv3:
+    0 0 1px 0 rgba(0, 0, 0, 0.08), 0 0 4px 0 rgba(0, 0, 0, 0.04),
+    0 12px 32px 0 rgba(0, 0, 0, 0.1);
+  --dsh-scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --dsh-scrollbar-thumb-hover: rgba(0, 0, 0, 0.28);
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsh-scrollbar-thumb) transparent;
+}
+
+/* 全局细滚动条：仅溢出时出现；无上下箭头 */
+::-webkit-scrollbar {
+  width: var(--dsh-scrollbar-width);
+  height: var(--dsh-scrollbar-width);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dsh-scrollbar-thumb);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dsh-scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-canvas);
+}
+
+#app {
+  height: 100%;
+}

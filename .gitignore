@@ -99,3 +99,6 @@ GEMINI.md
 # Historical live captures (not synthetic fixtures)
 /src-tauri/sidecars/vision/fixtures/
 /src-tauri/sidecars/vision/assets/templates/_*.png
+
+# Design tokens are public CSS source, not credentials
+!/src/styles/tokens.css
