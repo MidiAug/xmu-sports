@@ -8,10 +8,11 @@ const {chromium}=require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERP
 const artifacts=process.env.XMU_UI_ARTIFACTS ?? "artifacts/compact-availability-025";
 const browser=await chromium.launch({channel:"msedge",headless:true});
 try {
-  const page=await browser.newPage({viewport:{width:960,height:900}});
-  if(process.env.XMU_FORCE_POPOVER_FALLBACK) await page.addInitScript(()=>Object.defineProperty(HTMLElement.prototype,"showPopover",{value:undefined,configurable:true}));
+  const context=await browser.newContext({viewport:{width:960,height:900}});
+  const page=await context.newPage();
+  if(process.env.XMU_FORCE_POPOVER_FALLBACK) await page.context().addInitScript(()=>Object.defineProperty(HTMLElement.prototype,"showPopover",{value:undefined,configurable:true}));
   await page.clock.install({time:new Date("2026-10-23T10:00:00+08:00")});
-  await page.addInitScript(()=>{
+  await page.context().addInitScript(()=>{
     let task={task_id:"fixture",sport:"羽毛球",venue:"翔安校区羽毛球场",target_date:"2026-10-24",fire_at:"2026-10-23T07:00:00+08:00",target_time_start:"13:00",target_time_end:"14:00",executor:"http",revision:0,allow_time_fallback:false,time_fallback_order:"down_then_up"};
     const target={sport:task.sport,venue:task.venue,date:task.target_date,time:"13:00",end:"14:00"};
     const phases=["authenticating","normal_ui_opening","semantic_login_control","native_login_opening","semantic_login_control","native_login_opening","uia_window_message","normal_ui_http_ready","checking_orders","captcha","querying_slots","submitting","verifying_order"];
@@ -124,6 +125,28 @@ try {
   }
   assert.equal(await page.evaluate(()=>window.__tabRefreshing),0,"Tab remount must never flash Refreshing");
   await page.evaluate(()=>window.__availabilityObserver.disconnect());
+  await page.context().addInitScript(()=>{
+    window.__loadRefreshing=0;
+    new MutationObserver(()=>{
+      if(document.querySelector('#availability_panel')?.textContent.includes('刷新中')) window.__loadRefreshing++;
+    }).observe(document,{childList:true,subtree:true,characterData:true});
+  });
+  await page.reload();await page.clock.runFor(1000);
+  // Cold start intentionally selects the next release day; choose a cached day.
+  await page.locator('[data-date="2026-10-24"]').click();await page.clock.runFor(500);
+  assert.equal(await page.evaluate(()=>window.__queries.length),0,"A real document reload restores local snapshots without RPC");
+  assert.equal(await page.evaluate(()=>window.__loadRefreshing),0,"Reload must not flash Refreshing");
+  assert.equal((await panel.locator('[data-refresh-availability]').innerText()).trim(),"刷新");
+  assert.match(await slot.locator('.shell-select-value').innerText(),/全部锁定/);
+  const reopened=await page.context().newPage();
+  await reopened.clock.install({time:new Date("2026-10-23T10:00:00+08:00")});
+  await reopened.goto(process.env.XMU_TEST_BASE_URL ?? "http://127.0.0.1:1421");await reopened.clock.runFor(1000);
+  await reopened.locator('[data-date="2026-10-24"]').click();await reopened.clock.runFor(500);
+  assert.equal(await reopened.evaluate(()=>window.__queries.length),0,"A new JS environment restores persisted snapshots without querying");
+  assert.equal(await reopened.evaluate(()=>window.__loadRefreshing),0);
+  assert.match(await reopened.locator('#slot_host .shell-select-value').innerText(),/全部锁定/);
+  await reopened.close();
+  console.log("Persistence browser checks passed: document reload and new document, zero availability RPCs and zero Refreshing flashes");
   const noPoll=await page.evaluate(()=>window.__queries.length);
   await page.clock.runFor(60_000);
   assert.equal(await page.evaluate(()=>window.__queries.length),noPoll);

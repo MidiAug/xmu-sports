@@ -3,7 +3,9 @@ import {readFileSync} from "node:fs";
 import ts from "typescript";
 const availabilityJs=ts.transpileModule(readFileSync("src/lib/availability.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const availabilityUrl=`data:text/javascript;base64,${Buffer.from(availabilityJs).toString('base64')}`;
-const source=readFileSync("src/lib/availability-store.ts","utf8").replace('"./availability"',JSON.stringify(availabilityUrl));
+const persistenceJs=ts.transpileModule(readFileSync("src/lib/availability-persistence.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const persistenceUrl=`data:text/javascript;base64,${Buffer.from(persistenceJs).toString('base64')}`;
+const source=readFileSync("src/lib/availability-store.ts","utf8").replace('"./availability"',JSON.stringify(availabilityUrl)).replace('"./availability-persistence"',JSON.stringify(persistenceUrl));
 const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const {createAvailabilityStore,createAvailabilityCache}=await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 let clock=0, calls=0;
@@ -89,3 +91,27 @@ const preLoginQuery=beforeLogin.get(today);beforeLogin.dispose();
 const afterLogin=createAvailabilityStore(async t=>row(t,{account_fingerprint:"after"}),()=>clock,()=>true,loginCache);
 afterLogin.reset();await afterLogin.get(today);preLoginFinish();await preLoginQuery;
 assert.equal(afterLogin.peek(today).account_fingerprint,"after","A former tab cannot overwrite login reset with an old response");
+
+let disk=null, diskNow=Date.parse("2026-10-23T10:00:00+08:00"), diskCalls=0;
+const storage={getItem:()=>disk,setItem:(_key,value)=>disk=value};
+const persistedRow=t=>({...row(t),fetched_at:new Date(diskNow).toISOString(),account_fingerprint:"persist-a",cookie:"must-not-persist"});
+const diskFetch=async t=>{diskCalls++;return {...persistedRow(t),snapshots:{[today.date]:persistedRow(today),[tomorrow.date]:persistedRow(tomorrow)}};};
+const diskCache=createAvailabilityCache(storage,()=>diskNow);
+const firstProcess=createAvailabilityStore(diskFetch,()=>diskNow,()=>true,diskCache);
+await firstProcess.get(today);assert.ok(disk);assert.ok(!disk.includes("must-not-persist"));
+const restarted=createAvailabilityStore(diskFetch,()=>diskNow,()=>true,createAvailabilityCache(storage,()=>diskNow));
+assert.ok(restarted.peek(today));await restarted.get(today);await restarted.get(tomorrow);
+assert.equal(diskCalls,1,"A fresh app cache restores both dates without RPC");
+diskNow+=86400000;
+const nextDay=createAvailabilityStore(diskFetch,()=>diskNow,()=>true,createAvailabilityCache(storage,()=>diskNow));
+assert.equal(nextDay.peek(today),undefined);assert.ok(nextDay.peek(tomorrow));await nextDay.get(tomorrow);
+assert.equal(diskCalls,1,"Tomorrow remains cached after becoming today");
+nextDay.reset();assert.equal(JSON.parse(disk).snapshots.length,0,"Login reset also clears persisted snapshots");
+for(const broken of ['{',JSON.stringify({version:99,snapshots:[]}),JSON.stringify({version:1,account:"b",snapshots:[persistedRow(tomorrow)]})]) {
+  disk=broken;const corrupt=createAvailabilityCache(storage,()=>diskNow);
+  assert.equal(corrupt.cache.size,0,"Malformed or mixed-account disk data is ignored");
+}
+const denied=createAvailabilityCache({getItem:()=>null,setItem:()=>{throw Error("quota");}},()=>diskNow);
+const limited=createAvailabilityStore(async t=>persistedRow(t),()=>diskNow,()=>true,denied);
+await limited.get(tomorrow);assert.ok(limited.peek(tomorrow));assert.equal(limited.persistenceFailed(),true);
+console.log("Availability persistence checks passed: restart, date rollover, login reset, corrupt cache, sensitive-field stripping and storage failure");

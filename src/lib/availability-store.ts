@@ -1,18 +1,41 @@
+import {readAvailabilityCache,writeAvailabilityCache,type AvailabilityStorage} from "./availability-persistence";
 import { availabilityAuthNeeded } from "./availability";
 import type { Availability } from "./availability";
 export type AvailabilityTarget = {sport:string;venue:string;date:string};
 type Failure={value?:Availability;error?:unknown;until:number};
 /** Data/request lifetime belongs to the application, not a mounted tab. */
-export function createAvailabilityCache() {
-  return {
+export function createAvailabilityCache(storage?:AvailabilityStorage,now=Date.now) {
+  const session={
     cache:new Map<string,{value:Availability;until:number}>(),
     pending:new Map<string,{promise:Promise<Availability>;force:boolean}>(),
     failures:new Map<string,Failure>(),forced:new Map<string,number>(),
     epoch:0,account:undefined as string|undefined,
-    automaticFailure:undefined as Failure|undefined,needsLogin:false,
+    automaticFailure:undefined as Failure|undefined,needsLogin:false,persistenceFailed:false,save:()=>{},
   };
+  if(storage) {
+    const loaded=readAvailabilityCache(storage,now());
+    session.persistenceFailed=loaded.failed;
+    const data=loaded.data;
+    if(data) {
+      session.account=data.account;session.needsLogin=data.needsLogin;
+      for(const value of data.snapshots) session.cache.set(JSON.stringify([value.sport,value.venue,value.date]),{
+        value,until:value.state==="date_not_published" ? Date.parse(value.fetched_at)+30000 : Infinity,
+      });
+      for(const [key,time] of data.forced) session.forced.set(key,time);
+      if(data.retryUntil) session.automaticFailure={error:new Error("查询暂不可用，请稍后重试"),until:data.retryUntil};
+    }
+    session.save=()=>{
+      session.persistenceFailed=!writeAvailabilityCache(storage,{
+        account:session.account,needsLogin:session.needsLogin,snapshots:[...session.cache.values()].map(entry=>entry.value),
+        forced:[...session.forced],retryUntil:session.automaticFailure?.until,
+      },now());
+    };
+  }
+  return session;
 }
-export const availabilitySessionCache=createAvailabilityCache();
+export const availabilitySessionCache=createAvailabilityCache(typeof window==="undefined" ? undefined : {
+  getItem:key=>window.localStorage.getItem(key),setItem:(key,value)=>window.localStorage.setItem(key,value),
+});
 /** Each view owns cancellation; completed queries still populate the shared cache. */
 export function createAvailabilityStore(fetcher:(target:AvailabilityTarget,force:boolean)=>Promise<Availability>, now=Date.now, isCurrent:(target:AvailabilityTarget)=>boolean=()=>true, session=createAvailabilityCache()) {
   const key=(t:AvailabilityTarget)=>JSON.stringify([t.sport,t.venue,t.date]);
@@ -23,7 +46,7 @@ export function createAvailabilityStore(fetcher:(target:AvailabilityTarget,force
     const entry=cache.get(key(t));
     return entry && entry.until>now() ? entry.value : undefined;
   };
-  function reset() {session.epoch++;cache.clear();pending.clear();failures.clear();forced.clear();session.automaticFailure=undefined;session.account=undefined;session.needsLogin=false;}
+  function reset() {session.epoch++;cache.clear();pending.clear();failures.clear();forced.clear();session.automaticFailure=undefined;session.account=undefined;session.needsLogin=false;session.save();}
   async function get(t:AvailabilityTarget,force=false):Promise<Availability> {
     if(disposed) throw new Error("查询已取消");
     const hit=peek(t), id=group(t);
@@ -57,13 +80,14 @@ export function createAvailabilityStore(fetcher:(target:AvailabilityTarget,force
       if(cooling) { if(hit) return hit; throw new Error("请稍后再刷新"); }
     }
     const generation=session.epoch;
-    if(force) forced.set(id,now());
+    if(force) {forced.set(id,now());session.save();}
     const promise=fetcher(t,force).then(response=>{
       if(generation!==session.epoch) return response;
       if(!response.ok) {
         const failure={value:response,until:now()+30000};
         failures.set(id,failure);
         if(availabilityAuthNeeded(response)) {session.automaticFailure=failure;session.needsLogin=true;}
+        session.save();
         return response;
       }
       if(session.account && response.account_fingerprint && session.account!==response.account_fingerprint) {
@@ -79,15 +103,16 @@ export function createAvailabilityStore(fetcher:(target:AvailabilityTarget,force
           cache.set(key(value),{value,until:value.state==="date_not_published" ? (Number.isFinite(fetched) ? fetched : now())+30000 : Infinity});
         }
       }
+      session.save();
       return response;
     }).catch(error=>{
       if(generation===session.epoch) {
-        session.automaticFailure={error,until:now()+30000};failures.set(id,session.automaticFailure);
+        session.automaticFailure={error,until:now()+30000};failures.set(id,session.automaticFailure);session.save();
       }
       throw error;
     }).finally(()=>{if(pending.get(id)?.promise===promise) pending.delete(id);});
     pending.set(id,{promise,force});
     return promise;
   }
-  return {peek,get,reset,needsLogin:()=>session.needsLogin,dispose:()=>{disposed=true;}};
+  return {peek,get,reset,needsLogin:()=>session.needsLogin,persistenceFailed:()=>session.persistenceFailed,dispose:()=>{disposed=true;}};
 }

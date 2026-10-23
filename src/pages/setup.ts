@@ -254,7 +254,8 @@ export async function renderSetup(panel: Element) {
     const hint=current ? `上次获取：${stamp}（北京时间）\n按日期缓存，跨天复用。人数是查询时快照；点击刷新更新状态，连续手动刷新间隔5秒。` : "只读获取学校场次状态";
     const warning=availabilityError ? `${availabilityError}${current ? "仍使用上次缓存。" : ""}`
       : current?.state==="date_not_published" ? "学校尚未发布该日期时段。"
-      : current?.cache_saved===false ? "缓存写入失败，重开后需重新查询。"
+      : availabilityStore.persistenceFailed() ? "本地缓存未保存，重载后需重新读取。"
+      : current?.cache_saved===false ? "场次快照已取得，备用缓存未能保存。"
       : current?.can_choose===false ? current.notice || "学校查询时提示未开放预约。" : "";
     const label=availabilityRecovering ? "登录中" : availabilityLoading ? "刷新中" : availabilityNeedsLogin ? "重新登录" : availabilityError ? "重试" : "刷新";
     availabilityHost.innerHTML=`<button type="button" class="btn ghost" title="${escape(availabilityNeedsLogin ? "恢复微信登录，成功后自动刷新；不提交预约" : hint)}" aria-label="${label==='刷新' ? '刷新场次状态' : label}" data-refresh-availability ${availabilityLoading || availabilityRecovering || busy ? "disabled" : ""}>${label}</button>${availabilityRecovering ? '<button type="button" class="btn ghost" data-cancel-availability-login>取消</button>' : ""}${warning ? `<p class="availability-warning" title="${escape(availabilityError)}" role="status">${escape(warning)}</p>` : ""}`;
