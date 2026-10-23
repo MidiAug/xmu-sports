@@ -1278,6 +1278,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             updates::check_app_update,
             updates::download_app_update,
+            updates::install_app_update,
             updates::open_update_folder,
             save_task,
             availability::get_venue_availability,

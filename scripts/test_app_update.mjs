@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
-let complete, completeDownload, progress, calls=0, downloads=0;
+let complete, completeDownload, completeInstall, progress, calls=0, downloads=0, installs=0;
 globalThis.__updateInvoke=async command=>{
   if(command==='check_app_update') {calls++;return new Promise(resolve=>complete=resolve);}
   if(command==='download_app_update') {downloads++;return new Promise((resolve,reject)=>completeDownload={resolve,reject});}
+  if(command==='install_app_update') {installs++;return new Promise((resolve,reject)=>completeInstall={resolve,reject});}
   throw Error(command);
 };
 let stopped=0;
@@ -26,6 +27,12 @@ progress({payload:{received:40,total:100}});assert.equal(last.progress,40);
 completeDownload.reject('校验失败');await download;assert.equal(last.phase,'error');assert.equal(stopped,1);
 const retry=module.downloadAppUpdate();await Promise.resolve();completeDownload.resolve('verified.exe');await retry;
 assert.equal(last.phase,'downloaded');assert.equal(last.path,'verified.exe');assert.equal(stopped,2);
+const install=module.performAppUpdate();assert.equal(last.phase,'installing');
+await module.performAppUpdate();assert.equal(installs,1);
+completeInstall.reject('请先结束预约');await install;assert.equal(last.failedAt,'install');
+const installRetry=module.performAppUpdate();assert.equal(installs,2);
+completeInstall.reject('安装包已改变，请重新下载');await installRetry;assert.equal(last.failedAt,'download');
+const redownload=module.performAppUpdate();await Promise.resolve();assert.equal(downloads,3);completeDownload.resolve('verified-again.exe');await redownload;
 subscribe();const old=last;const again=module.checkAppUpdate();complete({status:'unpublished',version:'',size:0,notes:''});await again;
 assert.equal(last,old,'Disposed page receives no updates');
 console.log('App update controller passed: manual-only, single-flight, navigation retention, progress, failed download retry and disposal');

@@ -32,11 +32,16 @@ struct Candidate {
     url: String,
     sha256: String,
 }
+struct Downloaded {
+    path: PathBuf,
+    size: u64,
+    sha256: String,
+}
 #[derive(Default)]
 struct UpdateState {
     cached: Option<(Instant, Result<ReleaseInfo, String>)>,
     candidate: Option<Candidate>,
-    downloaded: Option<PathBuf>,
+    downloaded: Option<Downloaded>,
 }
 static STATE: OnceLock<Mutex<UpdateState>> = OnceLock::new();
 fn state() -> &'static Mutex<UpdateState> {
@@ -360,7 +365,11 @@ pub async fn download_app_update(app: tauri::AppHandle) -> Result<String, String
             let _ = fs::remove_file(&part);
             return Err("无法保存校验后的安装包".into());
         }
-        state.downloaded = Some(final_path.clone());
+        state.downloaded = Some(Downloaded {
+            path: final_path.clone(),
+            size: candidate.info.size,
+            sha256: candidate.sha256.clone(),
+        });
         Ok(final_path.to_string_lossy().into_owned())
     })
     .await
@@ -374,7 +383,7 @@ pub fn open_update_folder(app: tauri::AppHandle) -> Result<(), String> {
     let folder = state
         .downloaded
         .as_ref()
-        .and_then(|p| p.parent())
+        .and_then(|p| p.path.parent())
         .map(Path::to_path_buf)
         .unwrap_or(
             app.path()
@@ -386,9 +395,106 @@ pub fn open_update_folder(app: tauri::AppHandle) -> Result<(), String> {
     crate::diag_export::open_dir(&folder)
 }
 
+fn ensure_install_idle(
+    armed: bool,
+    running: bool,
+    stopping: bool,
+    recovering: bool,
+) -> Result<(), String> {
+    if armed || running || stopping || recovering {
+        return Err("请先结束预约、取消定时任务或完成登录，再安装更新".into());
+    }
+    Ok(())
+}
+fn verify_downloaded(download: &Downloaded) -> Result<fs::File, String> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(1);
+    }
+    let mut file = options
+        .open(&download.path)
+        .map_err(|_| "安装包不可用，请重新下载")?;
+    if file.metadata().map_err(|_| "无法读取安装包")?.len() != download.size
+        || download.size > MAX_PACKAGE
+    {
+        return Err("安装包已改变，请重新下载".into());
+    }
+    let mut digest = Sha256::new();
+    let mut buffer = [0u8; 65536];
+    loop {
+        let size = file.read(&mut buffer).map_err(|_| "无法读取安装包")?;
+        if size == 0 {
+            break;
+        }
+        digest.update(&buffer[..size]);
+    }
+    if format!("{:x}", digest.finalize()) != download.sha256 {
+        return Err("安装包校验失败，请重新下载".into());
+    }
+    Ok(file)
+}
+#[tauri::command]
+pub async fn install_app_update(app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = app.state::<crate::AppState>();
+        let _gate = runtime.task_gate.lock().map_err(|_| "任务状态不可用")?;
+        ensure_install_idle(
+            crate::load_arm().armed,
+            crate::child_running(&runtime),
+            runtime.stopping.load(std::sync::atomic::Ordering::SeqCst),
+            crate::availability::recovering(),
+        )?;
+        let state = state()
+            .try_lock()
+            .map_err(|_| "正在检查或下载更新，请稍候")?;
+        let download = state.downloaded.as_ref().ok_or("请先下载更新")?;
+        // Hold a read-only sharing handle until process creation prevents replacement
+        // between revalidation and launch on Windows. Never accepts frontend paths.
+        let _file = verify_downloaded(download)?;
+        std::process::Command::new(&download.path)
+            .arg("/UPDATE")
+            .spawn()
+            .map_err(|_| "无法启动安装器，请重试")?;
+        app.exit(0);
+        Ok(())
+    })
+    .await
+    .map_err(|_| "安装启动中断")?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn install_requires_idle_and_unchanged_download() {
+        assert!(ensure_install_idle(false, false, false, false).is_ok());
+        for flags in [
+            (true, false, false, false),
+            (false, true, false, false),
+            (false, false, true, false),
+            (false, false, false, true),
+        ] {
+            assert!(ensure_install_idle(flags.0, flags.1, flags.2, flags.3).is_err());
+        }
+        let path = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::write(&path, b"verified").unwrap();
+        let download = Downloaded {
+            path: path.clone(),
+            size: 8,
+            sha256: format!("{:x}", Sha256::digest(b"verified")),
+        };
+        let locked = verify_downloaded(&download).unwrap();
+        #[cfg(windows)]
+        assert!(fs::write(&path, b"tampered").is_err());
+        drop(locked);
+        fs::write(&path, b"tampered").unwrap();
+        assert!(verify_downloaded(&download).is_err());
+        fs::remove_file(&path).unwrap();
+        assert!(verify_downloaded(&download).is_err());
+    }
     fn release() -> Value {
         let mut result = serde_json::json!({"draft":false,"prerelease":false,"tag_name":"v0.2.0","body":"notes","assets":[]});
         for name in ["XMU.Sports_0.2.0_x64-setup.exe", "SHA256SUMS.txt"] {
