@@ -92,7 +92,12 @@ mod tests {
         let mut worker=fixture("while($line=[Console]::ReadLine()) {$request=$line|ConvertFrom-Json; [Console]::WriteLine('@@XMU_HTTP@@'+(@{kind='result';rpc_id=$request.rpc_id;ok=$true}|ConvertTo-Json -Compress))}");
         for action in ["warm","ping"] {
             let id=worker.send(&mut json!({"action":action})).unwrap();
-            let result=worker.receive(Duration::from_secs(10)).unwrap();
+            // Windows PowerShell's first cold start on a hosted runner can take
+            // over ten seconds. Keep the subsequent RPC strict; this allowance
+            // affects only fixture startup, never production booking deadlines.
+            let timeout=if action=="warm" {30} else {5};
+            let result=worker.receive(Duration::from_secs(timeout))
+                .unwrap_or_else(|e|panic!("fixture {action} response failed within {timeout}s: {e}"));
             assert_eq!(result["rpc_id"],id);assert_eq!(result["ok"],true);assert!(worker.alive());
         }
         let handle=unsafe {OpenProcess(PROCESS_ACCESS_RIGHTS(0x00100000),false,worker.child.id()).unwrap()};
@@ -104,7 +109,7 @@ mod tests {
     fn lost_booking_pipe_stays_unknown_and_never_accepts_a_replay() {
         let mut worker=fixture("$null=[Console]::ReadLine(); exit 7");
         worker.send(&mut json!({"action":"book"})).unwrap();
-        assert!(matches!(worker.receive(Duration::from_secs(10)),Err(RecvTimeoutError::Disconnected)));
+        assert!(matches!(worker.receive(Duration::from_secs(30)),Err(RecvTimeoutError::Disconnected)));
         assert_eq!(worker.failure_code("HTTP_WORKER_ERROR"),"SUBMIT_UNKNOWN");
         assert_eq!(worker.send(&mut json!({"action":"book"})).unwrap_err(),"SUBMIT_UNKNOWN");
     }
