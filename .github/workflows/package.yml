@@ -70,7 +70,11 @@ jobs:
         shell: pwsh
         run: |
           $files = @(Get-ChildItem -LiteralPath src-tauri/target/release/bundle/nsis -Filter '*-setup.exe')
-          if ($files.Count -eq 0) { throw 'No installer produced' }
+          if ($files.Count -ne 1) { throw 'Expected exactly one installer' }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $canonical = "XMU.Sports_${version}_x64-setup.exe"
+          if ($files[0].Name -ne $canonical) { Rename-Item -LiteralPath $files[0].FullName -NewName $canonical }
+          $files = @(Get-ChildItem -LiteralPath src-tauri/target/release/bundle/nsis -Filter '*-setup.exe')
           $lines = $files | ForEach-Object { "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
           $lines | Set-Content src-tauri/target/release/bundle/nsis/SHA256SUMS.txt -Encoding utf8
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
@@ -94,3 +98,9 @@ jobs:
           $files = @(Get-ChildItem -LiteralPath src-tauri/target/release/bundle/nsis -File | Where-Object { $_.Name -like '*-setup.exe' -or $_.Name -eq 'SHA256SUMS.txt' } | ForEach-Object { $_.FullName })
           gh release create "$env:RELEASE_TAG" @files --repo "$env:GITHUB_REPOSITORY" --target "$env:GITHUB_SHA" --draft --title "XMU Sports $env:RELEASE_TAG" --notes-file artifacts/release-notes.txt
           if ($LASTEXITCODE -ne 0) { throw 'Draft release creation failed' }
+          $release = gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --json assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify uploaded release assets' }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $expected = @("XMU.Sports_${version}_x64-setup.exe", 'SHA256SUMS.txt')
+          $actual = @($release.assets | ForEach-Object { $_.name })
+          if ($actual.Count -ne 2 -or @(Compare-Object $expected $actual).Count -ne 0) { throw 'Uploaded asset names violate the app update contract' }

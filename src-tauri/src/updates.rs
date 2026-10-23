@@ -175,7 +175,7 @@ fn parse_release(
         return Ok((info, None));
     }
     // The package workflow builds exactly this Windows x64 NSIS asset.
-    let name = format!("XMU Sports_{}_x64-setup.exe", info.version);
+    let name = format!("XMU.Sports_{}_x64-setup.exe", info.version);
     let package = asset(release, &name, tag, MAX_PACKAGE)?;
     asset(release, "SHA256SUMS.txt", tag, 65536)?;
     let info = ReleaseInfo {
@@ -391,7 +391,7 @@ mod tests {
     use super::*;
     fn release() -> Value {
         let mut result = serde_json::json!({"draft":false,"prerelease":false,"tag_name":"v0.2.0","body":"notes","assets":[]});
-        for name in ["XMU Sports_0.2.0_x64-setup.exe", "SHA256SUMS.txt"] {
+        for name in ["XMU.Sports_0.2.0_x64-setup.exe", "SHA256SUMS.txt"] {
             result["assets"].as_array_mut().unwrap().push(serde_json::json!({"name":name,"size":3,"state":"uploaded","browser_download_url":format!("{REPO}/releases/download/v0.2.0/{}",name.replace(' ',"%20"))}));
         }
         result
