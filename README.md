@@ -1,10 +1,12 @@
-# XMU Sports
+# XMU Sports｜厦大体育场馆预约助手
 
 ![XMU Sports](.github/assets/hero.svg)
 
 [![Checks](https://github.com/MidiAug/xmu-sports/actions/workflows/checks.yml/badge.svg)](https://github.com/MidiAug/xmu-sports/actions/workflows/checks.yml)
 
 厦大体育场馆预约辅助桌面应用，面向 Windows 10/11。使用 Tauri 2、TypeScript、Rust 和 Python HTTP 执行器。非学校官方应用，仅用于本人或已授权账号，请遵守学校的预约规则。
+
+A Windows desktop companion for Xiamen University (XMU) sports venue booking, with scheduled reservations, court availability and local history. An independent, unofficial project.
 
 ## 功能
 

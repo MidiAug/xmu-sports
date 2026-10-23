@@ -73,7 +73,11 @@ jobs:
           if ($files.Count -eq 0) { throw 'No installer produced' }
           $lines = $files | ForEach-Object { "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
           $lines | Set-Content src-tauri/target/release/bundle/nsis/SHA256SUMS.txt -Encoding utf8
-          "Source commit: $env:GITHUB_SHA`nUnsigned Windows installer. Review before publishing." | Set-Content artifacts/release-notes.txt -Encoding utf8
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $pattern = '(?ms)^## ' + [regex]::Escape($version) + '(?:[^\r\n]*)\r?\n(.*?)(?=^## |\z)'
+          $section = [regex]::Match((Get-Content CHANGELOG.md -Raw -Encoding utf8), $pattern).Groups[1].Value.Trim()
+          if (-not $section) { throw 'Missing release notes for current version' }
+          @("厦大体育场馆预约助手，适用于 Windows 10/11 x64。", '', $section, '', '## 下载与安装', '', '下载下方 x64-setup.exe 安装包；安装前请结束预约并退出旧版应用。SHA256SUMS.txt 用于校验下载文件。', '', '安装包未进行 Windows 代码签名。独立开源项目，与学校无官方关联。', '', "Source commit: $env:GITHUB_SHA") | Set-Content artifacts/release-notes.txt -Encoding utf8
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-nsis-${{ github.sha }}
