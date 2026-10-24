@@ -11,6 +11,8 @@ const done = { ...base, action: "done", result: "http_verified", ts: "2026-10-13
 assert.equal(currentRunEvents([{...spawn, run_id:"old"}, spawn, submit, done], done).length, 3);
 assert.equal(elapsedLabel([spawn, submit, done], false), "7.2 秒");
 assert.equal(progressStep(submit), "submit");
+assert.equal(progressStep({...submit, result:"waiting_slot_retry"}), "query");
+assert.match(progressMessage({...submit, result:"waiting_slot_retry"}), /参数错误.*2 秒.*重试一次/);
 assert.match(progressMessage(done), /已查到匹配订单/);
 assert.match(progressMessage({...done, result:"http_already_reserved"}), /未重复提交/);
 assert.match(progressMessage({...submit, result:"slot_ready", http:{court:"02"}}), /02 号场地/);

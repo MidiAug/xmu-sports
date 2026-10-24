@@ -238,7 +238,7 @@ def test_prepare_stops_at_server_precheck_and_never_creates_order():
     def require(path, *_):
         calls.append(path)
         raise BookingError("API_REJECTED", "不可预约")
-    client.intervals = lambda _: interval_data()
+    client.intervals = lambda _, **kwargs: interval_data()
     client.require = require
     with pytest.raises(BookingError):
         client.prepare(target(), plan()["venue"])

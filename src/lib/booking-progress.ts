@@ -54,6 +54,7 @@ const PHASES: Record<string, [string, string]> = {
   checking_orders: ["query", "检查已有预约，避免重复下单"],
   resolving_venue: ["query", "匹配运动与场馆"],
   querying_slots: ["query", "查询目标日期的实时场次"],
+  waiting_slot_retry: ["query", "场次查询返回参数错误，等待 2 秒后重试一次"],
   selecting_candidate: ["query", "选择候选时段"],
   discovering_fallbacks: ["query", "首选场次不可约，查询备选时段"],
   candidate_rejected: ["verify", "候选场次未通过预约检查"],

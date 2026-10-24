@@ -287,7 +287,7 @@ def run_target(target: Target, profile=None, *, commit=False, captcha_check=Fals
                     if eligibility:
                         eligibility(target)
                     emit("querying_slots")
-                    data = client.intervals(venue)
+                    data = client.intervals(venue, cancelled=cancelled, progress=emit)
                     try:
                         plan = client.prepare(target, venue=venue, progress=emit, slot_data=data)
                         break
@@ -315,7 +315,7 @@ def run_target(target: Target, profile=None, *, commit=False, captcha_check=Fals
             emit("querying_slots")
             if eligibility:
                 eligibility(target)
-            data = client.intervals(venue)
+            data = client.intervals(venue, cancelled=cancelled, progress=emit)
             try:
                 emit("checking_slot")
                 pick_slot(data, target)
@@ -325,7 +325,7 @@ def run_target(target: Target, profile=None, *, commit=False, captcha_check=Fals
                     raise
                 emit("waiting_open")
                 time.sleep(1)
-        plan = client.prepare(target, venue=venue, progress=emit)
+        plan = client.prepare(target, venue=venue, progress=emit, cancelled=cancelled)
         emit("slot_ready", court=plan["selected"].get("area_name"), message="场次与预约资格校验通过")
         if eligibility:
             eligibility(target)

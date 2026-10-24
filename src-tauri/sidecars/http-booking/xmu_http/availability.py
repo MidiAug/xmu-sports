@@ -45,7 +45,7 @@ def snapshot(data, date, fetched_at):
             "notice":str(data.get("is_can_choose_tips") or "")}
 
 
-def query(root, sport, venue, date, force=False, now=None):
+def query(root, sport, venue, date, force=False, now=None, *, cancelled=None):
     now=now or datetime.now(CHINA)
     today=now.astimezone(CHINA).date()
     valid={today.isoformat(),(today+timedelta(days=1)).isoformat()}
@@ -88,7 +88,7 @@ def query(root, sport, venue, date, force=False, now=None):
         if not auth.get("account_checked"):
             raise BookingError("HTTP_AUTH_UNVERIFIED", "场次查询尚未完成账号核验，请先检查登录")
         resolved=client.resolve_venue(Target(sport,venue,date,"07:00"))
-        data=client.intervals(resolved)
+        data=client.intervals(resolved,cancelled=cancelled)
         published={str(block.get("date")) for block in data.get("time_slot_list",[])}
         published.update(str(day.get("date_int")) for day in data.get("date_list",[]))
         fetched_at=now.astimezone(CHINA).isoformat()

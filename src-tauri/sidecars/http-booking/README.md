@@ -12,6 +12,8 @@ worker 的 check 动作只运行 checkLogin 和 mySubscribe；check_existing 额
 
 实际 HTTP 预约保留验证码、实时选场、提交前校验、原账号约束和结果查单；网络结果未知时保留去重记录，不盲目重提。去重记录位于 %LOCALAPPDATA%/xmu-sports/http-booking/requests/，不保存 Cookie、token 或验证码。登录与只读诊断不经过提交路径。
 
+未发布修复：仅 getInterval 明确返回整数 status=0 且 info 为“参数错误”时，原 HTTP 会话等待 2 秒后使用相同参数重试一次。每个 Client 会话只有一次恢复额度，等待中可停止；第二次失败保留原错误。两次请求各自保留脱敏诊断，运行与历史显示等待阶段。该规则不应用于登录、预检、配置、验证码或 addOrder，不重跑预约；提交结果未知仍只读查单，不重复提交。该容错不代表已确定学校服务端拒绝的根因。
+
 构建：在仓库根目录运行 npm run tauri:build。终端用户无需安装 Python。依赖安装与冻结由 scripts/ensure_http_bundle.ps1 管理；替换资源目录以避免旧 DLL 残留。旧 runtime_entry/runtime_probe/runtime_wire 与 auth-hook 资料仅作历史研究，不包含在冻结 worker 中。
 
 开发测试：

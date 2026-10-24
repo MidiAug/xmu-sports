@@ -25,7 +25,7 @@ def runtime(monkeypatch):
         def __init__(self,ticket): self.http=SimpleNamespace(close=lambda:calls.append("close"))
         def login(self): calls.append("login"); return {"account_checked":True}
         def resolve_venue(self,target): calls.append("venue"); return "venue"
-        def intervals(self,venue): calls.append("intervals"); return payload()
+        def intervals(self,venue,**kwargs): calls.append("intervals"); return payload()
     monkeypatch.setattr(av,"AvailabilityClient",Fake)
     return calls,identity
 
@@ -96,10 +96,12 @@ def test_desktop_availability_cannot_consume_a_booking_worker(monkeypatch,tmp_pa
     import desktop
     import threading
     monkeypatch.setattr(desktop,"data_root",lambda:tmp_path)
-    def query(root,sport,venue,date,force):
+    stop=threading.Event()
+    def query(root,sport,venue,date,force,*,cancelled):
         assert root==tmp_path and sport=="运动" and venue=="场馆" and date=="2026-10-24" and force is True
+        assert cancelled is stop
         return {"ok":True,"state":"availability_ready"}
     monkeypatch.setattr(av,"query",query)
     runtime=SimpleNamespace(consume=lambda _:pytest.fail("availability consumed a booking worker"))
-    result=desktop.execute({"action":"availability","sport":"运动","venue":"场馆","date":"2026-10-24","force":True},threading.Event(),runtime)
+    result=desktop.execute({"action":"availability","sport":"运动","venue":"场馆","date":"2026-10-24","force":True},stop,runtime)
     assert result["ok"]

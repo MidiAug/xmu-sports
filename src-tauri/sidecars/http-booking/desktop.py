@@ -93,7 +93,8 @@ def execute(payload, cancelled, runtime=None):
     warm_solver = runtime.consume(payload) if runtime is not None and action == "book" else None
     if action == "availability":
         from xmu_http.availability import query
-        return query(data_root(),payload.get("sport"),payload.get("venue"),payload.get("date"),payload.get("force") is True)
+        return query(data_root(),payload.get("sport"),payload.get("venue"),payload.get("date"),payload.get("force") is True,
+                     cancelled=cancelled)
     if action in {"warm","ping"}:
         if runtime is None:
             raise BookingError("PERSISTENT_WORKER_REQUIRED", "预热需要受宿主管理的持续进程")
@@ -168,7 +169,8 @@ def execute(payload, cancelled, runtime=None):
                 emit("progress", phase="discovering_fallbacks")
                 fallback_client.login()
                 venue = fallback_client.resolve_venue(target)
-                data = fallback_client.intervals(venue)
+                data = fallback_client.intervals(venue, cancelled=cancelled,
+                                                 progress=lambda phase: emit("progress", phase=phase))
                 return ordered_fallbacks(data, target, task.get("time_fallback_order"))
             finally:
                 fallback_client.http.close()

@@ -18,13 +18,14 @@ def runtime(monkeypatch, tmp_path, data=None, precheck=None, config=None):
     class RuntimeClient(Client):
         def __init__(self, entry):
             self.ticket = entry
+            self._interval_retry_used = False
             self.http = SimpleNamespace(close=lambda: calls.append("close"))
         def login(self):
             calls.append("login")
             return {"authenticated": True}
         def resolve_venue(self, _):
             return plan()["venue"]
-        def intervals(self, _):
+        def intervals(self, _, **kwargs):
             calls.append("intervals")
             return data or interval_data()
         def require(self, path, *args):

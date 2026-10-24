@@ -24,6 +24,7 @@ API = ORIGIN + "/bdlp_h5_fitness_test/public/index.php"
 PAGES = ORIGIN + "/bdlp_h5_fitness_test/view/stadium/"
 ADD_ORDER_PATH = "/index/Stadium/addOrder"
 RECONCILE_DELAYS = (1, 2, 4, 8, 15)
+INTERVAL_RETRY_SECONDS = 2
 ORDER_LOOKUP_SECONDS = 8.0
 MAX_ORDER_PAGES = 3
 # 2/4 are redeemed/unredeemed historical bookings, both evidence that a matching
@@ -273,6 +274,7 @@ class Client:
     def __init__(self, ticket: EntryTicket, http=None):
         self.ticket = ticket
         self.http = http or requests.Session()
+        self._interval_retry_used = False
         self.http.headers.update({
             "User-Agent": USER_AGENT, "Origin": ORIGIN, "Referer": PAGES + "home.html",
             "Accept": "*/*", "X-Requested-With": "XMLHttpRequest",
@@ -367,20 +369,44 @@ class Client:
         return Venue(stadium_id, venue_ids.pop(), str(sport["category_id"]), str(detail["name"]),
                      str(sport["name"]), json.dumps(area_ids, separators=(",", ":")))
 
-    def intervals(self, venue: Venue) -> dict:
-        data = self.require("/stadium/interval/getInterval", venue.fields(), venue.choose_url())
+    def intervals(self, venue: Venue, *, cancelled=None, progress=None) -> dict:
+        def read():
+            if cancelled and cancelled.is_set():
+                raise BookingError("CANCELLED", "任务已取消，未继续查询场次")
+            return self.require("/stadium/interval/getInterval", venue.fields(), venue.choose_url())
+
+        try:
+            data = read()
+        except BookingError as exc:
+            # A narrow read-only recovery, never a retry of require/post/submit.
+            # Keep the budget across open-date and captcha loops in this session.
+            if (self._interval_retry_used or exc.code != "API_REJECTED"
+                    or type(exc.server_status) is not int or exc.server_status != 0
+                    or str(exc).strip() != "参数错误"):
+                raise
+            self._interval_retry_used = True
+            if progress:
+                progress("waiting_slot_retry")
+            if cancelled:
+                if cancelled.wait(INTERVAL_RETRY_SECONDS):
+                    raise BookingError("CANCELLED", "任务已取消，未重试场次查询") from exc
+            else:
+                time.sleep(INTERVAL_RETRY_SECONDS)
+            if progress:
+                progress("querying_slots")
+            data = read()
         if not isinstance(data, dict) or not isinstance(data.get("time_slot_list"), list):
             raise BookingError("SLOT_SCHEMA_CHANGED", "场次接口没有返回有效列表")
         return data
 
-    def prepare(self, target: Target, venue: Venue | None = None, progress=None, slot_data=None) -> dict:
+    def prepare(self, target: Target, venue: Venue | None = None, progress=None, slot_data=None, *, cancelled=None) -> dict:
         emit = progress or (lambda _: None)
         if venue is None:
             emit("resolving_venue")
             venue = self.resolve_venue(target)
         if slot_data is None:
             emit("querying_slots")
-            slot_data = self.intervals(venue)
+            slot_data = self.intervals(venue, cancelled=cancelled, progress=progress)
         emit("checking_slot")
         selected = pick_slot(slot_data, target)
         emit("server_precheck")

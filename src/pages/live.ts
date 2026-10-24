@@ -91,6 +91,7 @@ const HTTP_PHASE_STEP: Record<string, string> = {
   local_eligibility: "auth",
   warming: "query", reading_entry: "auth", authenticating: "auth", checking_orders: "query",
   resolving_venue: "query", querying_slots: "query", selecting_candidate: "query", waiting_open: "query",
+  waiting_slot_retry: "query",
   checking_slot: "verify", server_precheck: "verify", checking_config: "verify",
   captcha: "captcha", captcha_recognized: "captcha", captcha_retry: "captcha",
   slot_ready: "verify", discovering_fallbacks: "query", candidate_rejected: "verify",
