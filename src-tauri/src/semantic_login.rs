@@ -7,7 +7,7 @@ use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPRO
 use windows::Win32::UI::Accessibility::*;
 use windows::Win32::Foundation::{POINT,WPARAM,LPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
-use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, ChildWindowFromPointEx, GetWindowThreadProcessId, WindowFromPoint, SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, CWP_SKIPINVISIBLE, CWP_SKIPDISABLED, PostMessageW, WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP, GA_ROOT};
+use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, ChildWindowFromPointEx, GetWindowThreadProcessId, WindowFromPoint, GetForegroundWindow, CWP_SKIPINVISIBLE, CWP_SKIPDISABLED, PostMessageW, WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP, GA_ROOT};
 use windows::Win32::UI::HiDpi::{SetThreadDpiAwarenessContext,DPI_AWARENESS_CONTEXT,DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 
 const APP_ORIGIN: &str = "https://servicewechat.com/wx81a2b2fa90759cb7/";
@@ -202,6 +202,7 @@ impl Session {
     /// None means no input was attempted and another adapter may be used.
     pub(crate) fn activate(&self, control: Control) -> Result<Option<&'static str>,String> {
         let _dpi=DpiGuard::enter();
+        crate::wechat_window::foreground_surface(&self.surface)?;
         let scan=self.scan()?;
         if scan.report.decision!=Decision::Activate(control) { return Ok(None); }
         let matching=scan.candidates.iter().filter(|c|c.control==control && c.evidence.enabled).collect::<Vec<_>>();
@@ -209,6 +210,7 @@ impl Session {
         let candidate=matching[0];
         self.validate_window()?;
         unsafe {
+            if GetForegroundWindow()!=self.surface.hwnd() { return Ok(None); }
             let element=&candidate.element;
             if !Self::visible(element) || !element.CurrentIsEnabled().map(|v|v.as_bool()).unwrap_or(false) { return Ok(None); }
             if control==Control::Agreement {
@@ -235,8 +237,7 @@ impl Session {
             let point=POINT{x:rect.left+(rect.right-rect.left)/2,y:rect.top+(rect.bottom-rect.top)/2};
             if control==Control::Agreement && Self::selected(element)!=Some(false) { return Ok(None); }
             self.validate_window()?;
-            // Descend within the verified mini-program only. Desktop hit tests
-            // would select the unrelated window covering this element.
+            // Descend within the verified mini-program only.
             let mut receiver=self.surface.hwnd();
             for _ in 0..16 {
                 let mut local=point;
@@ -257,14 +258,15 @@ impl Session {
             let mut client=point;
             if !ScreenToClient(receiver,&mut client).as_bool() || !(0..=32767).contains(&client.x) || !(0..=32767).contains(&client.y) {return Ok(None);}
             let position=LPARAM(((client.y as u32)<<16 | client.x as u32) as isize);
-            SetWindowPos(self.surface.hwnd(),Some(HWND_BOTTOM),0,0,0,0,SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE).map_err(|_|"MINIPROGRAM_BACKGROUND_FAILED")?;
-            let covered=GetAncestor(WindowFromPoint(point),GA_ROOT)!=self.surface.hwnd();
+            if GetForegroundWindow()!=self.surface.hwnd() || GetAncestor(WindowFromPoint(point),GA_ROOT)!=self.surface.hwnd() {
+                return Ok(None);
+            }
             // Target only the current verified window. Never move the user's
             // pointer or inject desktop mouse input, even if navigation fails.
             PostMessageW(Some(receiver),WM_MOUSEMOVE,WPARAM(0),position).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN")?;
             PostMessageW(Some(receiver),WM_LBUTTONDOWN,WPARAM(1),position).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN")?;
             PostMessageW(Some(receiver),WM_LBUTTONUP,WPARAM(0),position).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN")?;
-            return Ok(Some(if covered {"uia_covered_window_message"} else {"uia_window_message"}));
+            return Ok(Some("uia_window_message"));
         }
     }
 }

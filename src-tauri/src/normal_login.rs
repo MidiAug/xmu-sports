@@ -132,7 +132,7 @@ fn reopen_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
         }
     }
     if !active() {return Err("已取消".into());}
-    crate::wechat_window::launch_xmu_miniprogram_quiet().map_err(|_|"MINIPROGRAM_LAUNCH_FAILED")?;
+    crate::wechat_window::launch_xmu_miniprogram(None).map_err(|_|"MINIPROGRAM_LAUNCH_FAILED")?;
     let started=Instant::now();
     loop {
         if !active() {return Err("已取消".into());}
@@ -149,7 +149,6 @@ fn recover_once(
     mut element_evidence:impl FnMut(Value),
 )->Result<Value,String> {
     let started=Instant::now();
-    let previous_foreground=unsafe{windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow()};
     let pause=|ms:u64|->Result<(),String> {
         for _ in 0..ms.div_ceil(100) {
             if !active() {return Err("已取消".into());}
@@ -159,14 +158,14 @@ fn recover_once(
     };
     if !active() {return Err("已取消".into());}
     progress("normal_ui_opening");
-    let visible=||crate::wechat_window::discover_wechat_candidates().unwrap_or_default().iter().any(|s|s.visible);
-    if !visible() {
-        crate::wechat_window::launch_xmu_miniprogram_quiet()?;
-        while !visible() && started.elapsed()<Duration::from_secs(15) {pause(300)?;}
+    let present=||crate::wechat_window::discover_wechat_candidates().map(|s|!s.is_empty()).unwrap_or(false);
+    if !present() {
+        crate::wechat_window::launch_xmu_miniprogram(None)?;
+        while !present() && started.elapsed()<Duration::from_secs(15) {pause(300)?;}
     }
-    if !visible() {return Ok(manual("MINIPROGRAM_NOT_VISIBLE"));}
-    if let Err(code)=crate::wechat_window::background_miniprogram_window(previous_foreground) {return Ok(manual(&code));}
-    progress("normal_ui_background");
+    if !present() {return Ok(manual("MINIPROGRAM_NOT_VISIBLE"));}
+    if let Err(code)=crate::wechat_window::foreground_miniprogram_window() {return Ok(manual(&code));}
+    progress("normal_ui_foreground");
     let semantic=match crate::semantic_login::Session::open() {
         Ok(session)=>session,Err(code)=>return Ok(manual(&code)),
     };
@@ -178,7 +177,7 @@ fn recover_once(
             Ok(report)=>report,Err(code)=>return Ok(manual(&code)),
         };
         if report.has_controls() || report.decision==crate::semantic_login::Decision::Handoff {empty_since=None;}
-        else if empty_since.get_or_insert_with(Instant::now).elapsed()>Duration::from_secs(12) {return Ok(manual("BACKGROUND_LOGIN_UNAVAILABLE"));}
+        else if empty_since.get_or_insert_with(Instant::now).elapsed()>Duration::from_secs(12) {return Ok(manual("UIA_LOGIN_UNAVAILABLE"));}
         element_evidence(json!(report));
         use crate::semantic_login::{Decision,Control};
         match report.decision {

@@ -31,7 +31,7 @@ A Windows desktop companion for Xiamen University (XMU) sports venue booking, wi
 
 需要 PC 微信和 WebView2。安装包包含 HTTP 执行器及必要验证码分类模型，使用者无需安装 Python。可从 [Releases](https://github.com/MidiAug/xmu-sports/releases) 获取已发布版本；若尚无版本，请使用开发模式。
 
-首次使用需要在微信小程序完成登录。程序尝试使用 Windows UI Automation 恢复登录且不移动鼠标；微信没有提供可操作元素时会提示手动完成。最小化或完全遮挡的小程序可能无法自动操作，不能保证后台登录成功。登录完成后会尝试关闭本次打开的小程序窗口。
+首次使用需要在微信小程序完成登录。程序显示并前置小程序，使用 Windows UI Automation 恢复登录，每次操作前重新确认窗口身份和前台焦点，不移动鼠标；微信没有提供可操作元素时会提示手动完成。已有小程序最小化时先还原，登录与 HTTP 原账号核验完成后自动尝试关闭小程序窗口；关闭后再次核验会话。
 
 学校数据与登录方式可能变化；人数是查询时快照，不能保证最终预约成功。任务只在应用运行时执行，请保持电脑唤醒及网络连接。
 

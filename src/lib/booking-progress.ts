@@ -15,6 +15,7 @@ const PHASES: Record<string, [string, string]> = {
   uia_covered_window_message: ["auth", "在被遮挡窗口内操作页面，未移动光标"],
   uia_window_message: ["auth", "通过窗口消息操作页面，未移动光标"],
   normal_ui_background: ["auth", "在后台窗口恢复登录，不移动光标"],
+  normal_ui_foreground: ["auth", "已将厦大体育置于前台，操作前确认窗口焦点，登录后自动关闭"],
   normal_ui_closed: ["auth", "小程序已关闭，登录凭证核验通过"],
   normal_ui_close_pending: ["auth", "登录已完成，小程序窗口尚未关闭"],
   uia_element_mouse: ["auth", "已点击识别到的页面元素"],

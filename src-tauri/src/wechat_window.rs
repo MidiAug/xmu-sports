@@ -55,6 +55,16 @@ pub fn foreground_miniprogram_window()->Result<String,String> {
     let surfaces=discover_wechat_candidates()?;
     if surfaces.len()!=1 {return Err("UIA_TARGET_AMBIGUOUS_OR_MISSING".into());}
     let target=&surfaces[0];
+    foreground_surface(target)?;
+    Ok(target.title.clone())
+}
+
+/// Rebind identity before focusing; a UIA session must never focus a replacement window.
+pub(crate) fn foreground_surface(target:&NativeSurface)->Result<(),String> {
+    let surfaces=discover_wechat_candidates()?;
+    if surfaces.len()!=1 || surfaces[0].hwnd_u64!=target.hwnd_u64 || surfaces[0].owner!=target.owner {
+        return Err("UIA_WINDOW_CHANGED".into());
+    }
     unsafe {
         if IsIconic(target.hwnd()).as_bool() {let _=ShowWindow(target.hwnd(),SW_RESTORE);}
         let _=BringWindowToTop(target.hwnd());
@@ -65,14 +75,12 @@ pub fn foreground_miniprogram_window()->Result<String,String> {
         }
         if GetForegroundWindow()!=target.hwnd() {return Err("LOGIN_FOCUS_REQUIRED".into());}
     }
-    Ok(target.title.clone())
+    Ok(())
 }
 
 pub fn launch_xmu_miniprogram(_app_id:Option<&str>)->Result<String,String> {
     launch_with_show(SW_SHOWNORMAL)
 }
-
-pub fn launch_xmu_miniprogram_quiet()->Result<String,String> {launch_with_show(SW_SHOWNOACTIVATE)}
 
 fn launch_with_show(show:SHOW_WINDOW_CMD)->Result<String,String> {
     let url="weixin://launchapplet/?app_id=wx81a2b2fa90759cb7";
@@ -92,19 +100,6 @@ pub fn background_status()->serde_json::Value {
         serde_json::json!({"target_count":1,"minimized":IsIconic(target).as_bool(),
             "foreground":GetForegroundWindow()==target,"covered_at_center":GetAncestor(WindowFromPoint(point),GA_ROOT)!=target})
     }
-}
-
-/// Keep a normal, non-minimized window behind the user's other windows.
-pub fn background_miniprogram_window(previous:HWND)->Result<(),String> {
-    let targets=discover_wechat_candidates()?;
-    if targets.len()!=1 {return Err("UIA_TARGET_AMBIGUOUS_OR_MISSING".into());}
-    let target=targets[0].hwnd();
-    unsafe {
-        SetWindowPos(target,Some(HWND_BOTTOM),0,0,0,0,SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE).map_err(|_|"MINIPROGRAM_BACKGROUND_FAILED")?;
-        if GetForegroundWindow()==target && previous!=target && IsWindow(Some(previous)).as_bool() {let _=SetForegroundWindow(previous);}
-        if GetForegroundWindow()==target {return Err("MINIPROGRAM_FOCUS_RETAINED".into());}
-    }
-    Ok(())
 }
 
 pub fn device_diagnostics()->serde_json::Value {
