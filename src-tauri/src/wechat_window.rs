@@ -35,12 +35,19 @@ unsafe extern "system" fn collect(hwnd:HWND, data:LPARAM)->BOOL {
     let _=CloseHandle(handle);
     if !Path::new(&app_identity).file_name().is_some_and(|v|v.to_string_lossy().eq_ignore_ascii_case("WeChatAppEx.exe")) || timing.is_err() {return TRUE;}
     let mut rect=RECT::default();
-    if GetWindowRect(hwnd,&mut rect).is_err() {return TRUE;}
+    let minimized=IsIconic(hwnd).as_bool();
+    if minimized {
+        // A minimized window's current rectangle is only a tiny taskbar-sized
+        // box. Use its restored bounds so discovery can restore this HWND.
+        let mut placement=WINDOWPLACEMENT{length:std::mem::size_of::<WINDOWPLACEMENT>() as u32,..Default::default()};
+        if GetWindowPlacement(hwnd,&mut placement).is_err() {return TRUE;}
+        rect=placement.rcNormalPosition;
+    } else if GetWindowRect(hwnd,&mut rect).is_err() {return TRUE;}
     let area=(rect.right-rect.left) as i64*(rect.bottom-rect.top) as i64;
     if area<6400 {return TRUE;}
     out.push(NativeSurface{hwnd_u64:hwnd.0 as usize as u64,title,
         owner:OwnerIdentity{pid,app_identity,launch_identity:format!("{}:{}",creation.dwHighDateTime,creation.dwLowDateTime)},
-        visible:!IsIconic(hwnd).as_bool(),area});
+        visible:!minimized,area});
     TRUE
 }
 
