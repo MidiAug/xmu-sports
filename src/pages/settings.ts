@@ -45,22 +45,18 @@ const CLOSE_MODE_OPTIONS: { value: CloseMode; label: string }[] = [
 
 function favoriteGridHtml(favoriteIds: Set<string>): string {
   const cells = sports
+    .filter(isSportEnabled)
     .map((s) => {
-      const ok = isSportEnabled(s);
-      const on = ok && favoriteIds.has(s.id);
+      const on = favoriteIds.has(s.id);
       const cls = [
         "settings-sport-cell",
         on ? "on" : "",
-        ok ? "" : "disabled",
       ]
         .filter(Boolean)
         .join(" ");
-      return `<button type="button" class="${cls}" data-fav-sport="${s.id}" ${
-        ok ? "" : "disabled aria-disabled=\"true\""
-      } aria-pressed="${on}">
+      return `<button type="button" class="${cls}" data-fav-sport="${s.id}" aria-pressed="${on}">
         <span class="settings-sport-cell-label">${s.label}</span>
-        ${ok ? `<span class="settings-sport-check" aria-hidden="true">${SVG.check}</span>` : ""}
-        ${ok ? "" : '<span class="settings-sport-cell-hint">暂未支持</span>'}
+        <span class="settings-sport-check" aria-hidden="true">${SVG.check}</span>
       </button>`;
     })
     .join("");
@@ -94,13 +90,7 @@ export async function renderSettings(panel: Element) {
   if (!scope.current()) return;
   panel.innerHTML = `
     <div class="page-stack settings-page">
-      <div class="page-heading"><div><h2>设置</h2><p>常用运动、外观与应用偏好</p></div></div>
-      <section class="preference-card">
-        <div class="preference-card-heading"><h3>常用运动</h3><p>选择要在预约页显示的运动，至少保留一项</p></div>
-        <div id="favorite_sports_body">
-          ${favoriteGridHtml(favoriteIds)}
-        </div>
-      </section>
+      <div class="page-heading"><div><h2>设置</h2><p>外观、常用运动与应用偏好</p></div></div>
       <section class="preference-card">
         <div class="preference-card-heading"><h3>外观与窗口</h3><p>按照你的使用习惯调整</p></div>
         <div id="settings_theme_host">${themeCubesHtml()}</div>
@@ -111,6 +101,15 @@ export async function renderSettings(panel: Element) {
             </div>
             <div id="close_mode_host"></div>
           </div>
+      </section>
+      <section class="preference-card settings-favorites" aria-labelledby="favorite_sports_title">
+        <div class="settings-favorites-header"><div><h3 id="favorite_sports_title">常用运动</h3><p id="favorite_sports_summary"></p></div><button type="button" class="favorite-edit" aria-expanded="false" aria-controls="favorite_sports_body">编辑<span aria-hidden="true">›</span></button></div>
+        <div id="favorite_sports_body" hidden>
+          <p class="favorite-hint">选择在预约页显示的运动，至少保留一项，修改自动保存</p>
+          ${favoriteGridHtml(favoriteIds)}
+          <p class="favorite-unavailable">${sports.filter(s => !isSportEnabled(s)).map(s => s.label).join("、")}暂未支持</p>
+          <p class="msg" id="favorite_sports_message" role="status" aria-live="polite"></p>
+        </div>
       </section>
       <details class="preference-card settings-diagnostics">
         <summary><div><strong>诊断与日志</strong><span>遇到问题时，导出日志以便排查</span></div><span class="settings-disclosure" aria-hidden="true">⌄</span></summary>
@@ -135,6 +134,16 @@ export async function renderSettings(panel: Element) {
       <p class="msg" id="settings_msg"></p>
     </div>
   `;
+  const summary = panel.querySelector<HTMLElement>("#favorite_sports_summary")!;
+  const paintSummary = () => { summary.textContent = sports.filter(s => favoriteIds.has(s.id)).map(s => s.label).join("、"); };
+  paintSummary();
+  const edit = panel.querySelector<HTMLButtonElement>(".favorite-edit")!;
+  const favoritesBody = panel.querySelector<HTMLElement>("#favorite_sports_body")!;
+  edit.onclick = () => {
+    favoritesBody.hidden = !favoritesBody.hidden;
+    edit.setAttribute("aria-expanded", String(!favoritesBody.hidden));
+    edit.innerHTML = favoritesBody.hidden ? '编辑<span aria-hidden="true">›</span>' : '完成<span aria-hidden="true">⌃</span>';
+  };
   panel.querySelector<HTMLButtonElement>(".settings-about-entry")!.onclick = () => {
     void renderAbout(panel, () => { void renderSettings(panel); });
   };
@@ -187,29 +196,31 @@ export async function renderSettings(panel: Element) {
     }
   });
 
-  async function persistPrefs(next: Partial<ShellPrefs>) {
+  async function persistPrefs(next: Partial<ShellPrefs>, feedback: Element | null = msg) {
     try {
       prefs = await updatePrefs(next);
       log.debug("settings", "save_prefs", {
         close_mode: closeModeFromPrefs(prefs),
         favorites: next.favorite_sport_ids?.length ?? 0,
       });
-      setMsg(msg, "", "");
+      setMsg(feedback, "", "");
     } catch (e) {
       log.warn("settings", "save_prefs_failed", { err: String(e) });
-      setMsg(msg, String(e), "err");
+      setMsg(feedback, String(e), "err");
       throw e;
     }
   }
 
-  panel.querySelectorAll<HTMLButtonElement>("[data-fav-sport]").forEach((btn) => {
+  const favoriteMessage = panel.querySelector("#favorite_sports_message");
+  const favoriteButtons = panel.querySelectorAll<HTMLButtonElement>("[data-fav-sport]");
+  favoriteButtons.forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.favSport!;
       const sport = sports.find((s) => s.id === id);
       if (!sport || !isSportEnabled(sport) || btn.disabled) return;
       const turningOff = favoriteIds.has(id);
       if (turningOff && favoriteIds.size <= 1) {
-        setMsg(msg, "至少保留一项常用运动", "err");
+        setMsg(favoriteMessage, "至少保留一项常用运动", "err");
         return;
       }
       if (turningOff) favoriteIds.delete(id);
@@ -218,15 +229,22 @@ export async function renderSettings(panel: Element) {
       favoriteIds = new Set(ordered);
       btn.classList.toggle("on", favoriteIds.has(id));
       btn.setAttribute("aria-pressed", String(favoriteIds.has(id)));
+      paintSummary();
+      favoriteButtons.forEach(button => { button.disabled = true; });
+      favoritesBody.setAttribute("aria-busy", "true");
       try {
         await persistPrefs({
           favorite_sport_ids: ordered,
-        });
+        }, favoriteMessage);
       } catch {
         if (turningOff) favoriteIds.add(id);
         else favoriteIds.delete(id);
         btn.classList.toggle("on", favoriteIds.has(id));
         btn.setAttribute("aria-pressed", String(favoriteIds.has(id)));
+        paintSummary();
+      } finally {
+        favoriteButtons.forEach(button => { button.disabled = false; });
+        favoritesBody.removeAttribute("aria-busy");
       }
     });
   });

@@ -1,5 +1,8 @@
 /* ——— Shell ——— */
 
+/* Interface labels are controls; content and diagnostic text remain copyable. */
+h1, h2, h3, button, summary, .nav-foot, .page-heading { user-select: none; }
+
 .shell {
   display: flex;
   flex-direction: column;

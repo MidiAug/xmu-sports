@@ -2,12 +2,25 @@
 .preference-card-heading { margin-bottom: 16px; }
 .preference-card-heading h3 { margin: 0; font-size: 14px; font-weight: 600; }
 .preference-card-heading p { margin: 4px 0 0; font-size: 12px; color: var(--color-muted); line-height: 1.6; }
-.settings-page .settings-sport-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.settings-page .settings-sport-cell { position: relative; min-height: 44px; padding: 10px 25px 10px 10px; border-radius: 8px; box-shadow: none; font-size: 12px; }
+.settings-favorites-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.settings-favorites-header > div { min-width: 0; }
+.settings-favorites-header h3 { margin: 0; font-size: 13px; font-weight: 550; }
+.settings-favorites-header p { margin: 6px 0 0; font-size: 12px; line-height: 1.7; color: var(--color-muted); overflow-wrap: anywhere; }
+.settings-favorites { padding: 16px 20px; }
+.favorite-edit { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--color-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.favorite-edit span { font-size: 16px; line-height: 16px; }
+.favorite-edit:hover { color: var(--color-accent); background: var(--color-nav-hover); }
+#favorite_sports_body { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--color-line); }
+.favorite-hint, .favorite-unavailable { margin: 0; color: var(--color-muted); font-size: 11px; line-height: 1.7; }
+.favorite-hint { margin-bottom: 12px; }
+.favorite-unavailable { margin-top: 12px; }
+.settings-page .settings-sport-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-page .settings-sport-cell { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; position: relative; min-height: 32px; padding: 6px 12px; border: 1px solid var(--color-line-strong); border-radius: 18px; background: transparent; color: var(--color-ink); font: inherit; box-shadow: none; font-size: 12px; cursor: pointer; }
+.settings-page .settings-sport-cell:hover { border-color: var(--color-accent); }
+.settings-page .settings-sport-cell:disabled { cursor: wait; }
 .settings-page .settings-sport-cell.on { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line-strong)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-panel)); }
 .settings-page .settings-sport-cell.on .settings-sport-cell-label { color: var(--color-accent); font-weight: 500; }
-.settings-page .settings-sport-cell:disabled { padding-right: 10px; }
-.settings-sport-check { position: absolute; right: 8px; top: 50%; display: flex; transform: translateY(-50%); color: var(--color-accent); visibility: hidden; }
+.settings-sport-check { display: flex; color: var(--color-accent); visibility: hidden; }
 .settings-sport-check svg { width: 13px; height: 13px; }
 .settings-sport-cell.on .settings-sport-check { visibility: visible; }
 .settings-page .settings-sport-cell-hint { font-size: 10px; }
@@ -77,7 +90,6 @@
 @media (max-width: 620px) { .about-row { flex-wrap: wrap; } .about-row > div:first-child { flex: 1 1 180px; } }
 @media (max-width: 580px) {
   .preference-card { padding: 16px; }
-  .settings-page .settings-sport-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .settings-page .settings-theme-cubes { gap: 8px; }
   .settings-page .settings-theme-cube { padding: 6px; gap: 8px; }
   .settings-page .theme-option-label { gap: 3px; font-size: 11px; }
