@@ -55,6 +55,7 @@ window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener("change", 
   if (themePref === "system") applyTheme("system");
 });
 document.addEventListener("click", closeShellSelects);
+document.addEventListener("contextmenu", event => event.preventDefault(), { capture: true });
 void win.onResized(() => {
   void syncMaximized();
 });
