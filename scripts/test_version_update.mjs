@@ -47,6 +47,9 @@ try {
   await page.getByRole('button', { name: '退出并安装', exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.calls), ['check_app_update', 'download_app_update']);
   await page.evaluate(() => document.documentElement.dataset.shellTheme = 'dark');
+  assert.equal(await page.locator('.version-update').evaluate(button => getComputedStyle(button).outlineStyle), 'none');
+  await page.screenshot({ path: join(output, 'keyboard-focus-dark.png') });
+  await page.locator('.version-update').evaluate(button => button.blur());
   await page.screenshot({ path: join(output, 'downloaded-dark.png') });
   await page.evaluate(async () => { window.releaseStatus = 'current'; await window.check(); });
   assert.equal(await page.locator('.version-update').isVisible(), false);

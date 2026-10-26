@@ -6,7 +6,7 @@ export function mountVersionUpdate(foot: Element, openAbout: () => void) {
   button.type = "button";
   button.className = "version-update";
   button.hidden = true;
-  button.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m-5 5 5-5 5 5M5 16v4h14v-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  button.innerHTML = '<svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m5.5 9 4.5-4.5L14.5 9M5.5 14.5 10 10l4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   button.onclick = openAbout;
   foot.append(button);
   return watchAppUpdate(state => {

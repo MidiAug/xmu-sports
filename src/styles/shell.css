@@ -239,9 +239,9 @@
 
 .nav-foot[hidden], .version-update[hidden] { display: none; }
 .nav-version { opacity: 0.75; }
-.version-update { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--color-accent); cursor: pointer; }
-.version-update:hover { background: var(--color-nav-hover); }
-.version-update:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.version-update { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: color-mix(in srgb, var(--color-accent) 65%, var(--color-muted)); cursor: pointer; transition: color 120ms ease; }
+.version-update:hover { color: var(--color-accent); }
+.version-update:focus-visible { outline: none; box-shadow: inset 0 -2px var(--color-accent); color: var(--color-accent); }
 
 /* ——— Main ——— */
 
