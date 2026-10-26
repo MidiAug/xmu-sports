@@ -42,17 +42,16 @@ export function slotOption(slot:AvailabilitySlot) {
   const locked=slot.cells.some(cell=>cell.admin_locked);
   const unlocked=slot.cells.filter(cell=>!cell.admin_locked);
   const full=unlocked.length>0 && unlocked.every(cell=>hasQuota(cell) && cell.remaining===0);
-  const unavailable=unlocked.length>0 && unlocked.every(cell=>cell.status==="unavailable");
   return {
     value:`${slot.start}|${slot.end}`, label:`${slot.start}–${slot.end}`,
-    badge:isAdminLocked(slot) ? "全部锁定" : locked ? "部分锁定" : full ? "已满" : unavailable ? "暂不可约" : undefined,
+    badge:isAdminLocked(slot) ? "全部锁定" : locked ? "部分锁定" : full ? "已满" : undefined,
     disabled:isAdminLocked(slot),
   };
 }
 export function courtOption(cell:AvailabilityCell) {
   return {
     value:cell.court, label:courtLabel(cell.court), disabled:cell.admin_locked,
-    badge:cell.admin_locked ? "已锁" : hasQuota(cell) && cell.remaining===0 ? "已满" : cell.status==="unavailable" ? "暂不可约" : undefined,
+    badge:cell.admin_locked ? "已锁" : hasQuota(cell) && cell.remaining===0 ? "已满" : undefined,
   };
 }
 
