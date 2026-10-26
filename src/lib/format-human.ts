@@ -23,6 +23,12 @@ export function formatMonthDay(isoDate: string): string {
   return `${Number(m[2])}月${Number(m[3])}日`;
 }
 
+/** Booking date options include the weekday without depending on the PC timezone. */
+export function formatMonthDayWeekday(isoDate:string):string {
+  const day=new Date(`${isoDate}T00:00:00Z`).getUTCDay();
+  return Number.isNaN(day) ? formatMonthDay(isoDate) : `${formatMonthDay(isoDate)}(周${"日一二三四五六"[day]})`;
+}
+
 /**
  * 预约日人话：`明天 9月24日`（相对词与月日用空格，禁止中点；不展示周几）
  */

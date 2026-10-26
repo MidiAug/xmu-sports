@@ -8,7 +8,7 @@ import {
   isSportEnabled,
   slotLabel,
 } from "../lib/catalog";
-import { formatMonthDay, formatTargetDateHuman } from "../lib/format-human";
+import { formatMonthDayWeekday, formatTargetDateHuman } from "../lib/format-human";
 import { setMsg } from "../lib/msg";
 import {
   FIRE_TIME_MIN,
@@ -534,7 +534,7 @@ export async function renderSetup(panel: Element) {
       dateOptionsDay = today;
       dateOptionsEl.innerHTML = bookingDateOptions().map(option => `
         <button type="button" class="booking-date-option" data-date="${option.value}" aria-pressed="false">
-          <span>${option.label}</span><small>${formatMonthDay(option.value)}</small>
+          <span>${option.label}</span><small>${formatMonthDayWeekday(option.value)}</small>
         </button>`).join("");
     }
     dateOptionsEl.querySelectorAll<HTMLButtonElement>("[data-date]").forEach(button => {

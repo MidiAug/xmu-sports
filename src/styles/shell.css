@@ -301,8 +301,9 @@
 @media (prefers-reduced-motion: reduce) { .order-icon.is-loading svg { animation: none; } }
 .order-icon:hover:not(:disabled) { color: var(--color-ink); background: var(--color-nav-hover); }
 .order-cancel:hover:not(:disabled) { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 10%, transparent); opacity: 1; }
-.order-icon:disabled, .order-cancel:disabled { opacity: .3; cursor: not-allowed; }
-.order-icon.is-loading { opacity: 1; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.order-icon:disabled { opacity: .3; cursor: default; }
+.order-cancel:disabled { opacity: .3; cursor: not-allowed; }
+.order-icon.is-loading { opacity: 1; color: var(--color-muted); background: transparent; cursor: default; }
 .order-icon:focus-visible, .order-cancel:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .my-orders + .nav-foot { margin-top: 4px; flex: none; }
 @media (max-width: 720px) {

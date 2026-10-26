@@ -68,14 +68,26 @@ unsafe fn text(dc: HDC, value: &str, mut rect: RECT, size: i32, bold: bool, colo
 }
 
 unsafe fn paint_status(dc: HDC, rect: RECT, state: &PaintState) {
-    let brush = CreateSolidBrush(COLORREF(0x00352a20));
-    FillRect(dc, &rect, brush);
-    let _ = DeleteObject(brush.into());
+    // One click-through window dims the full verified mini-program, including its titlebar.
+    let shade = CreateSolidBrush(COLORREF(0x001b1917));
+    FillRect(dc, &rect, shade);
+    let _ = DeleteObject(shade.into());
     SetBkMode(dc, TRANSPARENT);
     let s = |n: i32| (n as f32 * state.scale).round() as i32;
-    text(dc, "正在登录中，请稍候", RECT {left:s(14),top:s(8),right:rect.right-s(12),bottom:s(31)}, s(14), true, COLORREF(0x00ffffff));
-    text(dc, state.phase, RECT {left:s(14),top:s(32),right:rect.right-s(12),bottom:s(51)}, s(11), false, COLORREF(0x00e8dac7));
-    text(dc, "请暂勿操作小程序", RECT {left:s(14),top:s(52),right:rect.right-s(12),bottom:s(72)}, s(11), false, COLORREF(0x00bcc0c5));
+    let width=s(320).min(rect.right-s(32)).max(1);
+    let height=s(112).min(rect.bottom-s(32)).max(1);
+    let left=(rect.right-width)/2;
+    let top=(rect.bottom-height)/2;
+    let panel=CreateSolidBrush(COLORREF(0x003b3530));
+    let pen=CreatePen(PS_SOLID,1,COLORREF(0x00524c46));
+    let old_brush=SelectObject(dc,panel.into());
+    let old_pen=SelectObject(dc,pen.into());
+    let _=RoundRect(dc,left,top,left+width,top+height,s(20),s(20));
+    SelectObject(dc,old_brush);SelectObject(dc,old_pen);
+    let _=DeleteObject(panel.into());let _=DeleteObject(pen.into());
+    text(dc, "正在登录中，请稍候", RECT {left:left+s(18),top:top+s(15),right:left+width-s(16),bottom:top+s(41)}, s(15), true, COLORREF(0x00ffffff));
+    text(dc, state.phase, RECT {left:left+s(18),top:top+s(46),right:left+width-s(16),bottom:top+s(67)}, s(12), false, COLORREF(0x00e8dac7));
+    text(dc, "鼠标可自由移动，请暂勿点击小程序", RECT {left:left+s(18),top:top+s(76),right:left+width-s(16),bottom:top+s(97)}, s(11), false, COLORREF(0x00ccd0d5));
 }
 
 unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
@@ -118,7 +130,7 @@ unsafe fn create(owner: HWND, state: &mut PaintState) -> Option<HWND> {
     let hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT,
                               class, w!("XMU Sports 登录提示"), WS_POPUP, 0, 0, 1, 1, Some(owner), None, Some(instance.into()),
                               Some(state as *mut PaintState as *const _)).ok()?;
-    if SetLayeredWindowAttributes(hwnd, COLORREF(0), 248, LWA_ALPHA).is_err() { let _=DestroyWindow(hwnd); return None; }
+    if SetLayeredWindowAttributes(hwnd, COLORREF(0), 195, LWA_ALPHA).is_err() { let _=DestroyWindow(hwnd); return None; }
     Some(hwnd)
 }
 
@@ -155,11 +167,11 @@ fn run(receiver: Receiver<&'static str>) {
                     if GetWindowRect(target.hwnd(), &mut rect).is_ok() {
                         state.scale=GetDpiForWindow(target.hwnd()).max(96) as f32/96.0;
                         let s=|n:i32|(n as f32*state.scale).round() as i32;
-                        let width=s(300).min(rect.right-rect.left-s(24));
-                        if width>=s(220) {
-                            let _=SetWindowPos(*hwnd, Some(HWND_TOPMOST), rect.left+(rect.right-rect.left-width)/2,
-                                               rect.top+s(44), width, s(80), SWP_NOACTIVATE);
-                            let region=CreateRoundRectRgn(0,0,width+1,s(80)+1,s(18),s(18));
+                        let width=rect.right-rect.left;
+                        let height=rect.bottom-rect.top;
+                        if width>=s(220) && height>=s(150) {
+                            let _=SetWindowPos(*hwnd, Some(HWND_TOPMOST), rect.left, rect.top, width, height, SWP_NOACTIVATE);
+                            let region=CreateRoundRectRgn(0,0,width+1,height+1,s(12),s(12));
                             if SetWindowRgn(*hwnd,Some(region),true)==0 {let _=DeleteObject(region.into());}
                             let _=InvalidateRect(Some(*hwnd),None,false);
                             let _=UpdateWindow(*hwnd);
@@ -195,8 +207,10 @@ mod tests {
                                       -10000,-10000,520,815,None,None,None,None).unwrap();
             let mut state=PaintState{phase:"正在核验登录状态",scale:1.0};
             let overlay=create(owner,&mut state).expect("native overlay must be creatable");
-            let _=SetWindowPos(overlay,None,-10000,-10000,300,80,SWP_NOACTIVATE);
+            let _=SetWindowPos(overlay,None,-10000,-10000,520,815,SWP_NOACTIVATE);
             assert_eq!(GetForegroundWindow(),before,"overlay cannot steal focus");
+            let mut bounds=RECT::default();GetWindowRect(overlay,&mut bounds).unwrap();
+            assert_eq!((bounds.right-bounds.left,bounds.bottom-bounds.top),(520,815),"mask covers the full mini-program dimensions");
             let flags=GetWindowLongPtrW(overlay,GWL_EXSTYLE) as u32;
             assert_eq!(flags & (WS_EX_NOACTIVATE|WS_EX_TRANSPARENT|WS_EX_TOOLWINDOW|WS_EX_LAYERED).0,
                        (WS_EX_NOACTIVATE|WS_EX_TRANSPARENT|WS_EX_TOOLWINDOW|WS_EX_LAYERED).0);
@@ -204,15 +218,15 @@ mod tests {
             assert_eq!(SendMessageW(overlay,WM_MOUSEACTIVATE,None,None).0,MA_NOACTIVATE as isize);
             let dc=CreateCompatibleDC(None);
             let info=BITMAPINFO{bmiHeader:BITMAPINFOHEADER{biSize:std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-                biWidth:300,biHeight:-80,biPlanes:1,biBitCount:32,biCompression:BI_RGB.0,..Default::default()},..Default::default()};
+                biWidth:520,biHeight:-815,biPlanes:1,biBitCount:32,biCompression:BI_RGB.0,..Default::default()},..Default::default()};
             let mut pixels=std::ptr::null_mut();
             let bitmap=CreateDIBSection(Some(dc),&info,DIB_RGB_COLORS,&mut pixels,None,0).unwrap();
             let previous=SelectObject(dc,bitmap.into());
             SendMessageW(overlay,WM_PRINTCLIENT,Some(WPARAM(dc.0 as usize)),Some(LPARAM(PRF_CLIENT as isize)));
             let _=GdiFlush();
-            let bytes=std::slice::from_raw_parts(pixels as *const u8,300*80*4);
+            let bytes=std::slice::from_raw_parts(pixels as *const u8,520*815*4);
             assert!(bytes.chunks_exact(4).any(|pixel|pixel[0]>200 && pixel[1]>200 && pixel[2]>200),"status text must render");
-            let mut ppm=b"P6\n300 80\n255\n".to_vec();
+            let mut ppm=b"P6\n520 815\n255\n".to_vec();
             for pixel in bytes.chunks_exact(4) {ppm.extend_from_slice(&[pixel[2],pixel[1],pixel[0]]);}
             let output=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../artifacts/sidebar-orders");
             std::fs::create_dir_all(&output).unwrap();

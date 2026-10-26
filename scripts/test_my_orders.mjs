@@ -119,6 +119,9 @@ try {
  assert.ok(await page.locator("[data-orders-refresh]").evaluate(el=>el.classList.contains("is-loading")));
  assert.equal(await page.locator(".my-orders-status").count(),0,"refresh progress is shown on the button, not another row");
  assert.equal(await page.locator("[data-orders-refresh]").getAttribute("aria-label"),"正在更新预约");
+ assert.deepEqual(await page.locator("[data-orders-refresh]").evaluate(el=>{
+  const style=getComputedStyle(el);return {cursor:style.cursor,background:style.backgroundColor,color:style.color};
+ }),{cursor:"default",background:"rgba(0, 0, 0, 0)",color:"rgb(173, 178, 184)"});
  await page.screenshot({path:"artifacts/sidebar-orders/refreshing.png"});
  await page.evaluate(()=>document.querySelector("[data-orders-refresh]").click());
  assert.equal(await queries(),initial+1,"single flight");
