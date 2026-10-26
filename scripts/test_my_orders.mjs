@@ -111,7 +111,7 @@ try {
  await page.evaluate(()=>{window.__hidden=false;document.dispatchEvent(new Event('visibilitychange'));});
  await page.waitForFunction(n=>window.__calls.filter(c=>c.command==='get_my_orders').length>n,fresh);
  assert.equal(await queries(),fresh+1,'queued mutation bypasses a fresh snapshot when the window becomes visible');
- await page.evaluate(()=>{window.__fetchedAt=new Date(Date.now()-290000).toISOString();window.dispatchEvent(new Event('orders-authenticated'));});
+ await page.evaluate(()=>{window.__fetchedAt=new Date(Date.now()-1790000).toISOString();window.dispatchEvent(new Event('orders-authenticated'));});
  await page.waitForFunction(()=>!document.querySelector('[data-orders-refresh]').disabled);
  const oldSnapshotReads=await queries();
  await page.evaluate(()=>{window.__now+=70000;window.__fetchedAt=undefined;window.dispatchEvent(new Event('focus'));});
@@ -130,11 +130,26 @@ try {
   const {orderDay}=await import(url);
   return ["2026-10-26","2026-10-27","2026-10-28","2026-10-29"].map(day=>orderDay(day,new Date("2026-10-26T23:59:00+08:00"))).join(",");
  },moduleUrl),"今天,明天,后天,10/29");
+ assert.deepEqual(await page.evaluate(async url=>{
+  const {orderSnapshotFresh}=await import(url);
+  const at=s=>Date.parse(`2026-10-26T${s}+08:00`);
+  return [
+   orderSnapshotFresh(at('12:00:00'),at('12:29:59')),
+   orderSnapshotFresh(at('12:00:00'),at('12:30:00')),
+   orderSnapshotFresh(at('06:59:00'),at('07:03:59')),
+   orderSnapshotFresh(at('06:59:00'),at('07:04:00')),
+   orderSnapshotFresh(at('07:10:00'),at('07:15:00')),
+   orderSnapshotFresh(at('12:01:00'),at('12:00:00')),
+  ];
+ },moduleUrl),[true,false,true,false,true,false],'Beijing morning freshness is five minutes; normal freshness is thirty minutes');
+ const quietQueries=await queries();
+ await page.evaluate(()=>{window.__now+=600000;window.__intervals.forEach(fn=>fn());window.dispatchEvent(new Event('focus'));});
+ assert.equal(await queries(),quietQueries,'normal visible window reuses ten-minute-old orders');
  const beforeHidden=await queries();
  await page.evaluate(()=>{
   window.__hidden=true;
   Object.defineProperty(document,"hidden",{configurable:true,get:()=>window.__hidden});
-  window.__now+=300001;
+  window.__now+=1800001;
   window.__intervals.forEach(fn=>fn());
  });
  assert.equal(await queries(),beforeHidden,"hidden window must not poll");
@@ -188,13 +203,13 @@ try {
  });
  await page.waitForFunction(n=>window.__calls.filter(c=>c.command==='get_my_orders').length>n,beforeMutation);
  assert.equal(await queries(),beforeMutation+1,'a submitted booking forces exactly one refresh even within the TTL');
- await page.evaluate(()=>{window.__status({running:true,armed:false});window.__now+=300001;window.__intervals.forEach(fn=>fn());});
+ await page.evaluate(()=>{window.__status({running:true,armed:false});window.__now+=1800001;window.__intervals.forEach(fn=>fn());});
  const before=await queries();
  assert.ok(await page.locator(".order-cancel").isDisabled());
  await page.evaluate(()=>window.__status({running:false,armed:false}));
  await page.waitForFunction(()=>!document.querySelector(".order-cancel").disabled);
  assert.equal(await queries(),before+1,"refresh when booking finishes");
- await page.evaluate(()=>{window.__now+=300001;window.__failure=true;window.__intervals.forEach(fn=>fn());});
+ await page.evaluate(()=>{window.__now+=1800001;window.__failure=true;window.__intervals.forEach(fn=>fn());});
  await page.waitForFunction(()=>document.querySelector(".my-orders-status").textContent.includes("更新失败"));
  const failedCount=await queries();
  await page.evaluate(()=>{window.__now+=30000;window.dispatchEvent(new Event('focus'));window.__intervals.forEach(fn=>fn());});
@@ -205,7 +220,7 @@ try {
  assert.equal(await page.locator("#orders img").count(),0,"escape server text");
  await page.evaluate(()=>{window.__rows=[];window.dispatchEvent(new Event("orders-authenticated"));});
  await page.waitForFunction(()=>document.querySelector(".my-orders-status").textContent.includes("暂无"));
- await page.evaluate(()=>{window.__rows=[{order_id:"52",details_id:"81",venue:"思明校区风雨球馆",sport:"羽毛球",court:"03 号场地",date:"2026-10-28",start:"08:00",end:"09:00",can_cancel:true}];window.__authFailure=true;window.__now+=300001;window.__intervals.forEach(fn=>fn());});
+ await page.evaluate(()=>{window.__rows=[{order_id:"52",details_id:"81",venue:"思明校区风雨球馆",sport:"羽毛球",court:"03 号场地",date:"2026-10-28",start:"08:00",end:"09:00",can_cancel:true}];window.__authFailure=true;window.__now+=1800001;window.__intervals.forEach(fn=>fn());});
  await page.waitForFunction(()=>document.querySelector(".my-orders-status")?.textContent.includes("登录状态已失效"));
  const authBefore=await page.evaluate(()=>window.__calls.filter(c=>c.command==="reauthenticate_availability").length);
  assert.equal(authBefore,0,"background auth failure must not open WeChat automatically");

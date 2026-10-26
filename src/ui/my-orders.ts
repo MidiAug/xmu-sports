@@ -10,8 +10,13 @@ import { currentRunEvents } from "../lib/booking-progress";
 
 type Order = {order_id:string; details_id:string; venue:string; sport:string; court:string; date:string; start:string; end:string; can_cancel:boolean};
 type OrdersResult = {ok:boolean; account_fingerprint?:string; orders?:Order[]; message?:string; code?:string; phase?:string; state?:string; cached?:boolean; fetched_at?:string};
-const SNAPSHOT_TTL = 300000;
-const RECONCILE_INTERVAL = 900000;
+const RETRY_MAX = 900000;
+export function orderSnapshotFresh(fetched:number, now=Date.now()):boolean {
+  const beijing=new Date(now+8*3600000);
+  const minute=beijing.getUTCHours()*60+beijing.getUTCMinutes();
+  const ttl=minute>=420 && minute<435 ? 300000 : 1800000;
+  return fetched>0 && now>=fetched && now-fetched<ttl;
+}
 export function orderChangeTime(value:LiveStatus):number {
   const events=currentRunEvents(value.recent_events ?? [],value.last_event);
   if(value.last_event) events.push(value.last_event);
@@ -79,7 +84,7 @@ export function mountMyOrders(host:HTMLElement) {
     if (loginRequired) { if(manual) await recoverLogin(); return; }
     if (loading) { if(force) queued = true; return; }
     if (!manual && queued) { force=true;queued=false; }
-    if (!manual && !force && (Date.now()-lastSuccess<SNAPSHOT_TTL || Date.now()<retryAt)) return;
+    if (!manual && !force && (orderSnapshotFresh(lastSuccess) || Date.now()<retryAt)) return;
     if (!force && Date.now()-lastAttempt < (manual ? 10000 : 60000)) {
       return;
     }
@@ -100,7 +105,7 @@ export function mountMyOrders(host:HTMLElement) {
       if (!manual && !force && result.cached && changedAt>lastSuccess) queued=true;
       message = rows.length ? "" : "暂无未核销预约";
     } catch(error) {
-      retryAt=Date.now()+Math.min(RECONCILE_INTERVAL,60000*2**Math.min(failures++,4));
+      retryAt=Date.now()+Math.min(RETRY_MAX,60000*2**Math.min(failures++,4));
       if(loginRequired) message = "";
       else {
         message = rows.length ? "更新失败，显示上次结果" : "暂未加载，请刷新重试";
@@ -177,7 +182,8 @@ export function mountMyOrders(host:HTMLElement) {
   window.addEventListener("focus",()=>void refresh());
   document.addEventListener("visibilitychange",()=>{if(!document.hidden) void refresh();});
   window.addEventListener("orders-authenticated",()=>{loginRequired=false;void refresh(false,true);});
-  window.setInterval(()=>void refresh(),RECONCILE_INTERVAL);
+  // Local wake-up only: freshness, visibility and booking gates decide whether to query.
+  window.setInterval(()=>void refresh(),60000);
   window.setInterval(()=>{if(!loading && !recovering && !confirming && !cancelling && policyKey()!==paintedPolicy) {if(rows.some(row=>orderEnded(row)) && !rows.some(row=>!orderEnded(row))) message="暂无未核销预约";paint();}},1000);
   paint();
 }

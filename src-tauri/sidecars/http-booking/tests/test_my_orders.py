@@ -224,7 +224,7 @@ def test_cache_is_persistent_ttl_scoped_and_manual_bypasses(cache_env):
     assert len(instances)==1,"fresh disk snapshot must not create/login a Client"
     assert not orders.execute({"action":"my_orders","force":True})["cached"]
     assert len(instances)==2
-    clock[0]=datetime.fromisoformat("2026-10-26T12:05:01+08:00")
+    clock[0]=datetime.fromisoformat("2026-10-26T12:30:00+08:00")
     assert not orders.execute({"action":"my_orders"})["cached"]
     uid[0]="9999"
     changed=orders.execute({"action":"my_orders"})
@@ -295,3 +295,25 @@ def test_confirmed_cancel_keeps_other_rows_and_original_freshness(cache_env):
     after=orders.execute({"action":"my_orders"})
     assert after["cached"] and [row["order_id"] for row in after["orders"]]==["99"]
     assert after["fetched_at"]==result["fetched_at"]
+
+
+def test_order_cache_morning_window_uses_beijing_and_original_age(cache_env):
+    clock, _, instances, _ = cache_env
+    clock[0] = datetime.fromisoformat("2026-10-26T06:59:00+08:00")
+    orders.execute({"action":"my_orders"})
+    clock[0] = datetime.fromisoformat("2026-10-25T23:03:59+00:00")
+    assert orders.execute({"action":"my_orders"})["cached"]
+    clock[0] = datetime.fromisoformat("2026-10-25T23:04:00+00:00")
+    assert not orders.execute({"action":"my_orders"})["cached"]
+    assert len(instances) == 2
+    clock[0] = datetime.fromisoformat("2026-10-26T07:15:00+08:00")
+    assert orders.execute({"action":"my_orders"})["cached"]
+
+
+def test_empty_orders_are_cached_for_normal_window(cache_env):
+    clock, _, instances, _ = cache_env
+    clock[0] = datetime.fromisoformat("2026-10-27T22:00:00+08:00")
+    assert not orders.execute({"action":"my_orders"})["orders"]
+    clock[0] = datetime.fromisoformat("2026-10-27T22:29:59+08:00")
+    assert orders.execute({"action":"my_orders"})["cached"]
+    assert len(instances) == 1

@@ -1,9 +1,15 @@
 """Account-scoped, normalized order snapshots and completed-order detail index."""
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from .catalog import write_json
 
-TTL_SECONDS = 300
+TTL_SECONDS = 1800
+
+
+def ttl_seconds(now):
+    beijing = now.astimezone(timezone(timedelta(hours=8)))
+    minute = beijing.hour * 60 + beijing.minute
+    return 300 if 420 <= minute < 435 else TTL_SECONDS
 
 
 def load(root, account):
@@ -26,7 +32,7 @@ def fresh(data, now):
         snapshot = data["snapshot"]
         stamp = datetime.fromisoformat(snapshot["fetched_at"])
         age = (now - stamp).total_seconds()
-        if not 0 <= age < TTL_SECONDS or not isinstance(snapshot["orders"], list):
+        if not 0 <= age < ttl_seconds(now) or not isinstance(snapshot["orders"], list):
             return None
         fields = ("order_id", "details_id", "venue", "sport", "court", "date", "start", "end")
         if any(not isinstance(row, dict) or any(not isinstance(row.get(k), str) for k in fields)
