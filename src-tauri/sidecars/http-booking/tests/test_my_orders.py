@@ -46,6 +46,31 @@ def test_filter_sort_and_pagination():
     assert len([c for c in fake.calls if c[0]==orders.DETAIL])==2
 
 
+def test_login_first_page_is_reused_once_without_extra_request():
+    client=orders.OrdersClient(EntryTicket({"uid":"1234"},Path("fake")))
+    client.http.cookies.set("PHPSESSID","synthetic",domain="xdty.xmu.edu.cn",path="/")
+    calls=[]
+    def post(path,fields,*args,**kwargs):
+        calls.append((path,fields))
+        return {"status":1,"data":[order()] if path==orders.LIST else detail() if path==orders.DETAIL else []}
+    client.post=post
+    try:
+        assert client.login()["account_checked"]
+        assert len(orders.active_rows(client))==1
+        assert sum(path==orders.LIST for path,_ in calls)==1
+        orders.active_rows(client)
+        assert sum(path==orders.LIST for path,_ in calls)==2,"the first page must not be reused across requests"
+    finally:client.http.close()
+
+
+def test_cancel_reads_only_the_target_detail_and_stops_paging_when_found():
+    fake=Fake(pages={"1":[order(i) for i in range(1,11)],"2":[order()]},details={"42":detail()})
+    assert orders.cancel(fake,"42","71")["state"]=="cancelled"
+    assert [fields["p"] for path,fields in fake.calls if path==orders.LIST]==["1","2"]
+    assert [fields["order_id"] for path,fields in fake.calls if path==orders.DETAIL]==["42","42"]
+    assert sum(path==orders.CANCEL for path,_ in fake.calls)==1
+
+
 @pytest.mark.parametrize("where",["list","detail","item"])
 def test_inactive_not_displayed(where):
     fake=Fake(pages={"1":[order(audit_status="3" if where=="list" else "1")]},
@@ -228,14 +253,16 @@ def test_completed_order_detail_index_skips_known_ended_details(cache_env):
     assert any(path==orders.LIST for path,_ in instances[-1].calls),"still discover new bookings"
 
 
-def test_cancel_never_authorizes_from_snapshot_and_invalidates_it(cache_env):
+def test_cancel_revalidates_then_patches_only_confirmed_detail(cache_env):
     _,_,instances,_=cache_env
     result=orders.execute({"action":"my_orders"})
     orders.execute({"action":"cancel_order","account_fingerprint":result["account_fingerprint"],"order_id":"42","details_id":"71"})
     assert len(instances)==2
     assert any(path==orders.DETAIL for path,_ in instances[-1].calls)
     assert any(path==orders.CANCEL for path,_ in instances[-1].calls)
-    assert not orders.execute({"action":"my_orders"})["cached"]
+    after=orders.execute({"action":"my_orders"})
+    assert after["cached"] and after["orders"]==[]
+    assert after["fetched_at"]==result["fetched_at"],"cancellation must not renew unrelated snapshot freshness"
 
 
 def test_corrupt_snapshot_falls_back_to_network(cache_env):
@@ -244,3 +271,27 @@ def test_corrupt_snapshot_falls_back_to_network(cache_env):
     path=next((root/"orders-cache").glob("*.json"))
     path.write_text("broken",encoding="utf-8")
     assert not orders.execute({"action":"my_orders"})["cached"]
+
+
+def test_unconfirmed_cancel_keeps_snapshot_invalid(cache_env):
+    _,_,instances,_=cache_env
+    result=orders.execute({"action":"my_orders"})
+    original=orders.cancel
+    try:
+        orders.cancel=lambda *args:{"ok":False,"state":"cancel_unconfirmed"}
+        orders.execute({"action":"cancel_order","account_fingerprint":result["account_fingerprint"],"order_id":"42","details_id":"71"})
+    finally:orders.cancel=original
+    assert not orders.execute({"action":"my_orders"})["cached"]
+
+
+def test_confirmed_cancel_keeps_other_rows_and_original_freshness(cache_env):
+    from xmu_http import orders_cache
+    _,_,_,root=cache_env
+    result=orders.execute({"action":"my_orders"})
+    path,data=orders_cache.load(root,result["account_fingerprint"])
+    other={**data["snapshot"]["orders"][0],"order_id":"99","details_id":"98"}
+    data["snapshot"]["orders"].append(other);orders_cache.save(path,data)
+    orders.execute({"action":"cancel_order","account_fingerprint":result["account_fingerprint"],"order_id":"42","details_id":"71"})
+    after=orders.execute({"action":"my_orders"})
+    assert after["cached"] and [row["order_id"] for row in after["orders"]]==["99"]
+    assert after["fetched_at"]==result["fetched_at"]

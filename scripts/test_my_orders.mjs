@@ -8,6 +8,7 @@ const timeSource=ts.transpileModule(readFileSync("src/lib/time.ts","utf8"),{comp
 const timeUrl=`data:text/javascript;base64,${Buffer.from(timeSource).toString("base64")}`;
 const availabilitySource=ts.transpileModule(readFileSync("src/lib/availability.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const availabilityUrl=`data:text/javascript;base64,${Buffer.from(availabilitySource).toString("base64")}`;
+const progressUrl=`data:text/javascript;base64,${Buffer.from(ts.transpileModule(readFileSync("src/lib/booking-progress.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText).toString("base64")}`;
 const confirmSource=ts.transpileModule(readFileSync("src/ui/confirm-ask.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const confirmUrl=`data:text/javascript;base64,${Buffer.from(confirmSource).toString("base64")}`;
 const source=readFileSync("src/ui/my-orders.ts","utf8")
@@ -15,6 +16,7 @@ const source=readFileSync("src/ui/my-orders.ts","utf8")
  .replace('import { liveStatusCache, subscribeLiveStatus } from "../state";','const liveStatusCache=null; const subscribeLiveStatus=fn=>{window.__status=fn;};')
  .replace('"../lib/time"',JSON.stringify(timeUrl))
  .replace('"../lib/availability"',JSON.stringify(availabilityUrl))
+ .replace('"../lib/booking-progress"',JSON.stringify(progressUrl))
  .replace('import { resetAvailabilitySessionCache } from "../lib/availability-store";','const resetAvailabilitySessionCache=()=>{window.__availabilityResets=(window.__availabilityResets??0)+1;};')
  .replace('import { askConfirm } from "./confirm-ask";',`import { askConfirm as realAskConfirm } from ${JSON.stringify(confirmUrl)}; const askConfirm=opts=>{window.__confirmOptions=opts;window.__confirm=ok=>document.querySelector(ok?"[data-confirm-ok]":"[data-confirm-cancel]").click();return realAskConfirm(opts);};`)
  .replace('import { toastError, toastSuccess } from "./toast";','const toastError=(...args)=>window.__toasts.push(args);const toastSuccess=toastError;');
@@ -42,7 +44,7 @@ try {
     if(window.__authFailure)return {ok:false,code:"SESSION_EXPIRED",message:"登录状态已失效"};
     if(window.__failure)return {ok:false,code:"HTTP_FAILED",message:"模拟网络故障"};
     if(window.__hold)return new Promise(resolve=>{window.__finish=()=>resolve({ok:true,account_fingerprint:"a".repeat(64),orders:structuredClone(window.__rows)});});
-    return {ok:true,account_fingerprint:"a".repeat(64),orders:structuredClone(window.__rows)};
+    return {ok:true,account_fingerprint:"a".repeat(64),orders:structuredClone(window.__rows),fetched_at:window.__fetchedAt ?? new Date(Date.now()).toISOString()};
    }
    if(command==="reauthenticate_availability") {
     if(window.__holdRecovery)return new Promise(resolve=>{window.__finishRecovery=()=>{window.__authFailure=false;resolve({ok:true,authenticated:true,account_checked:true});};});
@@ -97,6 +99,24 @@ try {
  await page.evaluate(()=>{window.__rows=window.__rows.filter(row=>row.order_id!=="44");window.dispatchEvent(new Event("orders-authenticated"));});
  await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===2);
  const queries=()=>page.evaluate(()=>window.__calls.filter(c=>c.command==="get_my_orders").length);
+ const fresh=await queries();
+ await page.evaluate(()=>{window.__now+=61000;window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));window.__status({running:true,armed:false,operation:'auth'});window.__status({running:false,armed:false,last_event:{ts:new Date(Date.now()).toISOString(),action:'done',result:'http_auth_ready'}});});
+ assert.equal(await queries(),fresh,'focus after one minute and login-only completion reuse the fresh snapshot');
+ await page.evaluate(()=>{
+  window.__hidden=true;Object.defineProperty(document,'hidden',{configurable:true,get:()=>window.__hidden});
+  const event={task_id:'booking',run_id:'hidden-booking',ts:new Date(Date.now()+1).toISOString(),action:'done',result:'http_verified'};
+  window.__status({running:false,armed:false,last_event:event});
+ });
+ assert.equal(await queries(),fresh,'hidden booking completion queues refresh without requesting');
+ await page.evaluate(()=>{window.__hidden=false;document.dispatchEvent(new Event('visibilitychange'));});
+ await page.waitForFunction(n=>window.__calls.filter(c=>c.command==='get_my_orders').length>n,fresh);
+ assert.equal(await queries(),fresh+1,'queued mutation bypasses a fresh snapshot when the window becomes visible');
+ await page.evaluate(()=>{window.__fetchedAt=new Date(Date.now()-290000).toISOString();window.dispatchEvent(new Event('orders-authenticated'));});
+ await page.waitForFunction(()=>!document.querySelector('[data-orders-refresh]').disabled);
+ const oldSnapshotReads=await queries();
+ await page.evaluate(()=>{window.__now+=70000;window.__fetchedAt=undefined;window.dispatchEvent(new Event('focus'));});
+ await page.waitForFunction(n=>window.__calls.filter(c=>c.command==='get_my_orders').length>n,oldSnapshotReads);
+ assert.equal(await queries(),oldSnapshotReads+1,'cached snapshot age uses fetched_at and does not slide forward on read');
  assert.equal(await page.locator(".my-orders-status").count(),0,"no explanatory text when loaded");
  const stableButton=await page.locator(".order-cancel").first().elementHandle();
  await page.evaluate(()=>window.__status({running:false,armed:false}));
@@ -150,6 +170,7 @@ try {
  await page.evaluate(()=>window.__confirm(false));
  assert.equal(await page.evaluate(()=>window.__calls.filter(c=>c.command==="cancel_my_order").length),0);
  await page.locator(".order-cancel").first().click();
+ const beforeConfirmedCancel=await queries();
  await page.evaluate(()=>window.__confirm(true));
  await page.waitForFunction(()=>!!window.__cancelFinish);
  await page.evaluate(()=>document.querySelector(".order-cancel").click());
@@ -158,6 +179,15 @@ try {
  ]);
  await page.evaluate(()=>window.__cancelFinish());
  await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===1);
+ assert.equal(await queries(),beforeConfirmedCancel,'verified cancellation removes one card without refetching the full list');
+ const beforeMutation=await queries();
+ await page.evaluate(()=>{
+  const event={task_id:'booking',run_id:'new-booking',ts:new Date(Date.now()+1).toISOString(),action:'http_phase',result:'submitting'};
+  window.__status({running:true,armed:false,last_event:event,recent_events:[event]});
+  window.__status({running:false,armed:false,last_event:{...event,action:'done',result:'http_verified'}});
+ });
+ await page.waitForFunction(n=>window.__calls.filter(c=>c.command==='get_my_orders').length>n,beforeMutation);
+ assert.equal(await queries(),beforeMutation+1,'a submitted booking forces exactly one refresh even within the TTL');
  await page.evaluate(()=>{window.__status({running:true,armed:false});window.__now+=300001;window.__intervals.forEach(fn=>fn());});
  const before=await queries();
  assert.ok(await page.locator(".order-cancel").isDisabled());
@@ -166,6 +196,9 @@ try {
  assert.equal(await queries(),before+1,"refresh when booking finishes");
  await page.evaluate(()=>{window.__now+=300001;window.__failure=true;window.__intervals.forEach(fn=>fn());});
  await page.waitForFunction(()=>document.querySelector(".my-orders-status").textContent.includes("更新失败"));
+ const failedCount=await queries();
+ await page.evaluate(()=>{window.__now+=30000;window.dispatchEvent(new Event('focus'));window.__intervals.forEach(fn=>fn());});
+ assert.equal(await queries(),failedCount,'automatic retries respect failure backoff');
  assert.equal(await page.locator(".my-order").count(),1,"failed refresh retains snapshot");
  await page.evaluate(()=>{window.__failure=false;window.__rows=[{...window.__rows[0],venue:'<img src=x onerror=alert(1)>'}];window.dispatchEvent(new Event("orders-authenticated"));});
  await page.waitForFunction(()=>document.querySelector(".my-order-name").textContent.includes("<img"));

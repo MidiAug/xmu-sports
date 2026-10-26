@@ -6,9 +6,23 @@ import { askConfirm } from "./confirm-ask";
 import { resetAvailabilitySessionCache } from "../lib/availability-store";
 import { availabilityAuthNeeded } from "../lib/availability";
 import { toastError, toastSuccess } from "./toast";
+import { currentRunEvents } from "../lib/booking-progress";
 
 type Order = {order_id:string; details_id:string; venue:string; sport:string; court:string; date:string; start:string; end:string; can_cancel:boolean};
-type OrdersResult = {ok:boolean; account_fingerprint?:string; orders?:Order[]; message?:string; code?:string; phase?:string; state?:string};
+type OrdersResult = {ok:boolean; account_fingerprint?:string; orders?:Order[]; message?:string; code?:string; phase?:string; state?:string; cached?:boolean; fetched_at?:string};
+const SNAPSHOT_TTL = 300000;
+const RECONCILE_INTERVAL = 900000;
+export function orderChangeTime(value:LiveStatus):number {
+  const events=currentRunEvents(value.recent_events ?? [],value.last_event);
+  if(value.last_event) events.push(value.last_event);
+  return events.reduce((latest,event)=> {
+    const phase=event.http?.phase ?? event.result ?? "";
+    const changed=["submitting","order_accepted","verifying_order"].includes(phase)
+      || ["http_verified","http_already_reserved","http_order_rechecked","http_submitted","SUBMIT_UNKNOWN","RESULT_UNCONFIRMED","ORDER_RECHECK_VERIFIED"].includes(event.result ?? "");
+    const time=Date.parse(event.ts);
+    return changed && Number.isFinite(time) ? Math.max(latest,time) : latest;
+  },0);
+}
 const escape = (value:string) => value.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
 const refreshIcon = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 6A5.2 5.2 0 1 0 13 10M13 2.5V6H9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -39,6 +53,7 @@ export function mountMyOrders(host:HTMLElement) {
   let rows:Order[] = [], account = "", lastSuccess = 0, lastAttempt = -Infinity;
   let loading = false, recovering = false, confirming = false, cancelling = false, loginRequired = false, known = false, busy = true, message = "";
   let queued = false;
+  let changedAt = 0, dirty = false, failures = 0, retryAt = 0;
   const label = (row:Order) => `${row.venue}${row.court ? `、${row.court}` : ""}，${row.date} ${row.start}–${row.end}`;
   let paintedPolicy="";
   const policyKey=()=>`${localDateISO(new Date(Date.now()))}:${rows.map(row=>`${row.order_id}/${row.details_id}:${orderEnded(row)}:${orderCanCancel(row)}`).join(";")}`;
@@ -63,6 +78,8 @@ export function mountMyOrders(host:HTMLElement) {
     if (!host.isConnected || document.hidden || !known || busy || recovering || confirming || cancelling) { if(force) queued = true; return; }
     if (loginRequired) { if(manual) await recoverLogin(); return; }
     if (loading) { if(force) queued = true; return; }
+    if (!manual && queued) { force=true;queued=false; }
+    if (!manual && !force && (Date.now()-lastSuccess<SNAPSHOT_TTL || Date.now()<retryAt)) return;
     if (!force && Date.now()-lastAttempt < (manual ? 10000 : 60000)) {
       return;
     }
@@ -76,9 +93,14 @@ export function mountMyOrders(host:HTMLElement) {
         throw new Error(result.message ?? "请先在预约页重新登录，再刷新订单");
       }
       rows = [...(result.orders ?? [])].sort((a,b) => `${a.date} ${a.start}`.localeCompare(`${b.date} ${b.start}`));
-      account = result.account_fingerprint ?? ""; lastSuccess = Date.now(); loginRequired = false;
+      const fetched=Date.parse(result.fetched_at ?? "");
+      account = result.account_fingerprint ?? "";
+      lastSuccess = Number.isFinite(fetched) && fetched<=Date.now() ? fetched : Date.now();
+      failures=0;retryAt=0;loginRequired = false;
+      if (!manual && !force && result.cached && changedAt>lastSuccess) queued=true;
       message = rows.length ? "" : "暂无未核销预约";
     } catch(error) {
+      retryAt=Date.now()+Math.min(RECONCILE_INTERVAL,60000*2**Math.min(failures++,4));
       if(loginRequired) message = "";
       else {
         message = rows.length ? "更新失败，显示上次结果" : "暂未加载，请刷新重试";
@@ -125,27 +147,37 @@ export function mountMyOrders(host:HTMLElement) {
     if(!confirmed || busy || originalAccount!==account) {paint();return;}
     if(!orderCanCancel(row) || orderEnded(row)) {paint();toastError("无法取消预约","已进入开始前1小时，不能取消预约");return;}
     cancelling=true;message="正在取消，请稍候…";paint();
+    let confirmedCancellation=false;
     try {
       const result=await invoke<OrdersResult>("cancel_my_order",{accountFingerprint:originalAccount,orderId:row.order_id,detailsId:row.details_id});
       if(!result.ok || result.state!=="cancelled") throw new Error(result.message ?? "取消结果未确认，请刷新或到小程序核对，勿重复取消");
       rows=rows.filter(item=>item!==row);
+      confirmedCancellation=true;
+      message=rows.length ? "" : "暂无未核销预约";
       toastSuccess("预约已取消");
     } catch(error) {toastError("取消未能确认",String(error));}
-    finally {cancelling=false;await refresh(false,true);}
+    finally {
+      cancelling=false;paint();
+      if(!confirmedCancellation || queued) {queued=false;await refresh(false,true);}
+    }
   }
   function status(value:LiveStatus) {
-    const wasBusy=busy,wasKnown=known;const nextBusy=value.running || value.armed;
+    const wasBusy=busy,wasKnown=known;const nextBusy=value.running || value.armed || Boolean(value.stopping);
+    const change=orderChangeTime(value);
+    if(change>changedAt) {changedAt=change;if(wasKnown) dirty=true;}
     known=true;busy=nextBusy;
     if(!wasKnown || wasBusy!==busy) paint();
-    if(!busy && (!wasKnown || wasBusy || queued)) {const force=wasKnown || queued;queued=false;void refresh(false,force);}
+    if(!busy && (!wasKnown || wasBusy || queued || dirty)) {
+      const force=queued || dirty;queued=false;dirty=false;void refresh(false,force);
+    }
   }
   subscribeLiveStatus(status);
   if(liveStatusCache) status(liveStatusCache);
   else void invoke<LiveStatus>("get_live_status").then(status).catch(()=>{message="暂未加载，请稍后重试";known=true;busy=false;paint();});
-  window.addEventListener("focus",()=>{if(Date.now()-lastSuccess>=60000) void refresh();});
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden && Date.now()-lastSuccess>=60000) void refresh();});
+  window.addEventListener("focus",()=>void refresh());
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden) void refresh();});
   window.addEventListener("orders-authenticated",()=>{loginRequired=false;void refresh(false,true);});
-  window.setInterval(()=>void refresh(),300000);
+  window.setInterval(()=>void refresh(),RECONCILE_INTERVAL);
   window.setInterval(()=>{if(!loading && !recovering && !confirming && !cancelling && policyKey()!==paintedPolicy) {if(rows.some(row=>orderEnded(row)) && !rows.some(row=>!orderEnded(row))) message="暂无未核销预约";paint();}},1000);
   paint();
 }

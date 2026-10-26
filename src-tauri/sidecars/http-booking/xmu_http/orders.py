@@ -16,6 +16,20 @@ CANCEL = "/index/stadium/cancelOrder"
 class OrdersClient(Client):
     allow_cancel = False
 
+    def login(self):
+        self._login_first_page = None
+        self._capturing_login = True
+        try:
+            return super().login()
+        finally:
+            self._capturing_login = False
+
+    def require(self, path, fields, *args, **kwargs):
+        data = super().require(path, fields, *args, **kwargs)
+        if getattr(self, "_capturing_login", False) and path == LIST and fields.get("p") == "1":
+            self._login_first_page = data
+        return data
+
     def post(self, path, *args, **kwargs):
         allowed = {"/index/Index/checkLogin", LIST, DETAIL}
         if self.allow_cancel:
@@ -86,13 +100,17 @@ def last_detail_end(detail):
     return max(ends).isoformat() if ends else None
 
 
-def active_rows(client, now=None, ended=None):
+def active_rows(client, now=None, ended=None, only_order=None):
     now = now or current_time()
     ended = ended if ended is not None else {}
     seen, result = set(), []
     for page in range(1, 31):
-        batch = collection(client.require(LIST, {"p": str(page)}, PAGES + "mine.html", timeout=(3, 6)))
+        first = getattr(client, "_login_first_page", None) if page == 1 else None
+        if first is not None:
+            client._login_first_page = None
+        batch = collection(first if first is not None else client.require(LIST, {"p": str(page)}, PAGES + "mine.html", timeout=(3, 6)))
         new = 0
+        found = False
         for order in batch:
             own(client, order, required=True)
             oid = identifier(order.get("order_id"))
@@ -102,6 +120,9 @@ def active_rows(client, now=None, ended=None):
                 continue
             seen.add(oid)
             new += 1
+            if only_order is not None and oid != only_order:
+                continue
+            found = True
             if str(order.get("audit_status")) != "1":
                 continue
             try:
@@ -135,7 +156,7 @@ def active_rows(client, now=None, ended=None):
             else:
                 ended.pop(oid, None)
             result.extend(visible_rows(detail_rows, now))
-        if len(batch) < 10:
+        if len(batch) < 10 or (only_order is not None and found):
             return sorted(result, key=lambda row: (row["date"], row["start"], row["end"], row["order_id"], row["details_id"]))
         if not new:
             break
@@ -143,7 +164,7 @@ def active_rows(client, now=None, ended=None):
 
 
 def cancel(client, oid, did):
-    matching = [row for row in active_rows(client) if row["order_id"] == oid and row["details_id"] == did]
+    matching = [row for row in active_rows(client, only_order=oid) if row["details_id"] == did]
     if len(matching) != 1:
         raise BookingError("ORDER_NOT_CANCELLABLE", "该场次已变化或不允许取消，请刷新核对")
     # Re-evaluate after the fresh read, never authorize a mutation from a snapshot.
@@ -203,7 +224,13 @@ def execute(payload):
         if not client.login().get("account_checked"):
             raise BookingError("HTTP_AUTH_UNVERIFIED", "尚未完成订单账号核验")
         if cancellation:
-            return cancel(client, oid, did)
+            result = cancel(client, oid, did)
+            if result.get("state") == "cancelled" and snapshot is not None:
+                # Patch only the verified cancellation; other rows keep their original age.
+                cache["snapshot"] = {**snapshot, "orders": [row for row in snapshot["orders"]
+                    if (row["order_id"], row["details_id"]) != (oid, did)]}
+                orders_cache.save(path, cache)
+            return result
         rows = visible_rows(active_rows(client, now=now, ended=cache["ended"]), current_time())
         stamp = current_time().isoformat()
         cache["snapshot"] = {"orders": rows, "fetched_at": stamp}

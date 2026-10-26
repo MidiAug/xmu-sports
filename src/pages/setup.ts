@@ -173,7 +173,11 @@ export async function renderSetup(panel: Element) {
               <label class="settings-cell-title" for="fire_delay">延迟执行（秒）</label>
               <p class="settings-cell-desc">在上面的时间后延迟 0–300 秒开始预约，例如 10 秒即 07:00:10；查单与提交仍需要时间</p>
             </div>
-            <input class="settings-control fire-delay-input" id="fire_delay" type="number" min="0" max="300" step="1" value="${saved?.fire_delay_seconds ?? 0}" />
+            <div class="stepper fire-delay-stepper" role="group" aria-label="延迟执行秒数">
+              <button type="button" class="stepper-btn" id="delay_prev" aria-label="减少一秒">−</button>
+              <input class="stepper-value fire-delay-input" id="fire_delay" type="number" min="0" max="300" step="1" inputmode="numeric" value="${saved?.fire_delay_seconds ?? 0}" />
+              <button type="button" class="stepper-btn" id="delay_next" aria-label="增加一秒">+</button>
+            </div>
           </div>
           <div class="settings-cell">
             <div>
@@ -222,6 +226,8 @@ export async function renderSetup(panel: Element) {
   const firePrevBtn = panel.querySelector("#fire_prev") as HTMLButtonElement;
   const fireNextBtn = panel.querySelector("#fire_next") as HTMLButtonElement;
   const fireDelayEl = panel.querySelector("#fire_delay") as HTMLInputElement;
+  const delayPrevBtn = panel.querySelector<HTMLButtonElement>("#delay_prev")!;
+  const delayNextBtn = panel.querySelector<HTMLButtonElement>("#delay_next")!;
   const msgEl = panel.querySelector("#setup_msg");
   const availabilityHost = panel.querySelector("#availability_panel") as HTMLElement;
   let availability: Availability | null = null;
@@ -575,7 +581,19 @@ export async function renderSetup(panel: Element) {
   });
   firePrevBtn.addEventListener("click", () => shiftFireTime(-1));
   fireNextBtn.addEventListener("click", () => shiftFireTime(1));
-  fireDelayEl.addEventListener("input", scheduleSave);
+  function syncDelayButtons() {
+    delayPrevBtn.disabled = fireDelayEl.valueAsNumber <= 0;
+    delayNextBtn.disabled = fireDelayEl.valueAsNumber >= 300;
+  }
+  function shiftDelay(delta: number) {
+    const current = Number.isFinite(fireDelayEl.valueAsNumber) ? Math.trunc(fireDelayEl.valueAsNumber) : 0;
+    fireDelayEl.value = String(Math.min(300, Math.max(0, current + delta)));
+    syncDelayButtons(); scheduleSave();
+  }
+  delayPrevBtn.onclick = () => shiftDelay(-1);
+  delayNextBtn.onclick = () => shiftDelay(1);
+  fireDelayEl.addEventListener("input", () => { syncDelayButtons(); scheduleSave(); });
+  syncDelayButtons();
   syncDateOptions();
   syncFirePrevState();
 
