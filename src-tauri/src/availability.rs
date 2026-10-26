@@ -3,7 +3,7 @@ use serde_json::{json,Value};
 use std::sync::{Arc,Mutex,mpsc,atomic::{AtomicBool,Ordering}};
 use std::time::{Duration,Instant};
 use tauri::Manager;
-static QUERY:Mutex<()>=Mutex::new(());
+pub(crate) static QUERY:Mutex<()>=Mutex::new(());
 static RECOVERY:Mutex<Option<(String,Arc<AtomicBool>)>>=Mutex::new(None);
 static EARLY_CANCEL:Mutex<Vec<String>>=Mutex::new(Vec::new());
 
@@ -69,7 +69,7 @@ pub async fn reauthenticate_availability(app:tauri::AppHandle,operation_id:Strin
     let active=Arc::new(AtomicBool::new(true));
     {
         let _gate=state.task_gate.lock().map_err(|_|"任务状态不可用")?;
-        if crate::child_running(&state) || crate::load_arm().armed {return Err("请先结束预约任务".into());}
+        if crate::child_running(&state) || crate::load_arm().armed || crate::my_orders::mutating() {return Err("请先结束预约或订单操作".into());}
         let mut current=RECOVERY.lock().map_err(|_|"登录状态不可用")?;
         if current.is_some() {return Err("登录恢复正在进行".into());}
         let mut cancelled=EARLY_CANCEL.lock().map_err(|_|"登录状态不可用")?;
@@ -99,7 +99,7 @@ pub async fn get_venue_availability(app:tauri::AppHandle,sport:String,venue:Stri
     tauri::async_runtime::spawn_blocking(move|| {
         let _guard=QUERY.lock().map_err(|_|"场次查询状态不可用")?;
         let state=app.state::<crate::AppState>();
-        if recovering() {return Err("登录恢复中，请稍候刷新".into());}
+        if recovering() || crate::my_orders::mutating() {return Err("登录或订单操作进行中，请稍候刷新".into());}
         if crate::child_running(&state) || crate::load_arm().armed {
             return Err("定时预约或预约流程正在运行，暂不查询场次，请结束后刷新".into());
         }

@@ -284,6 +284,7 @@ export async function renderSetup(panel: Element) {
         throw new Error(result?.code==="ACCOUNT_CHANGED" ? "登录账号已变化，未刷新" : result?.reason==="BACKGROUND_LOGIN_UNAVAILABLE" ? "请显示小程序并完成登录" : result?.code==="LOGIN_CONFIRM_REQUIRED" ? "请在微信完成登录确认" : result?.code==="HTTP_AUTH_UNVERIFIED" ? "登录身份未能核实" : "登录未完成，请重试");
       }
       availabilityNeedsLogin=false; availabilityRecovering=false; availabilityLoginId=undefined;
+      window.dispatchEvent(new Event("orders-authenticated"));
       availabilityStore.reset();
       await loadAvailability(true);
     } catch(error) {

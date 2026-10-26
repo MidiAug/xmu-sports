@@ -20,10 +20,12 @@ mod scheduled_run;
 mod diag_export;
 mod http_booking;
 mod availability;
+mod my_orders;
 mod worker_process;
 mod pending_orders;
 mod worker_diagnostic;
 mod normal_login;
+mod login_overlay;
 mod semantic_login;
 mod login_diagnostic;
 mod run_control;
@@ -470,7 +472,7 @@ fn history_to_run_event(h: run_trace::HistoryEvent) -> RunEvent {
 
 fn spawn_http_inner(app: tauri::AppHandle, state: &AppState, until: Option<String>) -> Result<String, String> {
     let _guard = state.task_gate.lock().map_err(|_| "任务状态不可用")?;
-    if availability::recovering() {return Err("场次登录恢复中，请稍候或取消登录".into());}
+    if availability::recovering() || my_orders::mutating() {return Err("登录或订单操作进行中，请稍候".into());}
     if load_arm().armed { return Err("已有定时任务，请先取消定时预约".into()); }
     ensure_dirs()?;
     let task = read_task()?.ok_or_else(|| "请先在任务页配置预约目标".to_string())?;
@@ -919,7 +921,7 @@ async fn recheck_order(app:tauri::AppHandle,request_ref:String)->Result<Value,St
     {
         let state=app.state::<AppState>();
         let _guard=state.task_gate.lock().map_err(|_|"任务状态不可用")?;
-        if load_arm().armed || child_running(&state) {return Err("请等待当前操作结束或先取消定时预约".into());}
+        if load_arm().armed || child_running(&state) || availability::recovering() || my_orders::mutating() {return Err("请等待当前操作结束或先取消定时预约".into());}
         if state.native_running.compare_exchange(false,true,Ordering::SeqCst,Ordering::SeqCst).is_err() {return Err("已有操作在执行".into());}
         state.stopping.store(false,Ordering::SeqCst);
         run_gen=state.run_gen.fetch_add(1,Ordering::SeqCst)+1;
@@ -954,7 +956,7 @@ async fn recheck_order(app:tauri::AppHandle,request_ref:String)->Result<Value,St
 #[tauri::command]
 fn arm_hang(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     let _guard = state.task_gate.lock().map_err(|_| "任务状态不可用")?;
-    if availability::recovering() {return Err("场次登录恢复中，请稍候或取消登录".into());}
+    if availability::recovering() || my_orders::mutating() {return Err("登录或订单操作进行中，请稍候".into());}
     let task = read_task()?.ok_or_else(|| "请先在任务页配置预约目标".to_string())?;
     let fire = parse_fire_at(&task.fire_at)?;
     let now = Local::now().fixed_offset();
@@ -1281,6 +1283,8 @@ pub fn run() {
             updates::install_app_update,
             updates::open_update_folder,
             save_task,
+            my_orders::get_my_orders,
+            my_orders::cancel_my_order,
             availability::get_venue_availability,
             availability::reauthenticate_availability,
             availability::cancel_availability_login,

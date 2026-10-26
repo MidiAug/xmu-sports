@@ -88,8 +88,11 @@ def ordered_fallbacks(data, target, order):
 
 def execute(payload, cancelled, runtime=None):
     action = payload.get("action")
-    if not isinstance(action, str) or action not in {"self_test", "check", "check_existing", "recheck_pending", "recover_auth", "prepare", "book", "warm", "ping", "availability"}:
+    if not isinstance(action, str) or action not in {"self_test", "check", "check_existing", "recheck_pending", "recover_auth", "prepare", "book", "warm", "ping", "availability", "my_orders", "cancel_order"}:
         raise BookingError("INVALID_ACTION", "未知操作，未执行登录或预约请求")
+    if action in {"my_orders", "cancel_order"}:
+        from xmu_http.orders import execute as orders_execute
+        return orders_execute(payload)
     warm_solver = runtime.consume(payload) if runtime is not None and action == "book" else None
     if action == "availability":
         from xmu_http.availability import query
@@ -204,7 +207,7 @@ def handle_request(line, runtime=None, readonly=False):
         payload = json.loads(line)
         action = payload.get("action")
         RPC_ID = payload.get("rpc_id")
-        if readonly and payload.get("action") not in {"warm","ping","check","check_existing","recheck_pending","self_test","availability"}:
+        if readonly and payload.get("action") not in {"warm","ping","check","check_existing","recheck_pending","self_test","availability","my_orders"}:
             raise BookingError("READONLY_WORKER", "此诊断进程禁止预约操作")
         cancel_path = Path(payload["cancel_file"]) if payload.get("cancel_file") else None
         if cancel_path:

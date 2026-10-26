@@ -445,7 +445,7 @@ pub async fn install_app_update(app: tauri::AppHandle) -> Result<(), String> {
             crate::load_arm().armed,
             crate::child_running(&runtime),
             runtime.stopping.load(std::sync::atomic::Ordering::SeqCst),
-            crate::availability::recovering(),
+            crate::availability::recovering() || crate::my_orders::mutating(),
         )?;
         let state = state()
             .try_lock()

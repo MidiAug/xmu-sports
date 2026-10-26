@@ -25,6 +25,8 @@ import { flushTask, discardTaskDraft } from "../lib/task-store";
 import { toastError } from "./toast";
 import { askConfirm } from "./confirm-ask";
 
+import { mountMyOrders } from "./my-orders";
+
 const win = getCurrentWindow();
 let chromeBound = false;
 let dateClockStarted = false;
@@ -172,6 +174,7 @@ function mountShell() {
             <button type="button" data-tab="history" class="${tab === "history" ? "active" : ""}">${SVG.tabHistory}<span class="nav-tab-label">历史</span></button>
             <button type="button" data-tab="settings" class="${tab === "settings" ? "active" : ""}">${SVG.tabSettings}<span class="nav-tab-label">设置</span></button>
           </nav>
+          <section class="my-orders" id="my_orders" aria-label="未核销预约"></section>
           <div class="nav-foot" id="nav_foot" hidden></div>
         </aside>
         <div class="shell-main">
@@ -189,6 +192,7 @@ function mountShell() {
   chromeBound = false;
   bindChromeOnce();
   void fillNavFoot();
+  mountMyOrders(app.querySelector<HTMLElement>("#my_orders")!);
   if (!dateClockStarted) {
     dateClockStarted = true;
     startTargetDateCalibrationClock(() => {

@@ -63,19 +63,22 @@ pub(crate) fn recover(
     mut progress: impl FnMut(&str),
     mut element_evidence: impl FnMut(Value),
 ) -> Result<Value,String> {
-    let mut result=recover_once(root,run_id,expected,&active,&mut verify,&mut progress,&mut element_evidence)?;
+    if !active() {return Err("已取消".into());}
+    let overlay=crate::login_overlay::LoginOverlay::start();
+    let mut report=|phase:&str| {overlay.phase(phase);progress(phase);};
+    let mut result=recover_once(root,run_id,expected,&active,&mut verify,&mut report,&mut element_evidence)?;
     if should_reenter(&result) {
         if !active() { return Err("已取消".into()); }
-        progress("normal_ui_reenter");
+        report("normal_ui_reenter");
         if let Err(code)=reopen_miniprogram(&active) {
             return if code=="已取消" {Err(code)} else {Ok(manual(&code))};
         }
-        result=recover_once(root,run_id,expected,&active,&mut verify,&mut progress,&mut element_evidence)?;
+        result=recover_once(root,run_id,expected,&active,&mut verify,&mut report,&mut element_evidence)?;
     }
     if result["ok"]==true {
         if !active() {return Err("已取消".into());}
         let account=result["account_fingerprint"].as_str().map(str::to_owned);
-        progress("closing_miniprogram");
+        report("closing_miniprogram");
         match close_miniprogram(&active) {
             Ok(())=> {
                 // Closing the mini-program must not be mistaken for a logout.
@@ -83,10 +86,10 @@ pub(crate) fn recover(
                 result=validate(verify()?,account.as_deref());
                 for key in ["recovery_mode","login_adapter","kernel_hook_used"] {result[key]=previous[key].clone();}
                 result["mini_program_closed"]=json!(true);
-                progress("normal_ui_closed");
+                report("normal_ui_closed");
             },
             Err(code) if code=="已取消"=>return Err(code),
-            Err(_)=>{result["mini_program_closed"]=json!(false);progress("normal_ui_close_pending");},
+            Err(_)=>{result["mini_program_closed"]=json!(false);report("normal_ui_close_pending");},
         }
     }
     Ok(result)
