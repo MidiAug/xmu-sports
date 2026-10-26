@@ -1264,7 +1264,7 @@ mod tests {
             detailed_diagnostics: true,
             flush_timeout: Duration::from_secs(2),
         };
-        let trace = RunTraceHandle::open(
+        let mut trace = RunTraceHandle::open(
             &root,
             "task-b",
             "run-2",
@@ -1273,7 +1273,10 @@ mod tests {
             cfg,
         )
         .unwrap();
-        // Fill debug queue without letting writer drain: hold by flooding before finish.
+        // Hold the debug receiver explicitly; flooding a live writer races its drain.
+        // Restore the real writer afterwards so finish/critical flush stay covered.
+        let (held_tx, held_rx) = mpsc::sync_channel(1);
+        let writer_tx = std::mem::replace(&mut trace.debug_tx, held_tx);
         let observation=json!({"page":"test","padding":"x".repeat(4096)});
         let mut dropped = 0u32;
         for i in 0..20 {
@@ -1282,9 +1285,13 @@ mod tests {
                 EnqueueOutcome::Queued { .. } => {}
             }
         }
-        assert!(dropped > 0, "expected some debug drops with capacity=1");
+        assert_eq!(dropped, 19, "one queued item must fill the held capacity=1 queue");
         let snap = trace.metrics_snapshot();
-        assert!(snap.dropped_debug_count > 0);
+        assert_eq!(snap.dropped_debug_count, 19);
+        let queued = held_rx.try_recv().expect("one observation queued");
+        trace.debug_tx = writer_tx;
+        assert!(trace.debug_tx.try_send(queued).is_ok());
+        let _ = trace.wake_tx.send(());
         let _ = trace.try_event("fail", None, "DATE_MISMATCH", None, None, None, json!({}));
         let finish = trace.finish("failed", Some("DATE_MISMATCH"));
         assert!(finish.flush_ok);
