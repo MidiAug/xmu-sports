@@ -9,7 +9,7 @@ export function mountShellSelect(
   options: SelectOption[],
   selected: string,
   onChange: (value: string) => void,
-  opts?: { wide?: boolean; columns?: boolean; center?: boolean },
+  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean },
 ): { getValue: () => string; setOptions: (opts: SelectOption[], sel?: string) => void; setDisabled: (disabled: boolean) => void } {
   let value = selected;
   let selectOpts = options;
@@ -18,6 +18,7 @@ export function mountShellSelect(
   const wide = Boolean(opts?.wide);
   const forceColumns = Boolean(opts?.columns);
   const center = Boolean(opts?.center);
+  const compact = Boolean(opts?.compact);
   const menuId = `select-${crypto.randomUUID()}`;
   const label = host.closest(".settings-cell")?.querySelector(".settings-cell-title")?.textContent ?? "选择选项";
   let cleanup: (() => void) | undefined;
@@ -94,8 +95,10 @@ export function mountShellSelect(
     const bottom = Math.min(window.innerHeight - 8, (container?.bottom ?? window.innerHeight) - 8);
     if (anchor.bottom < top || anchor.top > bottom || right <= left) { close(host); return; }
     const detailed=selectOpts.some(o=>o.badge);
-    const width = Math.min(Math.max(anchor.width, detailed ? 420 : useColumns() ? selectOpts.length >= 9 ? 400 : 300 : anchor.width), right - left);
-    const columns = useColumns() ? Math.max(1, Math.min(detailed ? 2 : selectOpts.length >= 9 ? 3 : 2, Math.floor((width - 12) / (detailed ? 190 : 124)))) : 1;
+    const wantedWidth = compact ? Math.min(320, Math.max(280, anchor.width))
+      : Math.max(anchor.width, detailed ? 420 : useColumns() ? selectOpts.length >= 9 ? 400 : 300 : anchor.width);
+    const width = Math.min(wantedWidth, right - left);
+    const columns = useColumns() ? Math.max(1, Math.min(compact || detailed ? 2 : selectOpts.length >= 9 ? 3 : 2, Math.floor((width - 12) / (compact ? 130 : detailed ? 190 : 124)))) : 1;
     menu.style.width = `${width}px`;
     menu.style.setProperty("--select-columns", String(columns));
     menu.style.maxHeight = "none";

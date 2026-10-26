@@ -447,11 +447,11 @@ export async function renderSetup(panel: Element) {
 
   let preferredCourt = saved?.prefer_court ?? "";
   const courtSelect = mountShellSelect(panel.querySelector("#court_host") as HTMLElement,
-    [{ value: "", label: "自动选择可约场地" }], "", (value) => {
+    [{ value: "", label: "自动选择" }], "", (value) => {
       preferredCourt = value;
       scheduleSave();
       paintAvailability();
-    });
+    }, { compact: true });
 
   function currentVenue(): Venue | undefined {
     const sp = findSport(sportSelect.getValue());
@@ -464,7 +464,7 @@ export async function renderSetup(panel: Element) {
     const selected=current?.slots.find(slot=>`${slot.start}|${slot.end}`===slotSelect.getValue());
     const locked=!!selected && isAdminLocked(selected);
     const options:SelectOption[]=[
-      {value:"",label:"自动选择可约场地",badge:locked ? "全部锁定" : undefined,disabled:locked},
+      {value:"",label:"自动选择",badge:locked ? "全部锁定" : undefined,disabled:locked},
       ...(selected?.cells.length ? selected.cells.map(courtOption) : courts.map(court=>({value:court.name,label:courtLabel(court.name)}))),
     ];
     if (preferredCourt && !options.some(option=>option.value===preferredCourt)) {
