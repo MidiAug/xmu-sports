@@ -5,7 +5,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use windows::core::w;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HANDLE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -54,7 +54,7 @@ fn phase_text(phase: &str) -> Option<&'static str> {
     })
 }
 
-struct PaintState { phase: &'static str, scale: f32 }
+struct PaintState { phase: &'static str, scale: f32, panel: bool }
 
 unsafe fn text(dc: HDC, value: &str, mut rect: RECT, size: i32, bold: bool, color: COLORREF) {
     let font = CreateFontW(-size, 0, 0, 0, if bold {600} else {400}, 0, 0, 0,
@@ -68,26 +68,15 @@ unsafe fn text(dc: HDC, value: &str, mut rect: RECT, size: i32, bold: bool, colo
 }
 
 unsafe fn paint_status(dc: HDC, rect: RECT, state: &PaintState) {
-    // One click-through window dims the full verified mini-program, including its titlebar.
-    let shade = CreateSolidBrush(COLORREF(0x001b1917));
-    FillRect(dc, &rect, shade);
-    let _ = DeleteObject(shade.into());
-    SetBkMode(dc, TRANSPARENT);
-    let s = |n: i32| (n as f32 * state.scale).round() as i32;
-    let width=s(320).min(rect.right-s(32)).max(1);
-    let height=s(112).min(rect.bottom-s(32)).max(1);
-    let left=(rect.right-width)/2;
-    let top=(rect.bottom-height)/2;
-    let panel=CreateSolidBrush(COLORREF(0x003b3530));
-    let pen=CreatePen(PS_SOLID,1,COLORREF(0x00524c46));
-    let old_brush=SelectObject(dc,panel.into());
-    let old_pen=SelectObject(dc,pen.into());
-    let _=RoundRect(dc,left,top,left+width,top+height,s(20),s(20));
-    SelectObject(dc,old_brush);SelectObject(dc,old_pen);
-    let _=DeleteObject(panel.into());let _=DeleteObject(pen.into());
-    text(dc, "正在登录中，请稍候", RECT {left:left+s(18),top:top+s(15),right:left+width-s(16),bottom:top+s(41)}, s(15), true, COLORREF(0x00ffffff));
-    text(dc, state.phase, RECT {left:left+s(18),top:top+s(46),right:left+width-s(16),bottom:top+s(67)}, s(12), false, COLORREF(0x00e8dac7));
-    text(dc, "鼠标可自由移动，请暂勿点击小程序", RECT {left:left+s(18),top:top+s(76),right:left+width-s(16),bottom:top+s(97)}, s(11), false, COLORREF(0x00ccd0d5));
+    let background=CreateSolidBrush(if state.panel {COLORREF(0x003b3530)} else {COLORREF(0x001b1917)});
+    FillRect(dc,&rect,background);
+    let _=DeleteObject(background.into());
+    if !state.panel {return;}
+    SetBkMode(dc,TRANSPARENT);
+    let s=|n:i32|(n as f32*state.scale).round() as i32;
+    text(dc,"正在登录中，请稍候",RECT{left:s(18),top:s(15),right:rect.right-s(16),bottom:s(41)},s(15),true,COLORREF(0x00ffffff));
+    text(dc,state.phase,RECT{left:s(18),top:s(46),right:rect.right-s(16),bottom:s(67)},s(12),false,COLORREF(0x00e8dac7));
+    text(dc,"鼠标可自由移动，请暂勿点击小程序",RECT{left:s(18),top:s(76),right:rect.right-s(16),bottom:s(97)},s(11),false,COLORREF(0x00ccd0d5));
 }
 
 unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
@@ -122,7 +111,7 @@ unsafe extern "system" fn proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
 }
 
 unsafe fn create(owner: HWND, state: &mut PaintState) -> Option<HWND> {
-    let class = w!("XmuSportsLoginStatus");
+    let class = if state.panel {w!("XmuSportsLoginPanel")} else {w!("XmuSportsLoginStatus")};
     let instance = GetModuleHandleW(None).ok()?;
     let definition = WNDCLASSW { hInstance: instance.into(), lpfnWndProc: Some(proc), lpszClassName: class, ..Default::default() };
     // Registration is process-wide; a previously registered identical class is fine.
@@ -130,63 +119,107 @@ unsafe fn create(owner: HWND, state: &mut PaintState) -> Option<HWND> {
     let hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT,
                               class, w!("XMU Sports 登录提示"), WS_POPUP, 0, 0, 1, 1, Some(owner), None, Some(instance.into()),
                               Some(state as *mut PaintState as *const _)).ok()?;
-    if SetLayeredWindowAttributes(hwnd, COLORREF(0), 195, LWA_ALPHA).is_err() { let _=DestroyWindow(hwnd); return None; }
+    if SetLayeredWindowAttributes(hwnd, COLORREF(0), if state.panel {255} else {195}, LWA_ALPHA).is_err() { let _=DestroyWindow(hwnd); return None; }
     Some(hwnd)
+}
+
+// A window property follows this exact HWND lifetime and disappears if it is destroyed.
+// It prevents a recycled handle or another pin operation from inheriting our restoration.
+struct Pin { hwnd:HWND, token:Box<u8>, original_topmost:bool }
+impl Pin {
+    unsafe fn new(hwnd:HWND)->Option<Self> {
+        if !GetPropW(hwnd,w!("XmuSportsLoginPin")).0.is_null() {return None;}
+        let token=Box::new(0u8);
+        let marker=HANDLE((&*token as *const u8).cast_mut().cast());
+        let original_topmost=GetWindowLongPtrW(hwnd,GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0 !=0;
+        SetPropW(hwnd,w!("XmuSportsLoginPin"),Some(marker)).ok()?;
+        let pin=Self{hwnd,token,original_topmost};
+        if !pin.ensure() {return None;}
+        Some(pin)
+    }
+    unsafe fn owns(&self)->bool {
+        GetPropW(self.hwnd,w!("XmuSportsLoginPin")).0==(&*self.token as *const u8).cast_mut().cast()
+    }
+    unsafe fn ensure(&self)->bool {
+        self.owns() && SetWindowPos(self.hwnd,Some(HWND_TOPMOST),0,0,0,0,
+            SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER).is_ok()
+    }
+}
+impl Drop for Pin {
+    fn drop(&mut self) {unsafe {
+        if self.owns() {
+            let _=SetWindowPos(self.hwnd,Some(if self.original_topmost {HWND_TOPMOST} else {HWND_NOTOPMOST}),0,0,0,0,
+                SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER);
+            let _=RemovePropW(self.hwnd,w!("XmuSportsLoginPin"));
+        }
+    }}
+}
+
+struct Layers { mask:HWND, panel:HWND, target:crate::wechat_window::NativeSurface, _pin:Pin }
+impl Drop for Layers {
+    fn drop(&mut self) {unsafe {let _=DestroyWindow(self.panel);let _=DestroyWindow(self.mask);}}
 }
 
 fn run(receiver: Receiver<&'static str>) {
     unsafe {
-        let _ = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        let mut state = Box::new(PaintState { phase: "正在准备登录", scale: 1.0 });
-        let mut overlay: Option<(HWND, crate::wechat_window::NativeSurface)> = None;
+        let _=SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        let mut mask_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:false});
+        let mut panel_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:true});
+        let mut layers:Option<Layers>=None;
         loop {
             match receiver.recv_timeout(Duration::from_millis(200)) {
-                Ok(phase) => state.phase = phase,
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
-                Err(mpsc::RecvTimeoutError::Timeout) => {},
+                Ok(phase)=>panel_state.phase=phase,
+                Err(mpsc::RecvTimeoutError::Disconnected)=>break,
+                Err(mpsc::RecvTimeoutError::Timeout)=>{},
             }
-            while let Ok(phase) = receiver.try_recv() {state.phase=phase;}
-            let candidates = crate::wechat_window::discover_wechat_candidates().unwrap_or_default();
-            let target = if candidates.len()==1 && candidates[0].visible {candidates.first()} else {None};
+            while let Ok(phase)=receiver.try_recv() {panel_state.phase=phase;}
+            let candidates=crate::wechat_window::discover_wechat_candidates().unwrap_or_default();
+            let target=if candidates.len()==1 {candidates.first()} else {None};
             if target.is_some() {TARGET_SAMPLES.fetch_add(1,Ordering::Relaxed);}
             if target.is_some_and(|target|GetForegroundWindow()==target.hwnd()) {FOCUSED_SAMPLES.fetch_add(1,Ordering::Relaxed);}
-            if overlay.as_ref().is_some_and(|(hwnd, old)| !IsWindow(Some(*hwnd)).as_bool() ||
-                target.is_none_or(|current|current.hwnd_u64!=old.hwnd_u64 || current.owner!=old.owner)) {
-                if let Some((hwnd,_))=overlay.take() {let _=DestroyWindow(hwnd);}
-            }
-            if overlay.is_none() {
-                if let Some(target) = target.filter(|target|GetForegroundWindow()==target.hwnd()) {
-                    if let Some(hwnd) = create(target.hwnd(), &mut state) {CREATED.fetch_add(1,Ordering::Relaxed);overlay=Some((hwnd,target.clone()));}
+            if layers.as_ref().is_some_and(|old|!IsWindow(Some(old.mask)).as_bool() || !IsWindow(Some(old.panel)).as_bool() ||
+                target.is_none_or(|current|current.hwnd_u64!=old.target.hwnd_u64 || current.owner!=old.target.owner)) {layers.take();}
+            if layers.is_none() {
+                if let Some(target)=target.filter(|target|target.visible && GetForegroundWindow()==target.hwnd()) {
+                    if let Some(pin)=Pin::new(target.hwnd()) {
+                        if let Some(mask)=create(target.hwnd(),&mut mask_state) {
+                            if let Some(panel)=create(mask,&mut panel_state) {
+                                CREATED.fetch_add(1,Ordering::Relaxed);
+                                layers=Some(Layers{mask,panel,target:target.clone(),_pin:pin});
+                            } else {let _=DestroyWindow(mask);}
+                        }
+                    }
                 }
             }
-            if let Some((hwnd, target)) = &overlay {
-                if GetForegroundWindow()!=target.hwnd() || IsIconic(target.hwnd()).as_bool() {
-                    let _ = ShowWindow(*hwnd, SW_HIDE);
-                } else {
-                    let mut rect=RECT::default();
-                    if GetWindowRect(target.hwnd(), &mut rect).is_ok() {
-                        state.scale=GetDpiForWindow(target.hwnd()).max(96) as f32/96.0;
-                        let s=|n:i32|(n as f32*state.scale).round() as i32;
-                        let width=rect.right-rect.left;
-                        let height=rect.bottom-rect.top;
-                        if width>=s(220) && height>=s(150) {
-                            let _=SetWindowPos(*hwnd, Some(HWND_TOPMOST), rect.left, rect.top, width, height, SWP_NOACTIVATE);
-                            let region=CreateRoundRectRgn(0,0,width+1,height+1,s(12),s(12));
-                            if SetWindowRgn(*hwnd,Some(region),true)==0 {let _=DeleteObject(region.into());}
-                            let _=InvalidateRect(Some(*hwnd),None,false);
-                            let _=UpdateWindow(*hwnd);
-                            if GetForegroundWindow()==target.hwnd() {let _=ShowWindow(*hwnd,SW_SHOWNOACTIVATE);if IsWindowVisible(*hwnd).as_bool() {SHOWN.fetch_add(1,Ordering::Relaxed);}}
-                        } else {let _=ShowWindow(*hwnd, SW_HIDE);}
-                    } else {let _=ShowWindow(*hwnd, SW_HIDE);}
-                }
+            if let Some(layers)=&layers {
+                let _=layers._pin.ensure();
+                let mut rect=RECT::default();
+                if !IsIconic(layers.target.hwnd()).as_bool() && GetWindowRect(layers.target.hwnd(),&mut rect).is_ok() {
+                    let scale=GetDpiForWindow(layers.target.hwnd()).max(96) as f32/96.0;
+                    mask_state.scale=scale;panel_state.scale=scale;
+                    let s=|n:i32|(n as f32*scale).round() as i32;
+                    let width=rect.right-rect.left;let height=rect.bottom-rect.top;
+                    if width>=s(220) && height>=s(150) {
+                        let panel_width=s(320).min(width-s(32));let panel_height=s(112).min(height-s(32));
+                        for (hwnd,x,y,w,h,radius) in [
+                            (layers.mask,rect.left,rect.top,width,height,s(12)),
+                            (layers.panel,rect.left+(width-panel_width)/2,rect.top+(height-panel_height)/2,panel_width,panel_height,s(20)),
+                        ] {
+                            let _=SetWindowPos(hwnd,Some(HWND_TOPMOST),x,y,w,h,SWP_NOACTIVATE|SWP_NOOWNERZORDER);
+                            let region=CreateRoundRectRgn(0,0,w+1,h+1,radius,radius);
+                            if SetWindowRgn(hwnd,Some(region),true)==0 {let _=DeleteObject(region.into());}
+                            let _=InvalidateRect(Some(hwnd),None,false);let _=UpdateWindow(hwnd);
+                            let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);
+                        }
+                        if IsWindowVisible(layers.mask).as_bool() && IsWindowVisible(layers.panel).as_bool() {SHOWN.fetch_add(1,Ordering::Relaxed);}
+                    } else {let _=ShowWindow(layers.panel,SW_HIDE);let _=ShowWindow(layers.mask,SW_HIDE);}
+                } else {let _=ShowWindow(layers.panel,SW_HIDE);let _=ShowWindow(layers.mask,SW_HIDE);}
             }
             let mut message=MSG::default();
-            while PeekMessageW(&mut message,None,0,0,PM_REMOVE).as_bool() {
-                let _=TranslateMessage(&message);
-                DispatchMessageW(&message);
-            }
+            while PeekMessageW(&mut message,None,0,0,PM_REMOVE).as_bool() {let _=TranslateMessage(&message);DispatchMessageW(&message);}
         }
-        if let Some((hwnd,_))=overlay {let _=DestroyWindow(hwnd);}
+        // Destroy our two windows, then restore the original owner's topmost state.
+        drop(layers);
     }
 }
 
@@ -205,7 +238,7 @@ mod tests {
             let before=GetForegroundWindow();
             let owner=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Isolated login fixture"),WS_POPUP,
                                       -10000,-10000,520,815,None,None,None,None).unwrap();
-            let mut state=PaintState{phase:"正在核验登录状态",scale:1.0};
+            let mut state=PaintState{phase:"正在核验登录状态",scale:1.0,panel:false};
             let overlay=create(owner,&mut state).expect("native overlay must be creatable");
             let _=SetWindowPos(overlay,None,-10000,-10000,520,815,SWP_NOACTIVATE);
             assert_eq!(GetForegroundWindow(),before,"overlay cannot steal focus");
@@ -223,6 +256,15 @@ mod tests {
             let bitmap=CreateDIBSection(Some(dc),&info,DIB_RGB_COLORS,&mut pixels,None,0).unwrap();
             let previous=SelectObject(dc,bitmap.into());
             SendMessageW(overlay,WM_PRINTCLIENT,Some(WPARAM(dc.0 as usize)),Some(LPARAM(PRF_CLIENT as isize)));
+            let mut panel_state=PaintState{phase:"正在核验登录状态",scale:1.0,panel:true};
+            let panel=create(overlay,&mut panel_state).unwrap();
+            let _=SetWindowPos(panel,None,-10000,-10000,320,112,SWP_NOACTIVATE);
+            let mut panel_alpha=0;GetLayeredWindowAttributes(panel,None,Some(&mut panel_alpha),None).unwrap();
+            assert_eq!(panel_alpha,255,"status card must be opaque independently of its mask");
+            let _=SetViewportOrgEx(dc,100,351,None);
+            SendMessageW(panel,WM_PRINTCLIENT,Some(WPARAM(dc.0 as usize)),Some(LPARAM(PRF_CLIENT as isize)));
+            let _=SetViewportOrgEx(dc,0,0,None);
+            let _=DestroyWindow(panel);
             let _=GdiFlush();
             let bytes=std::slice::from_raw_parts(pixels as *const u8,520*815*4);
             assert!(bytes.chunks_exact(4).any(|pixel|pixel[0]>200 && pixel[1]>200 && pixel[2]>200),"status text must render");
@@ -237,6 +279,36 @@ mod tests {
             let _=DestroyWindow(overlay);
             let _=DestroyWindow(owner);
             assert!(!IsWindow(Some(overlay)).as_bool());
+        }
+    }
+
+    #[test]
+    fn pin_preserves_original_state_and_outlives_other_normal_windows() {
+        unsafe {
+            let owner=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Isolated pin fixture"),WS_POPUP,
+                -10000,-10000,520,815,None,None,None,None).unwrap();
+            let other=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Ordinary moving window"),WS_POPUP,
+                -10000,-10000,600,850,None,None,None,None).unwrap();
+            let before=GetForegroundWindow();
+            let is_top=||GetWindowLongPtrW(owner,GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0 !=0;
+            assert!(!is_top());
+            {
+                let pin=Pin::new(owner).unwrap();assert!(is_top());
+                for offset in [20,0,35] {
+                    SetWindowPos(other,Some(HWND_TOP),-10000+offset,-10000,600,850,SWP_NOACTIVATE).unwrap();
+                    assert!(pin.ensure());assert!(is_top());
+                    let mut previous=GetWindow(other,GW_HWNDPREV).unwrap_or_default();
+                    let mut above=false;
+                    while !previous.0.is_null() {if previous==owner {above=true;break;}previous=GetWindow(previous,GW_HWNDPREV).unwrap_or_default();}
+                    assert!(above,"ordinary windows stay below pinned owner");
+                }
+            }
+            assert!(!is_top(),"temporary pin must be restored");
+            SetWindowPos(owner,Some(HWND_TOPMOST),0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE).unwrap();
+            {let _pin=Pin::new(owner).unwrap();}
+            assert!(is_top(),"an originally topmost owner must remain topmost");
+            assert_eq!(GetForegroundWindow(),before,"pinning never steals focus");
+            let _=DestroyWindow(other);let _=DestroyWindow(owner);
         }
     }
 
