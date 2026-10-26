@@ -26,6 +26,8 @@ import { toastError } from "./toast";
 import { askConfirm } from "./confirm-ask";
 
 import { mountMyOrders } from "./my-orders";
+import { mountVersionUpdate } from "./version-update";
+import { renderAbout } from "../pages/about";
 
 const win = getCurrentWindow();
 let chromeBound = false;
@@ -114,14 +116,14 @@ async function fillNavFoot() {
   if (!foot) return;
   try {
     const version = await getVersion();
-    foot.textContent = `v${version}`;
+    foot.querySelector(".nav-version")!.textContent = `v${version}`;
     foot.removeAttribute("hidden");
   } catch {
     foot.setAttribute("hidden", "");
   }
 }
 
-async function showTab(next: Tab) {
+async function showTab(next: Tab, about = false) {
   const request = ++navigation;
   log.debug("chrome", "show_tab", { tab: next });
   const end = log.time("chrome", "show_tab_done", { tab: next });
@@ -138,12 +140,13 @@ async function showTab(next: Tab) {
     if (next === "setup") await renderSetup(panel);
     else if (next === "live") await renderLive(panel);
     else if (next === "history") await renderHistory(panel);
+    else if (about) await renderAbout(panel, () => { void showTab("settings"); });
     else await renderSettings(panel);
   } catch (error) {
     if (request !== navigation) return;
     toastError("页面未能加载", String(error));
     panel.innerHTML = '<div class="empty"><p class="empty-title">配置保存未完成</p><p class="empty-desc">修改仍被保留。可以重试保存，或放弃修改后重新载入。</p><button type="button" class="btn" id="retry_page">重试保存</button><button type="button" class="btn ghost" id="reload_page">重新载入配置</button></div>';
-    panel.querySelector<HTMLButtonElement>("#retry_page")!.onclick = () => { void showTab(next); };
+    panel.querySelector<HTMLButtonElement>("#retry_page")!.onclick = () => { void showTab(next, about); };
     panel.querySelector<HTMLButtonElement>("#reload_page")!.onclick = async () => {
       if (!await askConfirm({title:"重新载入配置？",lead:"尚未保存的修改将被放弃，恢复为最近保存的配置。",confirmLabel:"重新载入"})) return;
       discardTaskDraft(); void showTab(tab);
@@ -174,7 +177,7 @@ function mountShell() {
             <button type="button" data-tab="settings" class="${tab === "settings" ? "active" : ""}">${SVG.tabSettings}<span class="nav-tab-label">设置</span></button>
           </nav>
           <section class="my-orders" id="my_orders" aria-label="未核销预约"></section>
-          <div class="nav-foot" id="nav_foot" hidden></div>
+          <div class="nav-foot" id="nav_foot" hidden><span class="nav-version"></span></div>
         </aside>
         <div class="shell-main">
           <header class="titlebar">
@@ -191,6 +194,10 @@ function mountShell() {
   chromeBound = false;
   bindChromeOnce();
   void fillNavFoot();
+  mountVersionUpdate(app.querySelector("#nav_foot")!, () => {
+    setTab("settings");
+    void showTab("settings", true);
+  });
   mountMyOrders(app.querySelector<HTMLElement>("#my_orders")!);
   if (!dateClockStarted) {
     dateClockStarted = true;
