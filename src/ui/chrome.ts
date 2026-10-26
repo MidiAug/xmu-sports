@@ -165,6 +165,7 @@ function mountShell() {
           <div class="nav-brand">
             <div class="nav-brand-text" data-tauri-drag-region>
               <h1 data-tauri-drag-region>XMU Sports</h1>
+              ${import.meta.env.DEV ? '<span class="dev-chip" data-tauri-drag-region>开发版</span>' : ""}
             </div>
             <div class="nav-win titlebar-right">${wins}</div>
           </div>

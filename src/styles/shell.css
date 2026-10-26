@@ -104,9 +104,14 @@ h1, h2, h3, button, summary, .nav-foot, .page-heading { user-select: none; }
 }
 
 .nav-brand-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
   flex: 1;
 }
+
+.dev-chip { flex: none; padding: 1px 5px; border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--color-accent) 8%, transparent); color: var(--color-accent); font-size: 10px; font-weight: 500; line-height: 16px; user-select: none; }
 
 .nav-win {
   display: none;
