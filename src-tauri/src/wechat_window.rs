@@ -80,6 +80,13 @@ pub(crate) fn foreground_surface(target:&NativeSurface)->Result<(),String> {
             let _=SetForegroundWindow(target.hwnd());
             keybd_event(VK_MENU.0 as u8,0,KEYEVENTF_KEYUP,0);
         }
+        // Newly launched mini-programs can finish activation asynchronously.
+        // Wait briefly for this exact HWND; never redirect input to a replacement.
+        for _ in 0..5 {
+            if GetForegroundWindow()==target.hwnd() {return Ok(());}
+            if !IsWindow(Some(target.hwnd())).as_bool() {return Err("UIA_WINDOW_CHANGED".into());}
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
         if GetForegroundWindow()!=target.hwnd() {return Err("LOGIN_FOCUS_REQUIRED".into());}
     }
     Ok(())

@@ -17,8 +17,8 @@ export const SVG = {
 
 export function winButtonsHtml(maximized: boolean): string {
   return `
-    <button type="button" class="win-btn" data-win="minimize" title="最小化" aria-label="最小化">${SVG.minimize}</button>
-    <button type="button" class="win-btn" data-win="maximize" title="${maximized ? "还原" : "最大化"}" aria-label="${maximized ? "还原" : "最大化"}">${maximized ? SVG.restore : SVG.maximize}</button>
-    <button type="button" class="win-btn win-close" data-win="close" title="关闭" aria-label="关闭">${SVG.close}</button>
+    <button type="button" class="win-btn" data-win="minimize" aria-label="最小化">${SVG.minimize}</button>
+    <button type="button" class="win-btn" data-win="maximize" aria-label="${maximized ? "还原" : "最大化"}">${maximized ? SVG.restore : SVG.maximize}</button>
+    <button type="button" class="win-btn win-close" data-win="close" aria-label="关闭">${SVG.close}</button>
   `;
 }

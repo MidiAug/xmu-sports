@@ -1,5 +1,6 @@
 //! Non-activating, click-through status attached only to the verified login window.
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::atomic::{AtomicUsize,Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 use windows::core::w;
@@ -9,9 +10,19 @@ use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
+static TARGET_SAMPLES:AtomicUsize=AtomicUsize::new(0);
+static FOCUSED_SAMPLES:AtomicUsize=AtomicUsize::new(0);
+static CREATED:AtomicUsize=AtomicUsize::new(0);
+static SHOWN:AtomicUsize=AtomicUsize::new(0);
+pub(crate) fn diagnostics()->serde_json::Value {
+    serde_json::json!({"target_samples":TARGET_SAMPLES.load(Ordering::Relaxed),"focused_samples":FOCUSED_SAMPLES.load(Ordering::Relaxed),
+        "windows_created":CREATED.load(Ordering::Relaxed),"visible_samples":SHOWN.load(Ordering::Relaxed)})
+}
+
 pub(crate) struct LoginOverlay { sender: Option<Sender<&'static str>>, thread: Option<JoinHandle<()>> }
 impl LoginOverlay {
     pub(crate) fn start() -> Self {
+        for counter in [&TARGET_SAMPLES,&FOCUSED_SAMPLES,&CREATED,&SHOWN] {counter.store(0,Ordering::Relaxed);}
         let (sender, receiver) = mpsc::channel();
         let thread = std::thread::Builder::new().name("login-status-overlay".into()).spawn(move || run(receiver)).ok();
         Self { sender: Some(sender), thread }
@@ -125,13 +136,15 @@ fn run(receiver: Receiver<&'static str>) {
             while let Ok(phase) = receiver.try_recv() {state.phase=phase;}
             let candidates = crate::wechat_window::discover_wechat_candidates().unwrap_or_default();
             let target = if candidates.len()==1 && candidates[0].visible {candidates.first()} else {None};
+            if target.is_some() {TARGET_SAMPLES.fetch_add(1,Ordering::Relaxed);}
+            if target.is_some_and(|target|GetForegroundWindow()==target.hwnd()) {FOCUSED_SAMPLES.fetch_add(1,Ordering::Relaxed);}
             if overlay.as_ref().is_some_and(|(hwnd, old)| !IsWindow(Some(*hwnd)).as_bool() ||
                 target.is_none_or(|current|current.hwnd_u64!=old.hwnd_u64 || current.owner!=old.owner)) {
                 if let Some((hwnd,_))=overlay.take() {let _=DestroyWindow(hwnd);}
             }
             if overlay.is_none() {
-                if let Some(target) = target {
-                    if let Some(hwnd) = create(target.hwnd(), &mut state) {overlay=Some((hwnd,target.clone()));}
+                if let Some(target) = target.filter(|target|GetForegroundWindow()==target.hwnd()) {
+                    if let Some(hwnd) = create(target.hwnd(), &mut state) {CREATED.fetch_add(1,Ordering::Relaxed);overlay=Some((hwnd,target.clone()));}
                 }
             }
             if let Some((hwnd, target)) = &overlay {
@@ -145,10 +158,12 @@ fn run(receiver: Receiver<&'static str>) {
                         let width=s(300).min(rect.right-rect.left-s(24));
                         if width>=s(220) {
                             let _=SetWindowPos(*hwnd, Some(HWND_TOPMOST), rect.left+(rect.right-rect.left-width)/2,
-                                               rect.top+s(44), width, s(80), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                                               rect.top+s(44), width, s(80), SWP_NOACTIVATE);
                             let region=CreateRoundRectRgn(0,0,width+1,s(80)+1,s(18),s(18));
                             if SetWindowRgn(*hwnd,Some(region),true)==0 {let _=DeleteObject(region.into());}
                             let _=InvalidateRect(Some(*hwnd),None,false);
+                            let _=UpdateWindow(*hwnd);
+                            if GetForegroundWindow()==target.hwnd() {let _=ShowWindow(*hwnd,SW_SHOWNOACTIVATE);if IsWindowVisible(*hwnd).as_bool() {SHOWN.fetch_add(1,Ordering::Relaxed);}}
                         } else {let _=ShowWindow(*hwnd, SW_HIDE);}
                     } else {let _=ShowWindow(*hwnd, SW_HIDE);}
                 }

@@ -296,9 +296,13 @@
 .order-icon, .order-cancel { appearance: none; border: 0; font: inherit; background: transparent; border-radius: 6px; cursor: pointer; color: var(--color-muted); flex: none; display: inline-flex; align-items: center; justify-content: center; }
 .order-icon { width: 26px; height: 26px; }
 .order-cancel { width: 24px; height: 24px; margin: -2px -4px -2px 0; opacity: .65; }
+.order-icon.is-loading svg { animation: order-refresh-spin .8s linear infinite; }
+@keyframes order-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .order-icon.is-loading svg { animation: none; } }
 .order-icon:hover:not(:disabled) { color: var(--color-ink); background: var(--color-nav-hover); }
 .order-cancel:hover:not(:disabled) { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 10%, transparent); opacity: 1; }
 .order-icon:disabled, .order-cancel:disabled { opacity: .3; cursor: not-allowed; }
+.order-icon.is-loading { opacity: 1; color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 .order-icon:focus-visible, .order-cancel:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
 .my-orders + .nav-foot { margin-top: 4px; flex: none; }
 @media (max-width: 720px) {

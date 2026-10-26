@@ -69,7 +69,7 @@ pub(crate) fn run(ui: bool, output: &Path) -> Result<(),String> {
     // No tokens, signed URLs, cookies or order contents in the saved report.
     let report=json!({"mode":"login_and_existing_orders_only","app_version":env!("CARGO_PKG_VERSION"),
         "scheduler_started":false,"booking_actions_available":false,"kernel_hook_used":false,
-        "normal_ui_requested":ui,"initial_check":initial_report,
+        "normal_ui_requested":ui,"initial_check":initial_report,"login_overlay":crate::login_overlay::diagnostics(),
         "visual_fallback_used":phases.iter().any(|phase|phase=="visual_login_fallback"),"phases":phases,
         "login_elements":observations,"window_states":window_states,"result":result});
     if let Some(parent)=output.parent() { std::fs::create_dir_all(parent).map_err(|e|e.to_string())?; }

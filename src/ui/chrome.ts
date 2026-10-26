@@ -39,7 +39,6 @@ export async function syncMaximized() {
     app.querySelectorAll('[data-win="maximize"]').forEach((btn) => {
       btn.innerHTML = isMax ? SVG.restore : SVG.maximize;
       btn.setAttribute("aria-label", isMax ? "还原" : "最大化");
-      btn.setAttribute("title", isMax ? "还原" : "最大化");
     });
   } catch {
     /* ignore */

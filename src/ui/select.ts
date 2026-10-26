@@ -40,7 +40,6 @@ export function mountShellSelect(
     const valueEl = host.querySelector(".shell-select-value") as HTMLElement;
     const cur = selectOpts.find((o) => o.value === value);
     valueEl.innerHTML = `<span class="shell-select-main">${escape(cur?.label ?? value)}</span>${cur?.badge ? `<span class="shell-select-badge ${badgeClass(cur.badge)}">${escape(cur.badge)}</span>` : ""}`;
-    host.querySelector<HTMLButtonElement>(".shell-select-trigger")!.title = [cur?.label,cur?.badge].filter(Boolean).join("　");
     host.classList.toggle("has-option-details", selectOpts.some(o=>o.badge));
     host.classList.toggle("has-disabled-value", !!cur?.disabled);
     menu.classList.toggle("shell-select-menu--cols", useColumns());

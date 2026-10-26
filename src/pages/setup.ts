@@ -179,7 +179,7 @@ export async function renderSetup(panel: Element) {
               <p class="settings-cell-title">目标时段满了就约邻近时段</p>
               <p class="settings-cell-desc">优先仍是你选的时段</p>
             </div>
-            <label class="switch" title="邻近时段">
+            <label class="switch">
               <input type="checkbox" id="allow_fallback" aria-label="邻近时段" ${saved?.allow_time_fallback ? "checked" : ""} />
             </label>
           </div>
@@ -204,7 +204,7 @@ export async function renderSetup(panel: Element) {
       </details>
       </fieldset>
       <p class="msg" id="setup_msg"></p>
-      <div class="task-action-bar"><div class="task-action-copy"><span class="task-summary-label">本次预约</span><strong id="task_summary"></strong><p id="task_execution"></p><p id="task_action_reason" role="status"></p></div><div class="task-actions"><button type="button" class="btn ghost" id="setup_check" title="检测并尝试恢复体育登录，不提交预约；可在目标日期开放前使用">检查登录</button><button type="button" class="btn ghost" id="setup_now">立即预约</button><button type="button" class="btn primary" id="setup_primary">定时预约</button></div></div>
+      <div class="task-action-bar"><div class="task-action-copy"><span class="task-summary-label">本次预约</span><strong id="task_summary"></strong><p id="task_execution"></p><p id="task_action_reason" role="status"></p></div><div class="task-actions"><button type="button" class="btn ghost" id="setup_check">检查登录</button><button type="button" class="btn ghost" id="setup_now">立即预约</button><button type="button" class="btn primary" id="setup_primary">定时预约</button></div></div>
     </div>
   `;
 
@@ -250,15 +250,13 @@ export async function renderSetup(panel: Element) {
     }
     availabilityHost.hidden=false;
     const current=availabilityKey===stateKey() ? availability : null;
-    const stamp=current?.fetched_at ? new Date(current.fetched_at).toLocaleString("zh-CN",{timeZone:"Asia/Shanghai",hour12:false}) : "";
-    const hint=current ? `上次获取：${stamp}（北京时间）\n按日期缓存，跨天复用。人数是查询时快照；点击刷新更新状态，连续手动刷新间隔5秒。` : "只读获取学校场次状态";
     const warning=availabilityError ? `${availabilityError}${current ? "仍使用上次缓存。" : ""}`
       : current?.state==="date_not_published" ? "学校尚未发布该日期时段。"
       : availabilityStore.persistenceFailed() ? "本地缓存未保存，重载后需重新读取。"
       : current?.cache_saved===false ? "场次快照已取得，备用缓存未能保存。"
       : current?.can_choose===false ? current.notice || "学校查询时提示未开放预约。" : "";
     const label=availabilityRecovering ? "登录中" : availabilityLoading ? "刷新中" : availabilityNeedsLogin ? "重新登录" : availabilityError ? "重试" : "刷新";
-    availabilityHost.innerHTML=`<button type="button" class="btn ghost" title="${escape(availabilityNeedsLogin ? "恢复微信登录，成功后自动刷新；不提交预约" : hint)}" aria-label="${label==='刷新' ? '刷新场次状态' : label}" data-refresh-availability ${availabilityLoading || availabilityRecovering || busy ? "disabled" : ""}>${label}</button>${availabilityRecovering ? '<button type="button" class="btn ghost" data-cancel-availability-login>取消</button>' : ""}${warning ? `<p class="availability-warning" title="${escape(availabilityError)}" role="status">${escape(warning)}</p>` : ""}`;
+    availabilityHost.innerHTML=`<button type="button" class="btn ghost" aria-label="${label==='刷新' ? '刷新场次状态' : label}" data-refresh-availability ${availabilityLoading || availabilityRecovering || busy ? "disabled" : ""}>${label}</button>${availabilityRecovering ? '<button type="button" class="btn ghost" data-cancel-availability-login>取消</button>' : ""}${warning ? `<p class="availability-warning" role="status">${escape(warning)}</p>` : ""}`;
     availabilityHost.querySelector<HTMLButtonElement>("[data-refresh-availability]")?.addEventListener("click",()=>{void (availabilityNeedsLogin ? restoreAvailabilityLogin() : loadAvailability(true));});
     availabilityHost.querySelector<HTMLButtonElement>("[data-cancel-availability-login]")?.addEventListener("click",()=>{
       cancelAvailabilityLogin(); availabilityGeneration++; paintAvailability(); updateSummary();
@@ -277,16 +275,16 @@ export async function renderSetup(panel: Element) {
     availabilityLoginId=operationId; availabilityRecovering=true; availabilityError="";
     paintAvailability(); updateSummary();
     try {
-      const result=await invoke<{ok:boolean;code?:string;phase?:string;message?:string;reason?:string}>("reauthenticate_availability",{operationId});
+      const result=await invoke<{ok:boolean;code?:string;phase?:string;message?:string;reason?:string}>("reauthenticate_availability",{operationId,expectedAccount:availabilitySessionCache.account ?? null});
       if (!scope.current() || generation!==availabilityGeneration) return;
       if (!result?.ok) {
         availabilityNeedsLogin=availabilityAuthNeeded(result ?? {});
         throw new Error(result?.code==="ACCOUNT_CHANGED" ? "登录账号已变化，未刷新" : result?.reason==="BACKGROUND_LOGIN_UNAVAILABLE" ? "请显示小程序并完成登录" : result?.code==="LOGIN_CONFIRM_REQUIRED" ? "请在微信完成登录确认" : result?.code==="HTTP_AUTH_UNVERIFIED" ? "登录身份未能核实" : "登录未完成，请重试");
       }
       availabilityNeedsLogin=false; availabilityRecovering=false; availabilityLoginId=undefined;
-      window.dispatchEvent(new Event("orders-authenticated"));
+      window.dispatchEvent(new CustomEvent("orders-authenticated",{detail:{source:"availability"}}));
       availabilityStore.reset();
-      await loadAvailability(true);
+      await loadAvailability(true,false);
     } catch(error) {
       if (!scope.current() || generation!==availabilityGeneration) return;
       availabilityError=String(error).replace(/^Error:\s*/,"");
@@ -297,7 +295,7 @@ export async function renderSetup(panel: Element) {
     }
   }
 
-  async function loadAvailability(force=false) {
+  async function loadAvailability(force=false, allowRecovery=true) {
     const key=stateKey();
     const date=getTargetIso();
     const difference=(Date.parse(`${date}T00:00:00+08:00`)-Date.parse(`${todayISO()}T00:00:00+08:00`))/86400_000;
@@ -309,6 +307,7 @@ export async function renderSetup(panel: Element) {
       syncAvailabilityOptions(); paintAvailability(); updateSummary(); return;
     }
     const generation=++availabilityGeneration;
+    let recoverAfterRefresh=false;
     availabilityLoading=true; availabilityError="";
     paintAvailability();
     try {
@@ -326,6 +325,7 @@ export async function renderSetup(panel: Element) {
       }
       if (!response?.ok) {
         availabilityNeedsLogin=availabilityAuthNeeded(response ?? {});
+        recoverAfterRefresh=force && allowRecovery && availabilityNeedsLogin;
         throw new Error(availabilityNeedsLogin ? "登录已失效" : response?.message || "未取得场次状态");
       }
       availability=response; availabilityKey=key; availabilityNeedsLogin=availabilityStore.needsLogin();
@@ -334,7 +334,10 @@ export async function renderSetup(panel: Element) {
       if (!scope.current() || generation!==availabilityGeneration || key!==stateKey()) return;
       availabilityError=String(error).replace(/^Error:\s*/,"");
     } finally {
-      if (scope.current() && generation===availabilityGeneration) { availabilityLoading=false; paintAvailability(); updateSummary(); }
+      if (scope.current() && generation===availabilityGeneration) {
+        availabilityLoading=false; paintAvailability(); updateSummary();
+        if(recoverAfterRefresh) await restoreAvailabilityLogin();
+      }
     }
   }
 
@@ -369,6 +372,13 @@ export async function renderSetup(panel: Element) {
     updateSummary();
     if (!cached && !availabilityNeedsLogin) availabilityTimer=window.setTimeout(()=>{void loadAvailability();},250);
   }
+  const onAuthenticated=(event:Event)=>{
+    if(!scope.current() || availabilityRecovering || (event as CustomEvent<{source?:string}>).detail?.source==="availability") return;
+    availabilityNeedsLogin=false;availabilityError="";
+    void loadAvailability(true,false);
+  };
+  window.addEventListener("orders-authenticated",onAuthenticated);
+  scope.onDispose(()=>window.removeEventListener("orders-authenticated",onAuthenticated));
   scope.onDispose(()=>{availabilityStore.dispose();cancelAvailabilityLogin();window.clearTimeout(availabilityTimer);availabilityGeneration++;});
 
   type SelectApi = ReturnType<typeof mountShellSelect>;

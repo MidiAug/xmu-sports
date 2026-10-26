@@ -36,6 +36,10 @@ export function createAvailabilityCache(storage?:AvailabilityStorage,now=Date.no
 export const availabilitySessionCache=createAvailabilityCache(typeof window==="undefined" ? undefined : {
   getItem:key=>window.localStorage.getItem(key),setItem:(key,value)=>window.localStorage.setItem(key,value),
 });
+export function resetAvailabilitySessionCache(session=availabilitySessionCache) {
+  session.epoch++;session.cache.clear();session.pending.clear();session.failures.clear();session.forced.clear();
+  session.automaticFailure=undefined;session.account=undefined;session.needsLogin=false;session.save();
+}
 /** Each view owns cancellation; completed queries still populate the shared cache. */
 export function createAvailabilityStore(fetcher:(target:AvailabilityTarget,force:boolean)=>Promise<Availability>, now=Date.now, isCurrent:(target:AvailabilityTarget)=>boolean=()=>true, session=createAvailabilityCache()) {
   const key=(t:AvailabilityTarget)=>JSON.stringify([t.sport,t.venue,t.date]);
@@ -46,7 +50,7 @@ export function createAvailabilityStore(fetcher:(target:AvailabilityTarget,force
     const entry=cache.get(key(t));
     return entry && entry.until>now() ? entry.value : undefined;
   };
-  function reset() {session.epoch++;cache.clear();pending.clear();failures.clear();forced.clear();session.automaticFailure=undefined;session.account=undefined;session.needsLogin=false;session.save();}
+  function reset() {resetAvailabilitySessionCache(session);}
   async function get(t:AvailabilityTarget,force=false):Promise<Availability> {
     if(disposed) throw new Error("查询已取消");
     const hit=peek(t), id=group(t);

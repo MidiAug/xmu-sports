@@ -57,7 +57,7 @@ function favoriteGridHtml(favoriteIds: Set<string>): string {
         .join(" ");
       return `<button type="button" class="${cls}" data-fav-sport="${s.id}" ${
         ok ? "" : "disabled aria-disabled=\"true\""
-      } aria-pressed="${on}" title="${ok ? s.label : `${s.label}（暂未支持）`}">
+      } aria-pressed="${on}">
         <span class="settings-sport-cell-label">${s.label}</span>
         ${ok ? `<span class="settings-sport-check" aria-hidden="true">${SVG.check}</span>` : ""}
         ${ok ? "" : '<span class="settings-sport-cell-hint">暂未支持</span>'}
