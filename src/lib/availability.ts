@@ -3,6 +3,9 @@ export type AvailabilitySlot = {start:string;end:string;cells:AvailabilityCell[]
 export type Availability = {ok:boolean;state:string;message?:string;code?:string;date:string;sport:string;venue:string;cached:boolean;cache_saved?:boolean;account_fingerprint?:string;snapshots?:Record<string,Availability>;fetched_at:string;slots:AvailabilitySlot[];can_choose?:boolean;notice?:string};
 
 const cellsFor = (slot:AvailabilitySlot,court="") => court ? slot.cells.filter(cell=>cell.court===court) : slot.cells;
+// Outside booking hours the server still supplies real counts with unavailable status.
+const hasQuota = (cell:AvailabilityCell) => ["available", "unavailable"].includes(cell.status)
+  && cell.capacity>0 && Number.isFinite(cell.remaining) && cell.remaining>=0;
 // Some sports return numeric IDs, others already include “号场” or a room name.
 const courtNames = (cells:AvailabilityCell[]) => cells.every(cell=>/^\d+$/.test(cell.court))
   ? `${cells.map(cell=>cell.court).join("、")} 号场地`
@@ -22,7 +25,7 @@ export function adminLockLabel(slot:AvailabilitySlot,court=""):string {
 export function quotaLabel(slot:AvailabilitySlot,court=""):string {
   const cells=cellsFor(slot,court).filter(cell=>!cell.admin_locked);
   if (!cells.length) return "名额：无未锁定场地数据";
-  const known=cells.filter(cell=>cell.status==="available" && cell.remaining>=0);
+  const known=cells.filter(hasQuota);
   const full=known.filter(cell=>cell.remaining===0);
   const remaining=known.reduce((sum,cell)=>sum+cell.remaining,0);
   const fullText=full.length ? `；已满：${courtNames(full)}` : "";
@@ -38,17 +41,18 @@ export const courtLabel = (name:string) => /^\d+$/.test(name) ? `${name} 号场�
 export function slotOption(slot:AvailabilitySlot) {
   const locked=slot.cells.some(cell=>cell.admin_locked);
   const unlocked=slot.cells.filter(cell=>!cell.admin_locked);
-  const full=unlocked.length>0 && unlocked.every(cell=>cell.status==="available" && cell.remaining===0);
+  const full=unlocked.length>0 && unlocked.every(cell=>hasQuota(cell) && cell.remaining===0);
+  const unavailable=unlocked.length>0 && unlocked.every(cell=>cell.status==="unavailable");
   return {
     value:`${slot.start}|${slot.end}`, label:`${slot.start}–${slot.end}`,
-    badge:isAdminLocked(slot) ? "全部锁定" : locked ? "部分锁定" : full ? "已满" : undefined,
+    badge:isAdminLocked(slot) ? "全部锁定" : locked ? "部分锁定" : full ? "已满" : unavailable ? "暂不可约" : undefined,
     disabled:isAdminLocked(slot),
   };
 }
 export function courtOption(cell:AvailabilityCell) {
   return {
     value:cell.court, label:courtLabel(cell.court), disabled:cell.admin_locked,
-    badge:cell.admin_locked ? "已锁" : cell.status==="available" && cell.remaining===0 ? "已满" : undefined,
+    badge:cell.admin_locked ? "已锁" : hasQuota(cell) && cell.remaining===0 ? "已满" : cell.status==="unavailable" ? "暂不可约" : undefined,
   };
 }
 

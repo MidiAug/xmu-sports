@@ -19,6 +19,7 @@
 .booking-date-option.on > span, .booking-date-option.on small { color: var(--color-accent); }
 .booking-date-option:disabled { cursor: default; }
 .booking-date-hint { margin: 10px 0 0; color: var(--color-muted); font-size: 11px; line-height: 1.6; }
+.booking-date-hint.is-warning { padding: 8px 10px; border-radius: 6px; background: color-mix(in srgb, var(--color-warning) 8%, transparent); color: var(--color-warning); }
 .task-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; padding: 18px 20px; border: 0; border-top: 1px solid var(--color-line); border-radius: 0 0 14px 14px; background: transparent; }
 .task-grid:has(#court_cell[hidden]) .settings-cell:has(#slot_host) { grid-column: 1 / -1; }
 .task-grid .settings-cell { flex-direction: column; align-items: stretch; justify-content: flex-start; border: 0; padding: 0; gap: 9px; }

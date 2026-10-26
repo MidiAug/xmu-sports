@@ -33,7 +33,7 @@ const CODE_ZH: Record<string, { kind: OutcomeKind; title: string; detail: string
   SLOT_UNAVAILABLE: {kind: "error", title: "目标场次不可约", detail: "学校没有提供明确原因"},
   BOOKING_CLOSED: {kind: "error", title: "预约已截止", detail: "该场次已超过预约截止时间"},
   DATE_NOT_OPEN: {kind: "error", title: "目标日期暂未发布", detail: "目标日期不在实时预约范围"},
-  NOT_OPEN: {kind: "error", title: "当前尚未开放预约", detail: "请检查北京时间是否已到 07:00，以及实时预约是否开放"},
+  NOT_OPEN: {kind: "error", title: "当前尚未开放预约", detail: "学校当前未开放该日期或场次，请刷新实时状态后重试"},
   INVALID_SLOT: {kind: "error", title: "预约时段无效", detail: "请重新选择预约日期和时段"},
   CAPTCHA_FETCH_FAILED: {kind: "error", title: "验证码获取失败", detail: "学校未返回有效验证码，请查看执行记录"},
   CAPTCHA_UNREADABLE: {kind: "error", title: "验证码识别未完成", detail: "已达到识别次数上限，请查看执行记录"},

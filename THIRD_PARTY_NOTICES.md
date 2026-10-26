@@ -6,5 +6,6 @@
 - [ccl_chromium_reader](https://github.com/cclgroupltd/ccl_chromium_reader) 按 requirements.txt 固定提交获取，保留上游分发中的许可证。
 - HTTP 执行器使用 Requests、ONNX Runtime、NumPy 和 Pillow；打包保留依赖分发的许可证及 ONNX Runtime 第三方声明。
 - 桌面宿主和前端使用 Tauri、Rust crates、TypeScript 和 Vite。依赖版本分别记录于 Cargo.lock、package-lock.json 和执行器 requirements.txt。
+- 更新说明使用 [Marked](https://github.com/markedjs/marked)（MIT）解析 Markdown，使用 [DOMPurify](https://github.com/cure53/DOMPurify)（MPL-2.0 或 Apache-2.0 双许可证）净化 HTML；版本记录于 package-lock.json，保留上游许可证声明。
 
 厦门大学、微信及相关服务的名称和标识属于各自权利人，不表示对本项目的授权或背书。

@@ -2,6 +2,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-shell";
 import { mountPage } from "../lib/page-lifecycle";
 import { watchAppUpdate, performAppUpdate } from "../lib/app-update";
+import { renderReleaseNotes } from "../lib/release-notes";
 
 const REPOSITORY = "https://github.com/MidiAug/xmu-sports";
 const appIcon = new URL("../../assets/app-icon/source.svg", import.meta.url).href;
@@ -18,7 +19,7 @@ export async function renderAbout(panel: Element, back: () => void) {
     <section class="preference-card about-section" aria-labelledby="update_title">
       <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">${updateHint}</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
       <div class="about-update-detail" hidden>
-        <details id="update_notes" hidden><summary>更新说明</summary><pre></pre></details>
+        <details id="update_notes" hidden><summary>更新说明</summary><div class="release-notes"></div></details>
       </div>
     </section>
     <section class="preference-card about-section" aria-labelledby="repository_title"><div class="about-row"><div><h3 id="repository_title">开源项目</h3><p>MidiAug / xmu-sports</p></div><div class="about-actions"><button class="btn ghost" id="about_copy" type="button">复制地址</button><button class="btn ghost" id="about_repository" type="button">GitHub ↗</button></div></div></section>
@@ -61,6 +62,6 @@ export async function renderAbout(panel: Element, back: () => void) {
     query("#update_status").textContent = status;
     query(".about-update-detail").hidden = !release?.notes || release.status !== "available";
     query("#update_notes").hidden = !release?.notes || release.status !== "available";
-    query("#update_notes pre").textContent = release?.notes ?? "";
+    renderReleaseNotes(query(".release-notes"), release?.notes ?? "", url => { void launch(url); });
   }));
 }

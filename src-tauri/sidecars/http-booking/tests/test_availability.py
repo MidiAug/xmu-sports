@@ -36,6 +36,23 @@ def test_full_and_is_lock_are_not_admin_lock():
     assert cells[1]["admin_locked"] and cells[1]["reason"]=="课程使用"
     assert cells[2]["remaining"]==1 and not cells[2]["admin_locked"]
 
+
+def test_unavailable_status_keeps_full_and_empty_counts_separate():
+    data=payload()
+    data["personal_num"]=1
+    for block in data["time_slot_list"]:
+        for cell in block["slots"]:
+            if cell["status"]!="locked":
+                cell["status"]="unavailable"
+                cell["max_count"]=1
+                cell["selected"]=1 if cell["selected"] else 0
+    result=av.snapshot(data,"2026-10-23",NOW.isoformat())
+    full,locked,empty=result["slots"][0]["cells"]
+    assert full["status"]==empty["status"]=="unavailable"
+    assert full["remaining"]==0 and full["capacity"]==1 and not full["admin_locked"]
+    assert empty["remaining"]==1 and not empty["admin_locked"]
+    assert locked["admin_locked"]
+
 def test_fetch_caches_both_dates_and_tomorrow_is_reused_after_midnight(tmp_path,runtime):
     calls,_=runtime
     first=av.query(tmp_path,"健身房","场馆","2026-10-23",now=NOW)

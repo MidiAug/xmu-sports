@@ -42,7 +42,8 @@ try {
   const box=await action.boundingBox();
   await page.locator('#update_notes summary').click();
   assert.equal(await page.evaluate(()=>window.pwned),undefined);
-  assert.match(await page.locator('#update_notes pre').innerText(),/<script>/);
+  assert.equal(await page.locator('#update_notes script,#update_notes img,#update_notes iframe').count(),0);
+  assert.match(await page.locator('#update_notes .release-notes').innerText(),/改善场次查询/);
   mkdirSync('artifacts/about-updates',{recursive:true});
   await page.screenshot({path:'artifacts/about-updates/available.png'});
   await action.click();await page.waitForFunction(()=>typeof window.__finishDownload==='function');

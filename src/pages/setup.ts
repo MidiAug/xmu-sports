@@ -21,6 +21,7 @@ import {
   hmToMinutes,
   isSelectableTargetDate,
   targetDateHint,
+  waitsExtraDay,
   todayISO,
 } from "../lib/time";
 import { resolvePreferredSlot, slotPrefKey } from "../lib/venue-slot-prefs";
@@ -257,6 +258,9 @@ export async function renderSetup(panel: Element) {
       : current?.can_choose===false ? current.notice || "学校查询时提示未开放预约。" : "";
     const label=availabilityRecovering ? "登录中" : availabilityLoading ? "刷新中" : availabilityNeedsLogin ? "重新登录" : availabilityError ? "重试" : "刷新";
     availabilityHost.innerHTML=`<button type="button" class="btn ghost" aria-label="${label==='刷新' ? '刷新场次状态' : label}" data-refresh-availability ${availabilityLoading || availabilityRecovering || busy ? "disabled" : ""}>${label}</button>${availabilityRecovering ? '<button type="button" class="btn ghost" data-cancel-availability-login>取消</button>' : ""}${warning ? `<p class="availability-warning" role="status">${escape(warning)}</p>` : ""}`;
+    availabilityHost.querySelector<HTMLButtonElement>("[data-refresh-availability]")!.title = current?.fetched_at
+      ? `获取时间：${current.fetched_at}；查询时快照，学校状态可能变化，可手动刷新`
+      : "重新读取学校场次状态";
     availabilityHost.querySelector<HTMLButtonElement>("[data-refresh-availability]")?.addEventListener("click",()=>{void (availabilityNeedsLogin ? restoreAvailabilityLogin() : loadAvailability(true));});
     availabilityHost.querySelector<HTMLButtonElement>("[data-cancel-availability-login]")?.addEventListener("click",()=>{
       cancelAvailabilityLogin(); availabilityGeneration++; paintAvailability(); updateSummary();
@@ -623,7 +627,10 @@ export async function renderSetup(panel: Element) {
     const blocked = valid ? (adminBlockedReason() ?? (future ? hangBlockedReason(task) : bookingBlockedReason(task))) : "请填写有效的预约日期和执行时间";
     panel.querySelector("#task_summary")!.textContent = `${task.sport}　${task.venue}　${formatTargetDateHuman(task.target_date)} ${task.target_time_start}–${task.target_time_end}`;
     const dayOffset=(Date.parse(`${task.target_date}T00:00:00+08:00`)-Date.parse(`${todayISO()}T00:00:00+08:00`))/86400_000;
-    panel.querySelector("#date_hint")!.textContent = busy ? `已锁定：${formatTargetDateHuman(task.target_date)}` : [0,1].includes(dayOffset) ? "该日期可查询学校实际时段，锁定状态与人数快照见选项" : targetDateHint();
+    const hint = panel.querySelector("#date_hint")!;
+    hint.textContent = busy ? `已锁定：${formatTargetDateHuman(task.target_date)}` : [0,1].includes(dayOffset) ? "该日期可查询学校实际时段，锁定状态与人数快照见选项" : targetDateHint(new Date(), task.target_date);
+    hint.classList.toggle("is-warning", !busy && waitsExtraDay(task.target_date));
+    hint.setAttribute("role", "status");
     panel.querySelector("#task_execution")!.textContent = future ? `定时执行：${formatFireAtHuman(task.fire_at)}（北京时间）` : "执行方式：立即预约";
     panel.querySelector("#task_action_reason")!.textContent = busy ? "执行配置已锁定，进度可在运行页查看" : blocked ?? "";
     const primary = panel.querySelector<HTMLButtonElement>("#setup_primary")!;

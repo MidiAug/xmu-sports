@@ -213,12 +213,14 @@ try {
   await page.setViewportSize({width:960,height:900});
   assert.doesNotMatch(await page.locator('.setup-page').innerText(),/[·•]/);
   // Authentication recovery has its own IPC and never starts a booking operation.
-  await page.evaluate(()=>window.__authExpired=true);
+  // A forced refresh now automatically attempts recovery. Keep that first
+  // attempt unsuccessful so navigation and explicit retry remain testable.
+  await page.evaluate(()=>{window.__authExpired=true;window.__authFailure=true;});
   await page.clock.runFor(5100);
   await panel.locator('[data-refresh-availability]').click();
   await page.clock.runFor(300);
   await panel.getByRole('button',{name:'重新登录',exact:true}).waitFor();
-  assert.equal(await page.evaluate(()=>window.__authCalls.length),0);
+  assert.equal(await page.evaluate(()=>window.__authCalls.length),1);
   assert.match(await slot.locator('.shell-select-value').innerText(),/已满/);
   const expiredRequests=await page.evaluate(()=>window.__queries.length);
   await page.locator('.nav-tabs [data-tab="history"]').click();await page.clock.runFor(31000);
@@ -226,13 +228,14 @@ try {
   assert.equal(await panel.getByRole('button',{name:'重新登录',exact:true}).count(),1);
   assert.equal(await page.evaluate(()=>window.__queries.length),expiredRequests,"Known expired credentials do not trigger another automatic query after navigation");
   const beforeLogin=await page.evaluate(()=>window.__queries.length);
+  await page.evaluate(()=>window.__authFailure=false);
   await panel.getByRole('button',{name:'重新登录',exact:true}).evaluate(button=>{button.click();button.click();});
   await page.clock.runFor(50);
   assert.equal(await panel.getByRole('button',{name:'登录中',exact:true}).isDisabled(),true);
   assert.equal(await page.locator('#setup_primary').isDisabled(),true);
   await page.clock.runFor(500);
   await panel.getByRole('button',{name:'刷新场次状态'}).waitFor();
-  assert.equal(await page.evaluate(()=>window.__authCalls.length),1);
+  assert.equal(await page.evaluate(()=>window.__authCalls.length),2);
   assert.equal(await page.evaluate(()=>window.__queries.length),beforeLogin+1);
   assert.equal(await page.evaluate(()=>window.__queries.at(-1).force),true);
   await page.evaluate(()=>{window.__authExpired=true;window.__authFailure=true;});

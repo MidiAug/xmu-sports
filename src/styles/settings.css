@@ -84,7 +84,21 @@
 .about-row > .btn, .about-row > .about-actions { flex-shrink: 0; }
 .about-update-detail { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--color-line); }
 .about-update-detail summary { color: var(--color-muted); font-size: 12px; cursor: pointer; }
-.about-update-detail pre { max-height: 220px; overflow: auto; margin: 12px 0 18px; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 12px; line-height: 1.8; }
+.release-notes { max-height: 300px; overflow: auto; margin-top: 12px; padding-right: 8px; overflow-wrap: anywhere; font-size: 12px; line-height: 1.8; color: var(--color-ink); user-select: text; }
+.release-notes > :first-child { margin-top: 0; }
+.release-notes > :last-child { margin-bottom: 0; }
+.release-notes :is(h1,h2,h3,h4,h5,h6) { margin: 16px 0 8px; font-size: 13px; font-weight: 600; line-height: 1.6; user-select: text; }
+.release-notes p, .release-notes ul, .release-notes ol { margin: 8px 0; }
+.release-notes ul, .release-notes ol { padding-left: 22px; }
+.release-notes li + li { margin-top: 5px; }
+.release-notes a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }
+.release-notes code { padding: 1px 4px; border-radius: 4px; background: var(--color-panel-2); font-family: var(--mono); font-size: 11px; }
+.release-notes pre { margin: 10px 0; padding: 10px 12px; border-radius: 8px; background: var(--color-panel-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.release-notes pre code { padding: 0; background: transparent; }
+.release-notes blockquote { margin: 10px 0; padding-left: 12px; border-left: 2px solid var(--color-line-strong); color: var(--color-muted); }
+.release-notes table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+.release-notes th, .release-notes td { padding: 6px 8px; border: 1px solid var(--color-line-strong); text-align: left; }
+.release-notes hr { border: 0; border-top: 1px solid var(--color-line-strong); margin: 14px 0; }
 .about-actions { display: flex; align-items: center; gap: 12px; }
 .about-footnote { text-align: center; color: var(--color-muted); font-size: 11px; line-height: 1.9; margin: 8px 0 0; }
 @media (max-width: 620px) { .about-row { flex-wrap: wrap; } .about-row > div:first-child { flex: 1 1 180px; } }

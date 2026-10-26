@@ -10,16 +10,17 @@ assert.match(bookingBlockedReason(task, new Date("2026-10-13T18:35:00+08:00")), 
 assert.equal(hangBlockedReason(task, new Date("2026-10-13T18:35:00+08:00")), null);
 assert.equal(bookingBlockedReason(task, new Date("2026-10-14T07:00:00+08:00")), null);
 const today = { ...task, target_date: "2026-10-13" };
-assert.match(bookingBlockedReason(today, new Date("2026-10-13T06:59:59+08:00")), /07:00/);
+assert.equal(bookingBlockedReason(today, new Date("2026-10-13T06:59:59+08:00")), null);
 assert.equal(bookingBlockedReason(today, new Date("2026-10-13T07:00:00+08:00")), null);
 assert.match(bookingBlockedReason(today, new Date("2026-10-13T16:30:00+08:00")), /已经开始/);
 assert.match(bookingBlockedReason(today, new Date("2026-10-13T08:30:00Z")), /已经开始/);
 const tomorrow = { ...task, target_date: "2026-10-14" };
 assert.equal(bookingBlockedReason(tomorrow, new Date("2026-10-13T23:59:59+08:00")), null);
-assert.match(bookingBlockedReason(tomorrow, new Date("2026-10-14T00:00:00+08:00")), /07:00/);
+assert.equal(bookingBlockedReason(tomorrow, new Date("2026-10-14T00:00:00+08:00")), null);
+assert.equal(bookingBlockedReason(tomorrow, new Date("2026-10-13T00:00:00+08:00")), null);
 assert.match(hangBlockedReason({ ...today, fire_at: "2026-10-13T19:00:00+08:00" }, new Date("2026-10-13T07:00:00+08:00")), /已经开始/);
 assert.match(bookingBlockedReason({ ...today, target_time_end: "15:00" }, new Date("2026-10-13T07:00:00+08:00")), /无效/);
-console.log("11 frontend eligibility checks passed");
+console.log("Frontend eligibility checks passed, including midnight today/tomorrow execution");
 
 const timeSource = readFileSync(new URL("../src/lib/time.ts", import.meta.url), "utf8");
 const timeJs = ts.transpileModule(timeSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
@@ -29,6 +30,10 @@ const pureFunction = calibrationSource.slice(calibrationSource.indexOf("export f
 const calibrationJs = ts.transpileModule(`import { composeFireAt, defaultTargetDateISO, fireHmFromIso, localDateISO } from ${JSON.stringify(timeUrl)};\n${pureFunction}`, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const { withDefaultTargetDate } = await import(`data:text/javascript;base64,${Buffer.from(calibrationJs).toString("base64")}`);
 const time = await import(timeUrl);
+assert.equal(time.waitsExtraDay("2026-10-29", new Date("2026-10-27T00:00:00+08:00")), true);
+assert.match(time.targetDateHint(new Date("2026-10-27T06:59:59+08:00"), "2026-10-29"), /明天 07:00.*今天 07:00.*多等一天/);
+assert.equal(time.waitsExtraDay("2026-10-29", new Date("2026-10-27T07:00:00+08:00")), false);
+assert.equal(time.waitsExtraDay("2026-10-28", new Date("2026-10-27T01:00:00+08:00")), false);
 assert.equal(time.composeFireAt("2026-10-24","07:00",10),"2026-10-23T07:00:10+08:00");
 assert.equal(time.composeFireAt("2026-10-24","07:00",180),"2026-10-23T07:03:00+08:00");
 assert.equal(time.fireHmFromIso("2026-10-23T07:03:00+08:00",180),"07:00");

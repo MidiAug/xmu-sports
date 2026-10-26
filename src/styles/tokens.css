@@ -12,6 +12,7 @@
   --color-muted: rgb(173, 178, 184);
   --color-accent: #679efe;
   --color-danger: #f25a5a;
+  --color-warning: #e0ac5a;
   --color-ok: #3dd68c;
   --color-btn-fill: rgb(53, 54, 56);
   --color-btn-fill-hover: rgb(67, 69, 74);
@@ -52,6 +53,7 @@
   --color-muted: rgb(110, 110, 115);
   --color-accent: #3b82f6;
   --color-danger: #e11d48;
+  --color-warning: #946122;
   --color-ok: #16a34a;
   --color-btn-fill: rgb(245, 246, 247);
   --color-btn-fill-hover: rgb(241, 243, 245);

@@ -50,7 +50,14 @@ export function isSelectableTargetDate(iso: string, now = new Date()): boolean {
   return bookingDateOptions(now).some(option => option.value === iso);
 }
 
-export function targetDateHint(now = new Date()): string {
+export function waitsExtraDay(targetDate: string, now = new Date()): boolean {
+  return new Date(now.getTime() + 8 * 3600_000).getUTCHours() < 7
+    && targetDate === addDaysISO(localDateISO(now), 2);
+}
+
+export function targetDateHint(now = new Date(), targetDate?: string): string {
+  if (targetDate && waitsExtraDay(targetDate, now))
+    return "后天的名额需等到明天 07:00；若要参加今天 07:00 的这一轮，请选择明天，避免多等一天。";
   const hour = new Date(now.getTime() + 8 * 3600_000).getUTCHours();
   if (hour < 7) {
     return "默认预约明天，今天 07:00 开抢";
