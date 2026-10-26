@@ -364,8 +364,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
   outline: none;
 }
 
-.shell-select-option:hover,
-.shell-select-option:focus-visible {
+.shell-select-option:hover:not(:disabled),
+.shell-select-option:focus-visible:not(:disabled) {
   background: var(--color-panel-hover);
 }
 
@@ -375,8 +375,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
   font-weight: 500;
 }
 
-.shell-select-option.on:hover,
-.shell-select-option.on:focus-visible {
+.shell-select-option.on:hover:not(:disabled),
+.shell-select-option.on:focus-visible:not(:disabled) {
   background: color-mix(in srgb, var(--color-accent) 26%, transparent);
 }
 

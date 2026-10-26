@@ -78,7 +78,7 @@
   .task-actions .btn { flex: 1; padding: 8px 12px; }
 }
 
-.shell-select-option:disabled, .shell-select-option:disabled:hover { color:var(--color-muted); background:var(--color-canvas); cursor:default; opacity:.65; }
+.shell-select-option:disabled, .shell-select-option:disabled:hover { color:var(--color-muted); background:var(--color-canvas); cursor:default; opacity:1; }
 .shell-select.has-disabled-value .shell-select-value { color:var(--color-muted); }
 
 .shell-select-value { display:flex; align-items:center; gap:8px; min-width:0; }
@@ -91,7 +91,6 @@
 .shell-select-badge.badge-locked { color:#8b5360; background:#f5edef; font-weight:500; }
 .shell-select-badge.badge-full { color:#776447; background:#f4f0e8; font-weight:500; }
 .shell-select-badge.badge-partial { color:#79614f; background:#f4eee9; font-weight:500; }
-.shell-select-option:disabled { opacity:1; }
 :root[data-shell-theme="dark"] .shell-select-badge.badge-locked { color:#c5a2aa; background:#342c30; }
 :root[data-shell-theme="dark"] .shell-select-badge.badge-full { color:#c5b496; background:#322f29; }
 :root[data-shell-theme="dark"] .shell-select-badge.badge-partial { color:#c2ac9d; background:#332e2a; }

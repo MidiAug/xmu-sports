@@ -178,6 +178,25 @@ try {
   assert.deepEqual([...new Set(await court.locator('.shell-select-badge').allTextContents())].sort(),["已满","已锁"].sort());
   assert.equal(await court.locator('[data-value="03"]').isDisabled(),true);
   assert.match(await court.locator('[data-value="03"]').innerText(),/已锁/);
+  await court.locator('.shell-select-trigger').click();
+  const lockedOption=court.locator('[data-value="03"]');
+  const colors=el=>{const s=getComputedStyle(el);return [s.backgroundColor,s.color,s.opacity];};
+  for(const theme of ['light','dark']) {
+    await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+    for(const selected of [false,true]) {
+      await lockedOption.evaluate((el,selected)=>el.classList.toggle('on',selected),selected);
+      await page.mouse.move(950,10);
+      const before=await lockedOption.evaluate(colors);
+      const bounds=await lockedOption.boundingBox();
+      await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
+      assert.deepEqual(await lockedOption.evaluate(colors),before,`${theme}: locked option hover must not change its appearance, selected=${selected}`);
+    }
+    await lockedOption.evaluate(el=>el.classList.remove('on'));
+  }
+  mkdirSync(artifacts,{recursive:true});
+  await court.locator('.shell-select-menu').screenshot({path:resolve(artifacts,'locked-hover-dark.png')});
+  await page.evaluate(()=>document.documentElement.dataset.shellTheme='light');
+  await page.keyboard.press('Escape');
   assert.equal(await court.locator('[data-value="07"]').isEnabled(),true);
   assert.match(await court.locator('[data-value="07"]').innerText(),/已满/);
   await choose(court,"07");
