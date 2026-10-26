@@ -286,13 +286,12 @@
 .my-orders-status { margin: 0 5px 8px; font-size: 10px; color: var(--color-muted); line-height: 16px; }
 .my-orders-list { display: flex; flex-direction: column; gap: 8px; overflow: auto; max-height: min(42vh, 350px); scrollbar-width: thin; min-height: 0; padding: 1px; }
 .my-order { flex: none; min-width: 0; padding: 9px 10px 10px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-panel); box-shadow: 0 1px 2px rgb(0 0 0 / 3%); }
-.my-order-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 22px; }
-.my-order-sport { font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-order-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; min-height: 22px; }
+.my-order-name { min-width: 0; font-size: 11px; line-height: 19px; font-weight: 600; overflow-wrap: anywhere; }
 .my-order p { margin: 0; }
 .my-order .my-order-time { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; margin: 3px 0 5px; font-variant-numeric: tabular-nums; }
 .my-order-day { color: var(--color-accent); font-size: 10px; font-weight: 500; }
 .my-order-time strong { font-size: 12px; font-weight: 600; letter-spacing: -.2px; white-space: nowrap; }
-.my-order-venue { font-size: 10px; line-height: 16px; color: var(--color-muted); overflow-wrap: anywhere; }
 .my-order-court { color: var(--color-muted); font-size: 10px; line-height: 16px; }
 .order-icon, .order-cancel { appearance: none; border: 0; font: inherit; background: transparent; border-radius: 6px; cursor: pointer; color: var(--color-muted); flex: none; display: inline-flex; align-items: center; justify-content: center; }
 .order-icon { width: 26px; height: 26px; }

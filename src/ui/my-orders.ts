@@ -16,6 +16,14 @@ export function orderDay(date:string, now=new Date(Date.now())) {
   for(let offset=0;offset<relative.length;offset++) if(date===addDaysISO(today,offset)) return relative[offset];
   return date.startsWith(today.slice(0,4)) ? date.slice(5).replace("-","/") : date.replaceAll("-","/");
 }
+export function orderPlace(row:Pick<Order,"venue"|"sport"|"court">) {
+  const venue=row.venue.trim(), sport=row.sport.trim(), court=row.court.trim();
+  let number=court.replace(/\s/g,"");
+  if(sport && number.startsWith(sport)) number=number.slice(sport.length);
+  const numbered=/^(?:第)?(?:场地|球场|球台|台|桌)?[A-Za-z]?\d+(?:号)?(?:场地|球场|球台|台|桌|场)?$/.test(number);
+  if(numbered) return {name:venue || sport || "场馆预约",court:/^\d+$/.test(court) ? `${court} 号场地` : court};
+  return {name:court && court!==sport ? court : venue || sport || "场馆预约",court:""};
+}
 const cancelIcon='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="m6 6 4 4m0-4-4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
 
 export function mountMyOrders(host:HTMLElement) {
@@ -27,7 +35,7 @@ export function mountMyOrders(host:HTMLElement) {
     const disabled = busy || !known || loading || confirming || cancelling;
     host.innerHTML = `<div class="my-orders-head"><h2>我的预约${rows.length ? `<span>${rows.length}</span>` : ""}</h2><button type="button" class="order-icon ${loading ? "is-loading" : ""}" data-orders-refresh title="刷新预约，后台每 5 分钟更新" aria-label="刷新我的预约" ${disabled ? "disabled" : ""}>${refreshIcon}</button></div>
       ${(busy && known) || message ? `<p class="my-orders-status" role="status">${escape(busy && known ? "预约进行中，暂停更新" : message)}</p>` : '<span class="sr-only" role="status">预约已更新</span>'}
-      <div class="my-orders-list">${rows.map((row,index) => `<article class="my-order" title="${escape(label(row))}"><div class="my-order-head"><span class="my-order-sport">${escape(row.sport || "场馆预约")}</span><button type="button" class="order-cancel" data-order-cancel="${index}" aria-label="${escape(`取消预约：${label(row)}`)}" title="${row.can_cancel ? "取消此预约" : "当前场次暂无法取消，请到小程序核对"}" ${disabled || !row.can_cancel ? "disabled" : ""}>${cancelIcon}</button></div><p class="my-order-time"><span class="my-order-day">${escape(orderDay(row.date))}</span><strong>${escape(row.start)}–${escape(row.end)}</strong></p><p class="my-order-venue">${escape(row.venue)}</p>${row.court ? `<p class="my-order-court">${escape(row.court)}</p>` : ""}</article>`).join("")}</div>`;
+      <div class="my-orders-list">${rows.map((row,index) => {const place=orderPlace(row);return `<article class="my-order" title="${escape(label(row))}"><div class="my-order-head"><span class="my-order-name">${escape(place.name)}</span><button type="button" class="order-cancel" data-order-cancel="${index}" aria-label="${escape(`取消预约：${label(row)}`)}" title="${row.can_cancel ? "取消此预约" : "当前场次暂无法取消，请到小程序核对"}" ${disabled || !row.can_cancel ? "disabled" : ""}>${cancelIcon}</button></div><p class="my-order-time"><span class="my-order-day">${escape(orderDay(row.date))}</span><strong>${escape(row.start)}–${escape(row.end)}</strong></p>${place.court ? `<p class="my-order-court">${escape(place.court)}</p>` : ""}</article>`;}).join("")}</div>`;
     host.querySelector<HTMLButtonElement>("[data-orders-refresh]")!.onclick = () => void refresh(true);
     host.querySelectorAll<HTMLButtonElement>("[data-order-cancel]").forEach(button => {
       button.onclick = () => void cancelRow(rows[Number(button.dataset.orderCancel)]);

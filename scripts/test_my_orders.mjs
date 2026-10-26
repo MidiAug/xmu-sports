@@ -41,7 +41,29 @@ try {
   (await import(url)).mountMyOrders(document.querySelector("#orders"));
  },moduleUrl);
  await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===2);
- assert.match(await page.locator(".my-order").first().innerText(),/明天[\s\S]*07:00[\s\S]*思明/);
+ assert.match(await page.locator(".my-order").first().innerText(),/思明[\s\S]*明天[\s\S]*07:00/);
+ assert.deepEqual(await page.evaluate(async url=>{
+  const {orderPlace}=await import(url);
+  return [
+   {venue:"翔安校区健身房",sport:"健身房",court:"爱秋体育馆健身房"},
+   {venue:"翔安校区乒乓球室",sport:"乒乓球",court:"02 号场地"},
+   {venue:"翔安校区乒乓球室",sport:"乒乓球",court:"04"},
+   {venue:"翔安校区健身房",sport:"健身房",court:"健身房"},
+  ].map(orderPlace);
+ },moduleUrl),[
+  {name:"爱秋体育馆健身房",court:""},
+  {name:"翔安校区乒乓球室",court:"02 号场地"},
+  {name:"翔安校区乒乓球室",court:"04 号场地"},
+  {name:"翔安校区健身房",court:""},
+ ]);
+ await page.evaluate(()=>{
+  window.__rows.push({order_id:"44",details_id:"73",venue:"翔安校区健身房",sport:"健身房",court:"爱秋体育馆健身房",date:"2026-10-27",start:"19:30",end:"21:00",can_cancel:true});
+  window.dispatchEvent(new Event("orders-authenticated"));
+ });
+ await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===3);
+ const gym=page.locator(".my-order").filter({hasText:"爱秋体育馆健身房"});
+ assert.match(await gym.innerText(),/^爱秋体育馆健身房/);
+ assert.doesNotMatch(await gym.innerText(),/翔安校区健身房/);
  mkdirSync("artifacts/sidebar-orders",{recursive:true});
  await page.evaluate(()=>document.documentElement.dataset.shellTheme="light");
  await page.screenshot({path:"artifacts/sidebar-orders/light.png"});
@@ -49,10 +71,16 @@ try {
  await page.screenshot({path:"artifacts/sidebar-orders/dark.png"});
  for(const size of [{width:970,height:480},{width:480,height:720}]) {
   await page.setViewportSize(size);
-  assert.ok(await page.evaluate(()=>[...document.querySelectorAll(".order-cancel")].every(el=>{const b=el.getBoundingClientRect();return b.left>=0 && b.right<=innerWidth && b.bottom<=innerHeight;})));
+  for(const button of await page.locator(".order-cancel").all()) {
+   await button.scrollIntoViewIfNeeded();
+   const bounds=await button.boundingBox();
+   assert.ok(bounds.x>=0 && bounds.x+bounds.width<=size.width && bounds.y+bounds.height<=size.height);
+  }
  }
  await page.screenshot({path:"artifacts/sidebar-orders/narrow.png"});
  await page.setViewportSize({width:970,height:815});
+ await page.evaluate(()=>{window.__rows=window.__rows.filter(row=>row.order_id!=="44");window.dispatchEvent(new Event("orders-authenticated"));});
+ await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===2);
  const queries=()=>page.evaluate(()=>window.__calls.filter(c=>c.command==="get_my_orders").length);
  assert.equal(await page.locator(".my-orders-status").count(),0,"no explanatory text when loaded");
  assert.equal(await page.evaluate(async url=>{
@@ -103,7 +131,7 @@ try {
  await page.waitForFunction(()=>document.querySelector(".my-orders-status").textContent.includes("更新失败"));
  assert.equal(await page.locator(".my-order").count(),1,"failed refresh retains snapshot");
  await page.evaluate(()=>{window.__failure=false;window.__rows=[{...window.__rows[0],venue:'<img src=x onerror=alert(1)>'}];window.dispatchEvent(new Event("orders-authenticated"));});
- await page.waitForFunction(()=>document.querySelector(".my-order-venue").textContent.includes("<img"));
+ await page.waitForFunction(()=>document.querySelector(".my-order-name").textContent.includes("<img"));
  assert.equal(await page.locator("#orders img").count(),0,"escape server text");
  await page.evaluate(()=>{window.__rows=[];window.dispatchEvent(new Event("orders-authenticated"));});
  await page.waitForFunction(()=>document.querySelector(".my-orders-status").textContent.includes("暂无"));
