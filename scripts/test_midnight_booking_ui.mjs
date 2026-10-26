@@ -18,9 +18,10 @@ try {
     window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } }, transformCallback: () => 1, unregisterCallback() {}, invoke: async (command, args) => {
       if (command === 'read_task_raw') return task;
       if (command === 'save_task') return task = { ...args.task, revision: task.revision + 1 };
-      if (command === 'get_live_status') return { task, armed: false, running: false, recent_events: [] };
+      if (command === 'get_live_status') return { task, armed: false, running: false, recent_events: [], ...window.liveStatusOverride };
       if (command === 'get_shell_prefs') return { favorite_sport_ids: [], venue_slot_prefs: {} };
       if (command === 'list_recent_events') return [];
+      if (command === 'list_pending_orders') return [];
       if (command.includes('version')) return '0.1.30';
       if (command === 'get_venue_availability') {
         const cells = Array.from({ length: 10 }, (_, i) => ({ court: String(i + 1).padStart(2, '0'), admin_locked: false, status: 'unavailable', reason: '', remaining: i === 6 ? 1 : 0, capacity: 1 }));
@@ -93,5 +94,26 @@ try {
     await rollover.screenshot({ path: `${output}/rollover-${relative}.png` });
     await rollover.close();
   }
+  const showLive = async status => {
+    await page.evaluate(value => window.liveStatusOverride=value, status);
+    await page.locator('.nav-tabs [data-tab="history"]').click();
+    await page.locator('.nav-tabs [data-tab="live"]').click();
+    await page.locator('.live-page').waitFor();
+  };
+  await page.setViewportSize({width:960,height:800});
+  await page.evaluate(()=>document.documentElement.dataset.shellTheme='light');
+  await showLive({});
+  assert.equal(await page.locator('#arm_hang,#trial_run,#http_prepare').count(),0);
+  await page.getByRole('button',{name:'修改预约',exact:true}).waitFor();
+  await page.screenshot({path:`${output}/live-idle.png`});
+  await showLive({armed:true,fire_at:'2026-10-28T07:00:00+08:00'});
+  await page.locator('#live_remain').waitFor();
+  assert.equal(await page.locator('#disarm_hang').innerText(),'取消挂机');
+  const phase={task_id:'fixture',run_id:'fixture-run',ts:'2026-10-28T07:00:00+08:00',action:'http_phase',result:'querying_slots',http:{phase:'querying_slots'}};
+  await showLive({running:true,last_event:phase,recent_events:[phase]});
+  await page.locator('.booking-execution').waitFor();
+  assert.equal(await page.locator('#disarm_hang').innerText(),'停止');
+  assert.equal(await page.locator('#arm_hang,#trial_run,#http_prepare').count(),0);
+  assert.deepEqual(await page.evaluate(()=>window.bookingCalls),[]);
   console.log('Midnight booking UI passed: all overnight dates scheduled, daytime actions, counts, warning, 07:00, midnight actual-date preservation and narrow layout');
 } finally { await browser.close(); }

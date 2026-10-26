@@ -6,21 +6,16 @@ import { clearLiveTick, setRunIndicator } from "../lib/run-indicator";
 import {
   formatFallbackLabel,
   formatFireAtHuman,
-  formatFireAtWaitDesc,
-  isFireAtPast,
   formatTargetBrief,
   formatTaskSportVenue,
   joinParts,
   pageLabelZh,
 } from "../lib/format-human";
 import { formatRemaining } from "../lib/time";
-import { bookingBlockedReason, hangBlockedReason } from "../lib/booking-eligibility";
 import { BOOKING_STEPS, currentRunEvents, elapsedLabel, progressMessage, progressStep } from "../lib/booking-progress";
 import { log } from "../lib/log";
 import { toastError, toastSuccess } from "../ui/toast";
-import { askConfirm } from "../ui/confirm-ask";
 import { mountPage, type PageScope } from "../lib/page-lifecycle";
-import { flushTask } from "../lib/task-store";
 import { patchHtml } from "../ui/patch-html";
 import { mountOrderRecheck } from "../ui/order-recheck";
 import {
@@ -226,7 +221,7 @@ function taskBriefHtml(t: BookingTask | null, opts?: { withSetupCta?: boolean })
       : "";
     return `<div class="live-brief empty-brief">
       <p class="live-brief-title">尚未配置任务</p>
-      <p class="live-brief-sub">先在「任务」页选择运动、场馆、时段，再回来挂机</p>
+      <p class="live-brief-sub">请在「预约」页选择目标并开始预约，这里显示执行进度</p>
       ${cta}
     </div>`;
   }
@@ -269,11 +264,6 @@ function paintLiveBody(
   const stopping = Boolean(st?.stopping);
   const fireAt = st?.fire_at || t?.fire_at || null;
   const wxRunning = Boolean(wx?.running);
-  const armBlock = t ? hangBlockedReason(t) : null;
-  const trialBlock = t ? bookingBlockedReason(t) : null;
-  const canArm = knownStatus && Boolean(t) && !armed && !running && !armBlock;
-  const trialReady = knownStatus && Boolean(t) && !armed && !running && (t?.executor === "http" || (knownWx && wxRunning));
-  const canTrial = trialReady && !trialBlock;
   const busy = armed || running;
 
   if (knownStatus) {
@@ -309,65 +299,11 @@ function paintLiveBody(
   } else if (running) {
     mainBlock = "";
   } else {
-    const hangDesc = !knownStatus
-      ? "同步状态中…"
-      : !t
-        ? "请先在任务页配置预约目标"
-        : fireAt
-          ? `${formatFireAtWaitDesc(fireAt)}${t.executor === "http" ? "；提前 1 分钟自动登录并获取 H5" : ""}`
-          : "按任务中的开抢时间等待";
-    const trialDesc = !knownStatus
-      ? "同步状态中…"
-      : !t
-        ? "请先在任务页配置预约目标"
-        : t.executor === "http"
-          ? "立即预约，成功后生成真实订单；登录失效时先恢复登录"
-        : !knownWx
-          ? "正在检测微信…"
-          : !wxRunning
-            ? "请先打开并登录 PC 微信"
-            : "现在执行完整流程；成功后会真实预约，不等开抢时刻";
-
     mainBlock = `
       <div class="settings-group">
         <p class="settings-group-title">当前任务</p>
         <div class="settings-group-body well-flush">
           ${taskBriefHtml(t, { withSetupCta: true })}
-        </div>
-      </div>
-      <div class="settings-group">
-        <p class="settings-group-title">挂机</p>
-        <div class="settings-group-body">
-          <div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">开始挂机</p>
-              <p class="settings-cell-desc" id="hang_reason">${escText(armBlock ?? hangDesc)}</p>
-            </div>
-            <button type="button" class="btn primary" id="arm_hang" ${
-              canArm ? "" : "disabled"
-            }>开始挂机</button>
-          </div>
-        </div>
-      </div>
-      <div class="settings-group">
-        <p class="settings-group-title">现在开始</p>
-        <div class="settings-group-body">
-          <div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">立即预约</p>
-              <p class="settings-cell-desc" id="trial_reason">${escText(trialBlock ?? trialDesc)}</p>
-            </div>
-            <button type="button" class="btn ghost" id="trial_run" ${
-              canTrial ? "" : "disabled"
-            }>立即预约</button>
-          </div>
-          ${t?.executor === "http" ? `<div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">预约预检</p>
-              <p class="settings-cell-desc">恢复登录、查询场次并校验预约条件与验证码；不提交订单。适合首次在此电脑测试</p>
-            </div>
-            <button type="button" class="btn ghost" id="http_prepare" ${canTrial ? "" : "disabled"}>预检，不下单</button>
-          </div>` : ""}
         </div>
       </div>`;
   }
@@ -418,54 +354,8 @@ function paintLiveBody(
         if (++tick % 5 === 0) void pollWhileRunning(panel, opts?.scope);
       }, 1000),
     );
-  } else if (t) {
-    // Revalidate at 07:00, midnight and slot start without repainting or probing WeChat.
-    const updateEligibility = () => {
-      if (tab !== "live") { clearLiveTick(); return; }
-      const trialReason = bookingBlockedReason(t);
-      const armReason = hangBlockedReason(t);
-      const trialBtn = panel.querySelector<HTMLButtonElement>("#trial_run");
-      const prepareBtn = panel.querySelector<HTMLButtonElement>("#http_prepare");
-      const armBtn = panel.querySelector<HTMLButtonElement>("#arm_hang");
-      if (trialBtn) trialBtn.disabled = !trialReady || !!trialReason;
-      if (prepareBtn) prepareBtn.disabled = !trialReady || !!trialReason;
-      if (armBtn) armBtn.disabled = !knownStatus || !!armReason;
-      const trialText = panel.querySelector("#trial_reason");
-      const armText = panel.querySelector("#hang_reason");
-      if (trialText) trialText.textContent = trialReason ?? (t.executor === "http"
-        ? "先检测登录；无法自动恢复时提示你打开小程序确认" : !wxRunning
-        ? "请先打开并登录 PC 微信" : "立即执行，成功后会真实预约");
-      if (armText) armText.textContent = armReason ?? (fireAt ? formatFireAtWaitDesc(fireAt) : "按任务中的开抢时间等待");
-    };
-    setLiveTickTimer(window.setInterval(updateEligibility, 1000));
   }
 
-  const armButton = panel.querySelector<HTMLButtonElement>("#arm_hang");
-  if (armButton) armButton.onclick = async () => {
-    const blocked = t ? hangBlockedReason(t) : "请先配置任务";
-    if (blocked) { toastError("无法挂机", blocked); return; }
-    if (fireAt && isFireAtPast(fireAt)) {
-      const ok = await askConfirm({
-        title: "马上开始预约？",
-        lead: "开抢时间已经过了，将立即执行并提交预约。",
-        confirmLabel: "开始预约",
-      });
-      if (!ok) return;
-    }
-    try {
-      await flushTask();
-      if (opts?.scope && !opts.scope.current()) return;
-      const out = await invoke<string>("arm_hang");
-      toastSuccess(
-        fireAt && isFireAtPast(fireAt) ? "已开始预约" : "已开始挂机",
-        out || undefined,
-      );
-      if (!opts?.scope || opts.scope.current()) void renderLive(panel, { statusOnly: true });
-    } catch (e) {
-      log.warn("live", "arm_hang_failed", { err: String(e) });
-      toastError("无法挂机", String(e));
-    }
-  };
   const stopButton = panel.querySelector<HTMLButtonElement>("#disarm_hang");
   if (stopButton) stopButton.onclick = async () => {
     stopButton.disabled = true;
@@ -479,54 +369,7 @@ function paintLiveBody(
       stopButton.disabled = false;
     }
   };
-  const trialButton = panel.querySelector<HTMLButtonElement>("#trial_run");
-  if (trialButton) trialButton.onclick = async () => {
-    const initialBlock = t ? bookingBlockedReason(t) : "请先配置任务";
-    if (initialBlock) { toastError("无法开始", initialBlock); return; }
-    if (!wxRunning && t?.executor !== "http") {
-      log.warn("live", "run_now_failed", { err: "wechat_not_running" });
-      toastError("无法开始", "请先打开并登录 PC 微信");
-      return;
-    }
-    const ok = await askConfirm({
-      title: "现在预约？",
-      lead: "会按当前任务立即执行，成功后真实预约，不等开抢时刻。",
-      confirmLabel: "现在开始",
-    });
-    if (!ok) return;
-    const blocked = t ? bookingBlockedReason(t) : "请先配置任务";
-    if (blocked) { toastError("无法开始", blocked); return; }
-    try {
-      await flushTask();
-      if (opts?.scope && !opts.scope.current()) return;
-      await invoke<string>("start_http_run", { until: "submit" });
-      log.info("live", "run_now", { until: "submit" });
-      toastSuccess("已开始", "正在完整预约…");
-      if (!opts?.scope || opts.scope.current()) void renderLive(panel, { statusOnly: true });
-    } catch (e) {
-      log.warn("live", "run_now_failed", { err: String(e) });
-      toastError("无法开始", String(e));
-    }
-  };
-  const prepareButton = panel.querySelector<HTMLButtonElement>("#http_prepare");
-  if (prepareButton) prepareButton.onclick = async () => {
-    const blocked = t ? bookingBlockedReason(t) : "请先配置任务";
-    if (blocked || t?.executor !== "http") {
-      toastError("无法预检", blocked ?? "请先选择 HTTP 执行方式");
-      return;
-    }
-    try {
-      await flushTask();
-      if (opts?.scope && !opts.scope.current()) return;
-      await invoke<string>("start_http_run", { until: "prepare" });
-      log.info("live", "http_prepare", { until: "prepare", commit: false });
-      toastSuccess("已开始预检", "检查登录与预约条件，不提交订单");
-      if (!opts?.scope || opts.scope.current()) void renderLive(panel, { statusOnly: true });
-    } catch (e) {
-      log.warn("live", "http_prepare_failed", { err: String(e) });
-      toastError("无法预检", String(e));
-    }
-  };
+
 }
 
 let polling = false;
