@@ -10,24 +10,24 @@ assert.match(bookingBlockedReason(task, new Date("2026-10-13T18:35:00+08:00")), 
 assert.equal(hangBlockedReason(task, new Date("2026-10-13T18:35:00+08:00")), null);
 assert.equal(bookingBlockedReason(task, new Date("2026-10-14T07:00:00+08:00")), null);
 const today = { ...task, target_date: "2026-10-13" };
-assert.equal(bookingBlockedReason(today, new Date("2026-10-13T06:59:59+08:00")), null);
+assert.match(bookingBlockedReason(today, new Date("2026-10-13T06:59:59+08:00")), /定时.*07:00/);
 assert.equal(bookingBlockedReason(today, new Date("2026-10-13T07:00:00+08:00")), null);
 assert.match(bookingBlockedReason(today, new Date("2026-10-13T16:30:00+08:00")), /已经开始/);
 assert.match(bookingBlockedReason(today, new Date("2026-10-13T08:30:00Z")), /已经开始/);
 const tomorrow = { ...task, target_date: "2026-10-14" };
 assert.equal(bookingBlockedReason(tomorrow, new Date("2026-10-13T23:59:59+08:00")), null);
-assert.equal(bookingBlockedReason(tomorrow, new Date("2026-10-14T00:00:00+08:00")), null);
-assert.equal(bookingBlockedReason(tomorrow, new Date("2026-10-13T00:00:00+08:00")), null);
+assert.match(bookingBlockedReason(tomorrow, new Date("2026-10-14T00:00:00+08:00")), /定时/);
+assert.match(bookingBlockedReason(tomorrow, new Date("2026-10-13T00:00:00+08:00")), /定时/);
 assert.match(hangBlockedReason({ ...today, fire_at: "2026-10-13T19:00:00+08:00" }, new Date("2026-10-13T07:00:00+08:00")), /已经开始/);
 assert.match(bookingBlockedReason({ ...today, target_time_end: "15:00" }, new Date("2026-10-13T07:00:00+08:00")), /无效/);
-console.log("Frontend eligibility checks passed, including midnight today/tomorrow execution");
+console.log("Frontend eligibility checks passed: overnight scheduling and daytime immediate execution");
 
 const timeSource = readFileSync(new URL("../src/lib/time.ts", import.meta.url), "utf8");
 const timeJs = ts.transpileModule(timeSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const timeUrl = `data:text/javascript;base64,${Buffer.from(timeJs).toString("base64")}`;
 const calibrationSource = readFileSync(new URL("../src/lib/calibrate-target-date.ts", import.meta.url), "utf8");
 const pureFunction = calibrationSource.slice(calibrationSource.indexOf("export function withDefaultTargetDate"), calibrationSource.indexOf("/** ms until"));
-const calibrationJs = ts.transpileModule(`import { composeFireAt, defaultTargetDateISO, fireHmFromIso, localDateISO } from ${JSON.stringify(timeUrl)};\n${pureFunction}`, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+const calibrationJs = ts.transpileModule(`import { plannedFireAt, defaultTargetDateISO, fireHmFromIso, isSelectableTargetDate, localDateISO } from ${JSON.stringify(timeUrl)};\n${pureFunction}`, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const { withDefaultTargetDate } = await import(`data:text/javascript;base64,${Buffer.from(calibrationJs).toString("base64")}`);
 const time = await import(timeUrl);
 assert.equal(time.waitsExtraDay("2026-10-29", new Date("2026-10-27T00:00:00+08:00")), true);
@@ -60,7 +60,7 @@ try {
     for (const [instant, expected] of cases) {
       const now = new Date(instant);
       assert.equal(time.defaultTargetDateISO(now), expected, `${zone}: ${instant}`);
-      const chosen = withDefaultTargetDate({...today, fire_at:"2026-10-12T07:12:00+08:00"}, now);
+      const chosen = withDefaultTargetDate({...today, target_date:"2026-10-01", fire_at:"2026-10-12T07:12:00+08:00"}, now);
       assert.equal(chosen.target_date, expected);
       assert.equal(chosen.fire_at, time.composeFireAt(expected,"07:12"), "keep the configured execution time");
       const choices = time.bookingDateOptions(now);
@@ -71,11 +71,25 @@ try {
       for (const choice of choices) assert.equal(time.isSelectableTargetDate(choice.value,now),true);
       assert.equal(time.isSelectableTargetDate(time.addDaysISO(time.localDateISO(now),-1),now),false);
       assert.equal(time.isSelectableTargetDate(time.addDaysISO(time.localDateISO(now),3),now),false);
+      // All three dates wait overnight; only the third date waits after 07:00.
+      const beforeSeven=new Date(now.getTime()+8*3600_000).getUTCHours()<7;
+      for(const [offset,choice] of choices.entries()) {
+        const fire=time.plannedFireAt(choice.value,"07:00",0,now);
+        assert.equal(Date.parse(fire)>now.getTime(),beforeSeven || offset===2,`${zone}: ${instant} offset=${offset}`);
+        if(beforeSeven) assert.equal(time.localDateISO(new Date(fire)),time.addDaysISO(time.localDateISO(now),offset===2 ? 1 : 0));
+        const goal={...task,target_date:choice.value,fire_at:fire};
+        if(beforeSeven) assert.ok(bookingBlockedReason(goal,now));
+        if(offset<2 && !beforeSeven) assert.equal(bookingBlockedReason(goal,now),now.getTime()>=Date.parse(`${choice.value}T16:30:00+08:00`) ? "目标时段已经开始或已结束，请选择尚未开始的时段" : null);
+      }
+      for(const preserved of choices) {
+        const stable=withDefaultTargetDate({...task,target_date:preserved.value},now);
+        assert.equal(stable.target_date,preserved.value,'valid actual target survives calibration');
+      }
     }
   }
 } finally { if (oldZone === undefined) delete process.env.TZ; else process.env.TZ = oldZone; }
 
-let saved = {...today,task_id:"date-test"}, busy = false, running = false, writes = 0;
+let saved = {...today,target_date:"2026-10-12",task_id:"date-test"}, busy = false, running = false, writes = 0;
 globalThis.__dateTest = {
   invoke:async()=>({armed:busy,running,last_event:{result:"SESSION_EXPIRED"}}),
   read:async()=>saved,
@@ -90,21 +104,25 @@ try {
   const mockedJs = ts.transpileModule(mocked,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
   const {calibrateSavedTaskTargetDate:calibrate,msUntilNextDateBoundary:boundary} = await import(`data:text/javascript;base64,${Buffer.from(mockedJs).toString("base64")}`);
   assert.equal(await calibrate(new Date("2026-10-13T20:00:00+08:00")),true);
-  assert.equal(saved.target_date,"2026-10-15","cold start overrides a previous manual choice");
-  saved={...saved,target_date:"2026-10-14"}; const count=writes;
+  assert.equal(saved.target_date,"2026-10-15","expired target falls back to the next release day");
+  saved={...saved,target_date:"2026-10-14",fire_at:"2026-10-13T07:00:00+08:00"}; const count=writes;
   assert.equal(await calibrate(new Date("2026-10-13T21:00:00+08:00")),false);
   assert.equal(writes,count,"same booking window keeps the manual choice");
   await calibrate(new Date("2026-10-14T00:00:00+08:00"));
-  assert.equal(saved.target_date,"2026-10-15","midnight resets even when the default absolute day is unchanged");
+  assert.equal(saved.target_date,"2026-10-14","midnight preserves tomorrow as today's actual target");
+  assert.equal(saved.fire_at,"2026-10-14T07:00:00+08:00","today waits for today's 07:00 rather than yesterday's");
   busy=true;
   assert.equal(await calibrate(new Date("2026-10-14T07:00:00+08:00")),false);
-  assert.equal(saved.target_date,"2026-10-15","a scheduled task is frozen at 07:00");
+  assert.equal(saved.target_date,"2026-10-14","a scheduled task is frozen at 07:00");
+  assert.equal(saved.fire_at,"2026-10-14T07:00:00+08:00");
   busy=false; running=true;
   assert.equal(await calibrate(new Date("2026-10-14T07:00:01+08:00")),false);
-  assert.equal(saved.target_date,"2026-10-15","an executing task is also frozen");
+  assert.equal(saved.target_date,"2026-10-14","an executing task is also frozen");
   running=false;
   assert.equal(await calibrate(new Date("2026-10-14T07:00:02+08:00")),true);
-  assert.equal(saved.target_date,"2026-10-16","idle task catches up to the new release window");
+  assert.equal(saved.target_date,"2026-10-14","07:00 does not silently move the actual target");
+  await calibrate(new Date("2026-10-15T00:00:00+08:00"));
+  assert.equal(saved.target_date,"2026-10-16","an expired old today is replaced when it leaves the date range");
   assert.equal(boundary(new Date("2026-10-13T23:59:59+08:00")),1000);
   assert.equal(boundary(new Date("2026-10-14T06:59:59+08:00")),1000);
 } finally {delete globalThis.__dateTest;}

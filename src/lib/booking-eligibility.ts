@@ -11,6 +11,7 @@ export function bookingBlockedReason(task: BookingTask, now = new Date()): strin
   const tomorrow = new Date(china.getTime() + 86400_000).toISOString().slice(0, 10);
   if (task.target_date !== today && task.target_date !== tomorrow)
     return "立即预约只支持今天或明天；其他日期请等待对应开抢时间";
+  if (china.getUTCHours() < 7) return "当前为定时预约时段，请安排今天 07:00 后执行";
   const start = Date.parse(`${task.target_date}T${task.target_time_start}:00+08:00`);
   const end = Date.parse(`${task.target_date}T${task.target_time_end}:00+08:00`);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start)

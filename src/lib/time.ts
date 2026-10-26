@@ -115,6 +115,15 @@ export function composeFireAt(targetDate: string, timeHm: string, delaySeconds =
   return new Date(base + delaySeconds * 1000 + 8 * 3600_000).toISOString().slice(0, 19) + "+08:00";
 }
 
+/** Before 07:00, today's target waits for today's window rather than yesterday's. */
+export function plannedFireAt(targetDate: string, timeHm: string, delaySeconds = 0, now = new Date()): string {
+  const today = localDateISO(now);
+  const beforeSeven = new Date(now.getTime() + 8 * 3600_000).getUTCHours() < 7;
+  const scheduleTarget = beforeSeven && addDaysISO(targetDate, -1) < today
+    ? addDaysISO(today, 1) : targetDate;
+  return composeFireAt(scheduleTarget, timeHm, delaySeconds);
+}
+
 export function formatRemaining(ms: number): string {
   if (ms <= 0) return "即将开抢";
   const totalSec = Math.floor(ms / 1000);

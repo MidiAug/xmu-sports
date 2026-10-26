@@ -14,7 +14,7 @@ import {
   FIRE_TIME_MIN,
   addMinutesHm,
   bookingDateOptions,
-  composeFireAt,
+  plannedFireAt,
   defaultFireTimeHm,
   defaultTargetDateISO,
   fireHmFromIso,
@@ -65,7 +65,7 @@ export async function renderSetup(panel: Element) {
   if (!scope.current()) return;
   const selectable = favoriteSports(favoriteIds);
 
-  // Boot / 00:00 / 07:00 calibration selects the next release; tab changes keep manual choices.
+  // Boundaries refresh relative labels and timing, while preserving valid actual dates.
   const locked = Boolean(liveStatusCache?.armed || liveStatusCache?.running);
   const date =
     saved?.target_date && (locked || isSelectableTargetDate(saved.target_date))
@@ -160,7 +160,7 @@ export async function renderSetup(panel: Element) {
           <div class="settings-cell">
             <div>
               <p class="settings-cell-title">定时执行时间</p>
-              <p class="settings-cell-desc">预约日前一天执行，北京时间（最早 07:00）</p>
+              <p class="settings-cell-desc">北京时间，最早 07:00；凌晨选今天或明天在今天执行，选后天在明天执行</p>
             </div>
             <div class="stepper" role="group" aria-label="定时执行时间">
               <button type="button" class="stepper-btn" id="fire_prev" aria-label="减一分钟">−</button>
@@ -589,7 +589,7 @@ export async function renderSetup(panel: Element) {
       sport: sportSelect.getValue(),
       venue: venueSelect.getValue().trim(),
       target_date,
-      fire_at: composeFireAt(target_date, fire, fireDelayEl.valueAsNumber),
+      fire_at: plannedFireAt(target_date, fire, fireDelayEl.valueAsNumber),
       fire_delay_seconds: fireDelayEl.valueAsNumber,
       target_time_start: start,
       target_time_end: end,

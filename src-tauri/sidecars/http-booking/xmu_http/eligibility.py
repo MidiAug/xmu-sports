@@ -13,6 +13,8 @@ def check_target(target, now=None):
         raise BookingError("INVALID_SLOT", "预约日期或时段无效", phase="local_eligibility")
     if (start.date() - now.date()).days not in (0, 1):
         raise BookingError("DATE_NOT_OPEN", "立即预约只支持今天或明天，其他日期请等待对应开抢时间", phase="local_eligibility")
+    if now.hour < 7:
+        raise BookingError("NOT_OPEN", "当前为定时预约时段，请安排今天 07:00 后执行", phase="local_eligibility")
     if end <= start:
         raise BookingError("INVALID_SLOT", "预约结束时间必须晚于开始时间", phase="local_eligibility")
     if start <= now:

@@ -1,15 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { BookingTask } from "../types";
 import { log } from "./log";
-import { composeFireAt, defaultTargetDateISO, fireHmFromIso, localDateISO } from "./time";
+import { plannedFireAt, defaultTargetDateISO, fireHmFromIso, isSelectableTargetDate, localDateISO } from "./time";
 import { readSavedTask, saveTaskDraft, flushTask } from "./task-store";
 
-/** Start each booking window on the day released at the next 07:00. */
+/** Preserve a valid absolute target; only expired/out-of-range goals use the default. */
 export function withDefaultTargetDate(task: BookingTask, now = new Date()): BookingTask {
-  const target_date = defaultTargetDateISO(now);
+  const target_date = isSelectableTargetDate(task.target_date, now) ? task.target_date : defaultTargetDateISO(now);
   const delay = task.fire_delay_seconds ?? 0;
   const fireHm = fireHmFromIso(task.fire_at, delay);
-  const fire_at = composeFireAt(target_date, fireHm, delay);
+  const fire_at = plannedFireAt(target_date, fireHm, delay, now);
   if (task.target_date === target_date && task.fire_at === fire_at) return task;
   return {
     ...task,
@@ -33,8 +33,8 @@ export function msUntilNextDateBoundary(now = new Date()): number {
 let lastCalibratedWindow: string | null = null;
 
 /**
- * Reset to the next newly released day on cold start and 00:00 / 07:00 boundaries.
- * Manual choices survive tab changes and visibility changes in the same window.
+ * Refresh execution time and expired goals on cold start and 00:00 / 07:00 boundaries.
+ * Valid absolute dates survive boundaries, navigation and restart.
  * Armed / running freezes the shot — skip and do not mark calibrated so disarm can catch up.
  * Returns true if disk was updated.
  */

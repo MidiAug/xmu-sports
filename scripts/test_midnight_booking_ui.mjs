@@ -8,11 +8,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.U
 const browser = await chromium.launch({ channel: 'msedge', headless: true });
 const output = 'artifacts/midnight-booking'; mkdirSync(output, { recursive: true });
 try {
-  const page = await browser.newPage({ viewport: { width: 960, height: 800 } });
+  const context = await browser.newContext({ viewport: { width: 960, height: 800 } });
+  const page = await context.newPage();
   await page.clock.install({ time: new Date('2026-10-27T00:30:00+08:00') });
-  await page.addInitScript(() => {
+  await page.context().addInitScript(() => {
     let task = { task_id: 'fixture', sport: '羽毛球', venue: '翔安校区羽毛球场', target_date: '2026-10-28', fire_at: '2026-10-27T07:00:00+08:00', target_time_start: '09:00', target_time_end: '10:00', executor: 'http', revision: 0 };
     window.bookingCalls = [];
+    window.readFixtureTask = () => task;
     window.__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } }, transformCallback: () => 1, unregisterCallback() {}, invoke: async (command, args) => {
       if (command === 'read_task_raw') return task;
       if (command === 'save_task') return task = { ...args.task, revision: task.revision + 1 };
@@ -33,12 +35,12 @@ try {
   await page.clock.runFor(1000);
   assert.equal(await page.locator('#setup_primary').innerText(), '定时预约');
   assert.equal(await page.locator('#setup_primary').isEnabled(), true);
-  assert.equal(await page.locator('#setup_now').isVisible(), true);
-  assert.equal(await page.locator('#setup_now').isEnabled(), true, 'tomorrow retains immediate action before 07:00');
+  assert.equal(await page.locator('#setup_now').isVisible(), false, 'no immediate action before 07:00');
   await page.locator('[data-date="2026-10-27"]').click(); await page.clock.runFor(1000);
-  assert.equal(await page.locator('#setup_primary').innerText(), '立即预约');
-  assert.equal(await page.locator('#setup_primary').isEnabled(), true, 'today is not blocked by the local hour');
-  assert.doesNotMatch(await page.locator('#task_action_reason').innerText(), /07:00 后/);
+  assert.equal(await page.locator('#setup_primary').innerText(), '定时预约');
+  assert.equal(await page.locator('#setup_primary').isEnabled(), true, 'today can be scheduled for today 07:00');
+  assert.match(await page.locator('#task_execution').innerText(), /今天.*07:00/);
+  assert.equal(await page.locator('#setup_now').isVisible(), false);
   await page.locator('#slot_host .shell-select-trigger').click();
   assert.match(await page.locator('#slot_host [data-value="10:00|11:00"]').innerText(), /已满/);
   assert.match(await page.locator('#slot_host [data-value="09:00|10:00"]').innerText(), /暂不可约/);
@@ -62,8 +64,34 @@ try {
   await page.locator('[data-date="2026-10-28"]').click(); await page.clock.runFor(1000);
   assert.equal(await page.locator('#date_hint.is-warning').count(), 0, 'selecting tomorrow clears warning');
   await page.clock.setSystemTime(new Date('2026-10-27T07:00:00+08:00')); await page.clock.runFor(1000);
+  assert.equal(await page.locator('[data-date="2026-10-28"]').getAttribute('aria-pressed'), 'true', '07:00 preserves the selected actual date');
+  assert.equal(await page.locator('#setup_primary').innerText(), '立即预约');
+  for (const target of ['2026-10-27','2026-10-28']) {
+    await page.locator(`[data-date="${target}"]`).click(); await page.clock.runFor(500);
+    assert.equal(await page.locator('#setup_primary').innerText(), '立即预约');
+    assert.equal(await page.locator('#setup_primary').isEnabled(), true);
+  }
   await page.locator('[data-date="2026-10-29"]').click(); await page.clock.runFor(1000);
   assert.equal(await page.locator('#date_hint.is-warning').count(), 0, '07:00 clears extra-day warning');
+  assert.equal(await page.locator('#setup_primary').innerText(), '定时预约');
   assert.deepEqual(await page.evaluate(() => window.bookingCalls), []);
-  console.log('Midnight booking UI passed: today/tomorrow immediate, scheduled default, full/unavailable counts, extra-day warning, 07:00 boundary and narrow layout');
+  for (const [target,relative] of [['2026-10-28','今天'],['2026-10-29','明天']]) {
+    const rollover = await page.context().newPage();
+    await rollover.clock.install({ time: new Date('2026-10-27T23:59:50+08:00') });
+    await rollover.clock.pauseAt(new Date('2026-10-27T23:59:58+08:00'));
+    await rollover.goto(process.env.XMU_TEST_BASE_URL ?? 'http://127.0.0.1:1425');
+    await rollover.locator(`[data-date="${target}"]`).click(); await rollover.clock.runFor(300);
+    await rollover.clock.runFor(2200);
+    await rollover.locator(`[data-date="${target}"][aria-pressed="true"]`).waitFor();
+    assert.equal(await rollover.locator(`[data-date="${target}"] > span`).innerText(), relative);
+    assert.equal(await rollover.locator('[data-date="2026-10-27"]').count(), 0, 'old today leaves the range');
+    assert.equal(await rollover.locator('[data-date="2026-10-30"]').count(), 1, 'new day-after-tomorrow appears');
+    assert.equal(await rollover.locator('#setup_primary').innerText(), '定时预约');
+    assert.equal(await rollover.locator('#setup_now').isVisible(), false);
+    assert.match(await rollover.locator('#task_execution').innerText(), /今天.*07:00/);
+    assert.equal((await rollover.evaluate(() => window.readFixtureTask())).target_date, target);
+    await rollover.screenshot({ path: `${output}/rollover-${relative}.png` });
+    await rollover.close();
+  }
+  console.log('Midnight booking UI passed: all overnight dates scheduled, daytime actions, counts, warning, 07:00, midnight actual-date preservation and narrow layout');
 } finally { await browser.close(); }
