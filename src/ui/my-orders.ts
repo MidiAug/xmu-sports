@@ -26,6 +26,13 @@ export function orderPlace(row:Pick<Order,"venue"|"sport"|"court">) {
   if(numbered) return {name:venue || sport || "场馆预约",court:/^\d+$/.test(court) ? `${court} 号场地` : court};
   return {name:court && court!==sport ? court : venue || sport || "场馆预约",court:""};
 }
+export function orderEnded(row:Pick<Order,"date"|"end">,now=Date.now()) {
+  const end=Date.parse(`${row.date}T${row.end}:00+08:00`);
+  return !Number.isFinite(end) || end<=now;
+}
+export function orderCanCancel(row:Pick<Order,"date"|"start"|"can_cancel">,now=Date.now()) {
+  return row.can_cancel && Date.parse(`${row.date}T${row.start}:00+08:00`)-now>3600000;
+}
 const cancelIcon='<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="m6 6 4 4m0-4-4 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
 
 export function mountMyOrders(host:HTMLElement) {
@@ -33,7 +40,11 @@ export function mountMyOrders(host:HTMLElement) {
   let loading = false, recovering = false, confirming = false, cancelling = false, loginRequired = false, known = false, busy = true, message = "";
   let queued = false;
   const label = (row:Order) => `${row.venue}${row.court ? `、${row.court}` : ""}，${row.date} ${row.start}–${row.end}`;
+  let paintedPolicy="";
+  const policyKey=()=>`${localDateISO(new Date(Date.now()))}:${rows.map(row=>`${row.order_id}/${row.details_id}:${orderEnded(row)}:${orderCanCancel(row)}`).join(";")}`;
   function paint() {
+    rows=rows.filter(row=>!orderEnded(row));
+    paintedPolicy=policyKey();
     const disabled = busy || !known || loading || recovering || confirming || cancelling;
     const visibleStatus = !loading && !recovering
       ? loginRequired ? message || "登录状态已失效，点击右侧按钮重新登录" : busy && known ? "预约进行中，暂停更新" : message
@@ -42,7 +53,7 @@ export function mountMyOrders(host:HTMLElement) {
     const liveStatus = recovering ? "正在恢复微信登录" : loading ? "正在更新预约" : visibleStatus || "预约列表已更新";
     host.innerHTML = `<div class="my-orders-head"><h2>我的预约${rows.length ? `<span>${rows.length}</span>` : ""}</h2><button type="button" class="order-icon ${loading || recovering ? "is-loading" : ""}" data-orders-refresh aria-label="${refreshLabel}" aria-busy="${loading || recovering}" ${disabled ? "disabled" : ""}>${refreshIcon}</button></div>
       ${visibleStatus ? `<p class="my-orders-status" role="status">${escape(visibleStatus)}</p>` : `<span class="sr-only" role="status" aria-live="polite">${escape(liveStatus)}</span>`}
-      <div class="my-orders-list">${rows.map((row,index) => {const place=orderPlace(row);return `<article class="my-order"><div class="my-order-head"><span class="my-order-name">${escape(place.name)}</span><button type="button" class="order-cancel" data-order-cancel="${index}" aria-label="${escape(`取消预约：${label(row)}`)}" ${disabled || loginRequired || !row.can_cancel ? "disabled" : ""}>${cancelIcon}</button></div><p class="my-order-time"><span class="my-order-day">${escape(orderDay(row.date))}</span><strong>${escape(row.start)}–${escape(row.end)}</strong></p>${place.court ? `<p class="my-order-court">${escape(place.court)}</p>` : ""}</article>`;}).join("")}</div>`;
+      <div class="my-orders-list">${rows.map((row,index) => {const place=orderPlace(row);const cancellable=orderCanCancel(row);const cancelReason=!cancellable ? (Date.parse(`${row.date}T${row.start}:00+08:00`)-Date.now()<=3600000 ? "开始前1小时内不可取消" : "此预约暂不可取消") : "";return `<article class="my-order"><div class="my-order-head"><span class="my-order-name">${escape(place.name)}</span><button type="button" class="order-cancel" data-order-cancel="${index}" aria-label="${escape(`取消预约：${label(row)}`)}" ${disabled || loginRequired || !cancellable ? "disabled" : ""}>${cancelIcon}</button></div><p class="my-order-time"><span class="my-order-day">${escape(orderDay(row.date))}</span><strong>${escape(row.start)}–${escape(row.end)}</strong></p>${place.court ? `<p class="my-order-court">${escape(place.court)}</p>` : ""}${cancelReason ? `<p class="my-order-cancel-reason">${cancelReason}</p>` : ""}</article>`;}).join("")}</div>`;
     host.querySelector<HTMLButtonElement>("[data-orders-refresh]")!.onclick = () => void refresh(true);
     host.querySelectorAll<HTMLButtonElement>("[data-order-cancel]").forEach(button => {
       button.onclick = () => void cancelRow(rows[Number(button.dataset.orderCancel)]);
@@ -58,7 +69,7 @@ export function mountMyOrders(host:HTMLElement) {
     let recoverAfterRefresh=false;
     loading = true; lastAttempt = Date.now(); message = ""; paint();
     try {
-      const result = await invoke<OrdersResult>("get_my_orders");
+      const result = await invoke<OrdersResult>("get_my_orders",{force:manual || force});
       if (!result.ok) {
         if (["ACCOUNT_CHANGED","ACCOUNT_MISMATCH"].includes(result.code ?? "")) { rows=[];account=""; }
         if (availabilityAuthNeeded(result)) {loginRequired=true;recoverAfterRefresh=manual;}
@@ -105,12 +116,14 @@ export function mountMyOrders(host:HTMLElement) {
     }
   }
   async function cancelRow(row:Order) {
-    if (!row || busy || loading || recovering || loginRequired || confirming || cancelling || !row.can_cancel || !account) return;
+    if (!row || busy || loading || recovering || loginRequired || confirming || cancelling || !orderCanCancel(row) || orderEnded(row) || !account) return;
     confirming=true;paint();
     const originalAccount=account;
-    const confirmed = await askConfirm({title:"取消这场预约？",lead:label(row),confirmLabel:"确认取消预约",cancelLabel:"保留预约",danger:true});
-    confirming=false;
+    let confirmed=false;
+    try {confirmed = await askConfirm({title:"取消这场预约？",lead:label(row),confirmLabel:"确认取消预约",cancelLabel:"保留预约",danger:true});}
+    finally {confirming=false;}
     if(!confirmed || busy || originalAccount!==account) {paint();return;}
+    if(!orderCanCancel(row) || orderEnded(row)) {paint();toastError("无法取消预约","已进入开始前1小时，不能取消预约");return;}
     cancelling=true;message="正在取消，请稍候…";paint();
     try {
       const result=await invoke<OrdersResult>("cancel_my_order",{accountFingerprint:originalAccount,orderId:row.order_id,detailsId:row.details_id});
@@ -121,9 +134,10 @@ export function mountMyOrders(host:HTMLElement) {
     finally {cancelling=false;await refresh(false,true);}
   }
   function status(value:LiveStatus) {
-    const wasBusy=busy;known=true;busy=value.running || value.armed;
-    paint();
-    if(!busy && (wasBusy || queued)) {queued=false;void refresh(false,true);}
+    const wasBusy=busy,wasKnown=known;const nextBusy=value.running || value.armed;
+    known=true;busy=nextBusy;
+    if(!wasKnown || wasBusy!==busy) paint();
+    if(!busy && (!wasKnown || wasBusy || queued)) {const force=wasKnown || queued;queued=false;void refresh(false,force);}
   }
   subscribeLiveStatus(status);
   if(liveStatusCache) status(liveStatusCache);
@@ -132,7 +146,6 @@ export function mountMyOrders(host:HTMLElement) {
   document.addEventListener("visibilitychange",()=>{if(!document.hidden && Date.now()-lastSuccess>=60000) void refresh();});
   window.addEventListener("orders-authenticated",()=>{loginRequired=false;void refresh(false,true);});
   window.setInterval(()=>void refresh(),300000);
-  let paintedDay=localDateISO(new Date(Date.now()));
-  window.setInterval(()=>{const day=localDateISO(new Date(Date.now()));if(day!==paintedDay && !loading && !confirming && !cancelling) {paintedDay=day;paint();}},60000);
+  window.setInterval(()=>{if(!loading && !recovering && !confirming && !cancelling && policyKey()!==paintedPolicy) {if(rows.some(row=>orderEnded(row)) && !rows.some(row=>!orderEnded(row))) message="暂无未核销预约";paint();}},1000);
   paint();
 }

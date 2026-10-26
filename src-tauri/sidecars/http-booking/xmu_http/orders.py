@@ -60,7 +60,35 @@ def collection(value):
     return rows
 
 
-def active_rows(client):
+def current_time():
+    return datetime.now(CHINA)
+
+
+def row_time(row, field):
+    return datetime.fromisoformat(f"{row['date']}T{row[field]}:00+08:00")
+
+
+def visible_rows(rows, now):
+    return [{**row, "can_cancel": row["can_cancel"] and (row_time(row, "start") - now).total_seconds() > 3600}
+            for row in rows if row_time(row, "end") > now]
+
+
+def last_detail_end(detail):
+    ends = []
+    for item in collection(detail.get("details")):
+        times = re.findall(r"\d{2}:\d{2}", str(item.get("interval_time", "")))
+        try:
+            if len(times) != 2:
+                return None
+            ends.append(row_time({"date": item["date"], "end": times[1]}, "end"))
+        except (KeyError, ValueError, TypeError):
+            return None
+    return max(ends).isoformat() if ends else None
+
+
+def active_rows(client, now=None, ended=None):
+    now = now or current_time()
+    ended = ended if ended is not None else {}
     seen, result = set(), []
     for page in range(1, 31):
         batch = collection(client.require(LIST, {"p": str(page)}, PAGES + "mine.html", timeout=(3, 6)))
@@ -76,9 +104,15 @@ def active_rows(client):
             new += 1
             if str(order.get("audit_status")) != "1":
                 continue
+            try:
+                if oid in ended and datetime.fromisoformat(ended[oid]) <= now:
+                    continue
+            except (ValueError, TypeError):
+                ended.pop(oid, None)
             detail = read_detail(client, oid)
             if str(detail.get("audit_status", "1")) != "1":
                 continue
+            detail_rows = []
             for item in collection(detail.get("details")):
                 if str(item.get("status", "1")) != "1":
                     continue
@@ -92,9 +126,15 @@ def active_rows(client):
                 except ValueError:
                     raise BookingError("ORDER_SCHEMA_CHANGED", "预约时段不完整，请到小程序核对")
                 did = detail_id(item)
-                result.append({"order_id": oid, "details_id": did, "venue": str(order.get("stadium_name") or "场馆"),
+                detail_rows.append({"order_id": oid, "details_id": did, "venue": str(order.get("stadium_name") or "场馆"),
                                "sport": str(order.get("project_name") or ""), "court": str(item.get("area_name") or ""),
                                "date": date, "start": times[0], "end": times[1], "can_cancel": bool(did) and str(item.get("status")) == "1"})
+            cutoff = last_detail_end(detail)
+            if cutoff:
+                ended[oid] = cutoff
+            else:
+                ended.pop(oid, None)
+            result.extend(visible_rows(detail_rows, now))
         if len(batch) < 10:
             return sorted(result, key=lambda row: (row["date"], row["start"], row["end"], row["order_id"], row["details_id"]))
         if not new:
@@ -103,9 +143,14 @@ def active_rows(client):
 
 
 def cancel(client, oid, did):
-    matching = [row for row in active_rows(client) if row["order_id"] == oid and row["details_id"] == did and row["can_cancel"]]
+    matching = [row for row in active_rows(client) if row["order_id"] == oid and row["details_id"] == did]
     if len(matching) != 1:
         raise BookingError("ORDER_NOT_CANCELLABLE", "该场次已变化或不允许取消，请刷新核对")
+    # Re-evaluate after the fresh read, never authorize a mutation from a snapshot.
+    if (row_time(matching[0], "start") - current_time()).total_seconds() <= 3600:
+        raise BookingError("CANCEL_WINDOW_CLOSED", "开始前一小时内不能取消预约")
+    if not matching[0]["can_cancel"]:
+        raise BookingError("ORDER_NOT_CANCELLABLE", "该场次不允许取消，请刷新核对")
     client.allow_cancel = True
     uncertain = False
     try:
@@ -138,13 +183,32 @@ def execute(payload):
     account = hashlib.sha256(ticket.uid.encode()).hexdigest()
     if cancellation and payload["account_fingerprint"] != account:
         raise BookingError("ACCOUNT_CHANGED", "登录账号已变化，请刷新后操作")
+    from .app import data_root
+    from . import orders_cache
+    path, cache = orders_cache.load(data_root(), account)
+    now = current_time()
+    snapshot = orders_cache.fresh(cache, now)
+    if not cancellation and payload.get("force") is not True and snapshot is not None:
+        try:
+            rows = visible_rows(snapshot["orders"], now)
+            return {"ok": True, "cached": True, "account_fingerprint": account,
+                    "orders": rows, "fetched_at": snapshot["fetched_at"]}
+        except (ValueError, KeyError, TypeError):
+            pass
+    if cancellation:
+        cache.pop("snapshot", None)
+        orders_cache.save(path, cache)
     client = OrdersClient(ticket)
     try:
         if not client.login().get("account_checked"):
             raise BookingError("HTTP_AUTH_UNVERIFIED", "尚未完成订单账号核验")
         if cancellation:
             return cancel(client, oid, did)
-        return {"ok": True, "account_fingerprint": account, "orders": active_rows(client),
-                "fetched_at": datetime.now(CHINA).isoformat()}
+        rows = visible_rows(active_rows(client, now=now, ended=cache["ended"]), current_time())
+        stamp = current_time().isoformat()
+        cache["snapshot"] = {"orders": rows, "fetched_at": stamp}
+        saved = orders_cache.save(path, cache)
+        return {"ok": True, "cached": False, "cache_saved": saved, "account_fingerprint": account,
+                "orders": rows, "fetched_at": stamp}
     finally:
         client.http.close()

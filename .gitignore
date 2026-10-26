@@ -102,3 +102,6 @@ GEMINI.md
 
 # Design tokens are public CSS source, not credentials
 !/src/styles/tokens.css
+
+# Account-scoped booking snapshots (local user data)
+**/orders-cache/

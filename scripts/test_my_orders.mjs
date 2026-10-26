@@ -8,13 +8,15 @@ const timeSource=ts.transpileModule(readFileSync("src/lib/time.ts","utf8"),{comp
 const timeUrl=`data:text/javascript;base64,${Buffer.from(timeSource).toString("base64")}`;
 const availabilitySource=ts.transpileModule(readFileSync("src/lib/availability.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const availabilityUrl=`data:text/javascript;base64,${Buffer.from(availabilitySource).toString("base64")}`;
+const confirmSource=ts.transpileModule(readFileSync("src/ui/confirm-ask.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const confirmUrl=`data:text/javascript;base64,${Buffer.from(confirmSource).toString("base64")}`;
 const source=readFileSync("src/ui/my-orders.ts","utf8")
  .replace('import { invoke } from "@tauri-apps/api/core";','const invoke=(command,args)=>window.__invoke(command,args);')
  .replace('import { liveStatusCache, subscribeLiveStatus } from "../state";','const liveStatusCache=null; const subscribeLiveStatus=fn=>{window.__status=fn;};')
  .replace('"../lib/time"',JSON.stringify(timeUrl))
  .replace('"../lib/availability"',JSON.stringify(availabilityUrl))
  .replace('import { resetAvailabilitySessionCache } from "../lib/availability-store";','const resetAvailabilitySessionCache=()=>{window.__availabilityResets=(window.__availabilityResets??0)+1;};')
- .replace('import { askConfirm } from "./confirm-ask";','const askConfirm=opts=>{window.__confirmOptions=opts;return new Promise(resolve=>window.__confirm=resolve);};')
+ .replace('import { askConfirm } from "./confirm-ask";',`import { askConfirm as realAskConfirm } from ${JSON.stringify(confirmUrl)}; const askConfirm=opts=>{window.__confirmOptions=opts;window.__confirm=ok=>document.querySelector(ok?"[data-confirm-ok]":"[data-confirm-cancel]").click();return realAskConfirm(opts);};`)
  .replace('import { toastError, toastSuccess } from "./toast";','const toastError=(...args)=>window.__toasts.push(args);const toastSuccess=toastError;');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const moduleUrl=`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`;
@@ -53,6 +55,7 @@ try {
  },moduleUrl);
  await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===2);
  assert.equal(await page.locator("#orders [title]").count(),0,"reservation controls do not add tooltips");
+ assert.equal(await page.evaluate(()=>window.__calls.find(call=>call.command==="get_my_orders").args.force),false,"startup can reuse the persistent snapshot");
  assert.match(await page.locator(".my-order").first().innerText(),/思明[\s\S]*明天[\s\S]*07:00/);
  assert.deepEqual(await page.evaluate(async url=>{
   const {orderPlace}=await import(url);
@@ -95,6 +98,14 @@ try {
  await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===2);
  const queries=()=>page.evaluate(()=>window.__calls.filter(c=>c.command==="get_my_orders").length);
  assert.equal(await page.locator(".my-orders-status").count(),0,"no explanatory text when loaded");
+ const stableButton=await page.locator(".order-cancel").first().elementHandle();
+ await page.evaluate(()=>window.__status({running:false,armed:false}));
+ assert.ok(await stableButton.evaluate(el=>el.isConnected),"unchanged live status must not rebuild a pressed button");
+ assert.deepEqual(await page.evaluate(async url=>{
+  const {orderEnded,orderCanCancel}=await import(url);
+  const row={date:"2026-10-27",start:"19:30",end:"21:00",can_cancel:true};
+  return [orderCanCancel(row,Date.parse("2026-10-27T18:29:59+08:00")),orderCanCancel(row,Date.parse("2026-10-27T18:30:00+08:00")),orderEnded(row,Date.parse("2026-10-27T21:00:00+08:00"))];
+ },moduleUrl),[true,false,true]);
  assert.equal(await page.evaluate(async url=>{
   const {orderDay}=await import(url);
   return ["2026-10-26","2026-10-27","2026-10-28","2026-10-29"].map(day=>orderDay(day,new Date("2026-10-26T23:59:00+08:00"))).join(",");
@@ -127,7 +138,14 @@ try {
  assert.equal(await queries(),initial+1,"single flight");
  await page.evaluate(()=>{window.__hold=false;window.__finish();});
  await page.waitForFunction(()=>!document.querySelector("[data-orders-refresh]").disabled);
- await page.locator(".order-cancel").first().click();
+ const cancelBounds=await page.locator(".order-cancel").first().boundingBox();
+ await page.mouse.move(cancelBounds.x+cancelBounds.width/2,cancelBounds.y+cancelBounds.height/2);
+ await page.mouse.down();
+ await page.evaluate(()=>window.__status({running:false,armed:false}));
+ await page.mouse.up();
+
+ assert.equal(await page.getByRole("dialog",{name:"取消这场预约？"}).isVisible(),true);
+ await page.getByRole("dialog").screenshot({path:"artifacts/sidebar-orders/cancel-confirm.png"});
  assert.match(await page.evaluate(()=>window.__confirmOptions.lead),/思明校区风雨球馆.*2026-10-27.*07:00/);
  await page.evaluate(()=>window.__confirm(false));
  assert.equal(await page.evaluate(()=>window.__calls.filter(c=>c.command==="cancel_my_order").length),0);
@@ -178,5 +196,24 @@ try {
  await page.waitForFunction(()=>!document.querySelector("[data-orders-refresh]").disabled);
  assert.equal(await page.locator("#orders [title]").count(),0);
  assert.ok(await page.evaluate(()=>window.__availabilityResets>=2),"successful recovery clears the shared venue login/cache state");
+ const requestsBeforeExpiry=await queries();
+ await page.evaluate(()=>{window.__now=Date.parse("2026-10-28T09:00:00+08:00");window.__intervals[1]();});
+ assert.equal(await page.locator(".my-order").count(),0,"ended reservation disappears locally");
+ assert.equal(await queries(),requestsBeforeExpiry,"local expiry does not query the API");
+ await page.evaluate(()=>{
+  window.__now=Date.parse("2026-10-29T08:59:59+08:00");
+  window.__rows=[{order_id:"53",details_id:"82",venue:"示例体育馆",sport:"羽毛球",court:"02",date:"2026-10-29",start:"10:00",end:"11:00",can_cancel:true}];
+  window.dispatchEvent(new Event("orders-authenticated"));
+ });
+ await page.waitForFunction(()=>document.querySelector(".my-order-name")?.textContent==="示例体育馆");
+ const cancelCountBeforeBoundary=await page.evaluate(()=>window.__calls.filter(call=>call.command==="cancel_my_order").length);
+ await page.locator(".order-cancel").click();
+ await page.getByRole("dialog",{name:"取消这场预约？"}).waitFor();
+ await page.evaluate(()=>window.__now=Date.parse("2026-10-29T09:00:00+08:00"));
+ await page.getByRole("button",{name:"确认取消预约",exact:true}).click();
+ assert.equal(await page.evaluate(()=>window.__calls.filter(call=>call.command==="cancel_my_order").length),cancelCountBeforeBoundary,"confirmation cannot bypass the one-hour cutoff");
+ assert.equal(await page.locator(".order-cancel").isDisabled(),true);
+ assert.match(await page.locator(".my-order-cancel-reason").innerText(),/1小时/);
+ await page.locator(".my-order").screenshot({path:"artifacts/sidebar-orders/cancel-cutoff.png"});
  console.log("Sidebar orders UI passed: tooltips removed, inline spinner, explicit login recovery, sorting, cancellation, busy resume, errors, escaping, light/dark/narrow layout");
 } finally {await browser.close();}

@@ -14,15 +14,19 @@ static TARGET_SAMPLES:AtomicUsize=AtomicUsize::new(0);
 static FOCUSED_SAMPLES:AtomicUsize=AtomicUsize::new(0);
 static CREATED:AtomicUsize=AtomicUsize::new(0);
 static SHOWN:AtomicUsize=AtomicUsize::new(0);
+static MASK_PAINTS:AtomicUsize=AtomicUsize::new(0);
+static PANEL_PAINTS:AtomicUsize=AtomicUsize::new(0);
+static LAYOUT_UPDATES:AtomicUsize=AtomicUsize::new(0);
 pub(crate) fn diagnostics()->serde_json::Value {
     serde_json::json!({"target_samples":TARGET_SAMPLES.load(Ordering::Relaxed),"focused_samples":FOCUSED_SAMPLES.load(Ordering::Relaxed),
-        "windows_created":CREATED.load(Ordering::Relaxed),"visible_samples":SHOWN.load(Ordering::Relaxed)})
+        "windows_created":CREATED.load(Ordering::Relaxed),"visible_samples":SHOWN.load(Ordering::Relaxed),"mask_paints":MASK_PAINTS.load(Ordering::Relaxed),
+        "panel_paints":PANEL_PAINTS.load(Ordering::Relaxed),"layout_updates":LAYOUT_UPDATES.load(Ordering::Relaxed)})
 }
 
 pub(crate) struct LoginOverlay { sender: Option<Sender<&'static str>>, thread: Option<JoinHandle<()>> }
 impl LoginOverlay {
     pub(crate) fn start() -> Self {
-        for counter in [&TARGET_SAMPLES,&FOCUSED_SAMPLES,&CREATED,&SHOWN] {counter.store(0,Ordering::Relaxed);}
+        for counter in [&TARGET_SAMPLES,&FOCUSED_SAMPLES,&CREATED,&SHOWN,&MASK_PAINTS,&PANEL_PAINTS,&LAYOUT_UPDATES] {counter.store(0,Ordering::Relaxed);}
         let (sender, receiver) = mpsc::channel();
         let thread = std::thread::Builder::new().name("login-status-overlay".into()).spawn(move || run(receiver)).ok();
         Self { sender: Some(sender), thread }
@@ -68,6 +72,7 @@ unsafe fn text(dc: HDC, value: &str, mut rect: RECT, size: i32, bold: bool, colo
 }
 
 unsafe fn paint_status(dc: HDC, rect: RECT, state: &PaintState) {
+    if state.panel {PANEL_PAINTS.fetch_add(1,Ordering::Relaxed);} else {MASK_PAINTS.fetch_add(1,Ordering::Relaxed);}
     let background=CreateSolidBrush(if state.panel {COLORREF(0x003b3530)} else {COLORREF(0x001b1917)});
     FillRect(dc,&rect,background);
     let _=DeleteObject(background.into());
@@ -141,7 +146,9 @@ impl Pin {
         GetPropW(self.hwnd,w!("XmuSportsLoginPin")).0==(&*self.token as *const u8).cast_mut().cast()
     }
     unsafe fn ensure(&self)->bool {
-        self.owns() && SetWindowPos(self.hwnd,Some(HWND_TOPMOST),0,0,0,0,
+        if !self.owns() {return false;}
+        if GetWindowLongPtrW(self.hwnd,GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0 !=0 {return true;}
+        SetWindowPos(self.hwnd,Some(HWND_TOPMOST),0,0,0,0,
             SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER).is_ok()
     }
 }
@@ -155,7 +162,15 @@ impl Drop for Pin {
     }}
 }
 
-struct Layers { mask:HWND, panel:HWND, target:crate::wechat_window::NativeSurface, _pin:Pin }
+struct Layers {
+    mask:HWND, panel:HWND, target:crate::wechat_window::NativeSurface, _pin:Pin,
+    geometry:Option<[i32;5]>, phase:Option<&'static str>, shown:bool,
+}
+impl Layers {
+    unsafe fn hide(&mut self) {
+        if self.shown {let _=ShowWindow(self.panel,SW_HIDE);let _=ShowWindow(self.mask,SW_HIDE);self.shown=false;}
+    }
+}
 impl Drop for Layers {
     fn drop(&mut self) {unsafe {let _=DestroyWindow(self.panel);let _=DestroyWindow(self.mask);}}
 }
@@ -185,13 +200,13 @@ fn run(receiver: Receiver<&'static str>) {
                         if let Some(mask)=create(target.hwnd(),&mut mask_state) {
                             if let Some(panel)=create(mask,&mut panel_state) {
                                 CREATED.fetch_add(1,Ordering::Relaxed);
-                                layers=Some(Layers{mask,panel,target:target.clone(),_pin:pin});
+                                layers=Some(Layers{mask,panel,target:target.clone(),_pin:pin,geometry:None,phase:None,shown:false});
                             } else {let _=DestroyWindow(mask);}
                         }
                     }
                 }
             }
-            if let Some(layers)=&layers {
+            if let Some(layers)=layers.as_mut() {
                 let _=layers._pin.ensure();
                 let mut rect=RECT::default();
                 if !IsIconic(layers.target.hwnd()).as_bool() && GetWindowRect(layers.target.hwnd(),&mut rect).is_ok() {
@@ -201,20 +216,38 @@ fn run(receiver: Receiver<&'static str>) {
                     let width=rect.right-rect.left;let height=rect.bottom-rect.top;
                     if width>=s(220) && height>=s(150) {
                         let panel_width=s(320).min(width-s(32));let panel_height=s(112).min(height-s(32));
-                        for (hwnd,x,y,w,h,radius) in [
-                            (layers.mask,rect.left,rect.top,width,height,s(12)),
-                            (layers.panel,rect.left+(width-panel_width)/2,rect.top+(height-panel_height)/2,panel_width,panel_height,s(20)),
-                        ] {
-                            let _=SetWindowPos(hwnd,Some(HWND_TOPMOST),x,y,w,h,SWP_NOACTIVATE|SWP_NOOWNERZORDER);
-                            let region=CreateRoundRectRgn(0,0,w+1,h+1,radius,radius);
-                            if SetWindowRgn(hwnd,Some(region),true)==0 {let _=DeleteObject(region.into());}
-                            let _=InvalidateRect(Some(hwnd),None,false);let _=UpdateWindow(hwnd);
-                            let _=ShowWindow(hwnd,SW_SHOWNOACTIVATE);
+                        let geometry=[rect.left,rect.top,width,height,(scale*96.0) as i32];
+                        let changed=layers.geometry!=Some(geometry);
+                        let resized=layers.geometry.is_none_or(|previous|previous[2..]!=geometry[2..]);
+                        if changed {
+                            LAYOUT_UPDATES.fetch_add(1,Ordering::Relaxed);
+                            for (hwnd,x,y,w,h,radius) in [
+                                (layers.mask,rect.left,rect.top,width,height,s(12)),
+                                (layers.panel,rect.left+(width-panel_width)/2,rect.top+(height-panel_height)/2,panel_width,panel_height,s(20)),
+                            ] {
+                                // Retain Z order: repeatedly raising mask then card causes visible flashing.
+                                let _=SetWindowPos(hwnd,None,x,y,w,h,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER);
+                                if resized {
+                                    let region=CreateRoundRectRgn(0,0,w+1,h+1,radius,radius);
+                                    if SetWindowRgn(hwnd,Some(region),false)==0 {let _=DeleteObject(region.into());}
+                                    let _=InvalidateRect(Some(hwnd),None,false);
+                                }
+                            }
+                            layers.geometry=Some(geometry);
+                        }
+                        let phase_changed=layers.phase!=Some(panel_state.phase);
+                        if phase_changed {let _=InvalidateRect(Some(layers.panel),None,false);layers.phase=Some(panel_state.phase);}
+                        if resized {let _=UpdateWindow(layers.mask);}
+                        if resized || phase_changed {let _=UpdateWindow(layers.panel);}
+                        if !layers.shown {
+                            let _=ShowWindow(layers.mask,SW_SHOWNOACTIVATE);let _=ShowWindow(layers.panel,SW_SHOWNOACTIVATE);
+                            layers.shown=true;
                         }
                         if IsWindowVisible(layers.mask).as_bool() && IsWindowVisible(layers.panel).as_bool() {SHOWN.fetch_add(1,Ordering::Relaxed);}
-                    } else {let _=ShowWindow(layers.panel,SW_HIDE);let _=ShowWindow(layers.mask,SW_HIDE);}
-                } else {let _=ShowWindow(layers.panel,SW_HIDE);let _=ShowWindow(layers.mask,SW_HIDE);}
+                    } else {layers.hide();}
+                } else {layers.hide();}
             }
+
             let mut message=MSG::default();
             while PeekMessageW(&mut message,None,0,0,PM_REMOVE).as_bool() {let _=TranslateMessage(&message);DispatchMessageW(&message);}
         }

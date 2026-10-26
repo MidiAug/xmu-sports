@@ -1,8 +1,15 @@
 from pathlib import Path
+from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 from xmu_http import orders
 from xmu_http.session import BookingError, EntryTicket
+
+
+@pytest.fixture(autouse=True)
+def fixed_clock(monkeypatch):
+    monkeypatch.setattr(orders, "current_time", lambda: datetime.fromisoformat("2026-10-26T12:00:00+08:00"))
 
 
 def order(oid=42, **values):
@@ -140,3 +147,100 @@ def test_readonly_worker_allows_list_but_blocks_cancel(monkeypatch,capsys):
     assert '"state": "my_orders"' in capsys.readouterr().out
     desktop.handle_request(json.dumps({"action":"cancel_order"}),readonly=True)
     assert 'READONLY_WORKER' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("stamp,allowed,visible",[
+    ("2026-10-27T18:29:59+08:00",True,True),
+    ("2026-10-27T18:30:00+08:00",False,True),
+    ("2026-10-27T21:00:00+08:00",False,False),
+])
+def test_cancel_hour_boundary_and_end_filter(stamp,allowed,visible):
+    rows=orders.active_rows(Fake(),now=datetime.fromisoformat(stamp))
+    assert bool(rows)==visible
+    if rows:assert rows[0]["can_cancel"] is allowed
+
+
+def test_cancel_rechecks_hour_boundary_after_read(monkeypatch):
+    times=iter([datetime.fromisoformat("2026-10-27T18:29:59+08:00"),datetime.fromisoformat("2026-10-27T18:30:00+08:00")])
+    monkeypatch.setattr(orders,"current_time",lambda:next(times))
+    fake=Fake()
+    with pytest.raises(BookingError) as error:orders.cancel(fake,"42","71")
+    assert error.value.code=="CANCEL_WINDOW_CLOSED"
+    assert not fake.sent
+
+
+@pytest.fixture
+def cache_env(monkeypatch,tmp_path):
+    from xmu_http import app
+    clock=[datetime.fromisoformat("2026-10-26T12:00:00+08:00")]
+    uid=["1234"]
+    instances=[]
+    class CacheFake(Fake):
+        def __init__(self,ticket):
+            super().__init__()
+            self.ticket=ticket
+            self.pages={"1":[order(uid=ticket.uid)]}
+            self.details={"42":{**detail(),"uid":ticket.uid}}
+            self.http=SimpleNamespace(close=lambda:None)
+            instances.append(self)
+        def login(self):return {"account_checked":True}
+    monkeypatch.setattr(app,"data_root",lambda:tmp_path)
+    monkeypatch.setattr(orders,"current_time",lambda:clock[0])
+    monkeypatch.setattr(orders,"discover_entry",lambda:EntryTicket({"uid":uid[0]},Path("fake")))
+    monkeypatch.setattr(orders,"OrdersClient",CacheFake)
+    return clock,uid,instances,tmp_path
+
+
+def test_cache_is_persistent_ttl_scoped_and_manual_bypasses(cache_env):
+    clock,uid,instances,root=cache_env
+    first=orders.execute({"action":"my_orders"})
+    assert first["ok"] and not first["cached"]
+    assert orders.execute({"action":"my_orders"})["cached"]
+    assert len(instances)==1,"fresh disk snapshot must not create/login a Client"
+    assert not orders.execute({"action":"my_orders","force":True})["cached"]
+    assert len(instances)==2
+    clock[0]=datetime.fromisoformat("2026-10-26T12:05:01+08:00")
+    assert not orders.execute({"action":"my_orders"})["cached"]
+    uid[0]="9999"
+    changed=orders.execute({"action":"my_orders"})
+    assert not changed["cached"] and changed["account_fingerprint"]!=first["account_fingerprint"]
+    assert len(list((root/"orders-cache").glob("*.json")))==2
+    text=next((root/"orders-cache").glob("*.json")).read_text(encoding="utf-8")
+    assert '"uid"' not in text and 'Cookie' not in text
+
+
+def test_end_filter_uses_cache_without_querying(cache_env):
+    clock,_,instances,_=cache_env
+    clock[0]=datetime.fromisoformat("2026-10-27T20:59:59+08:00")
+    assert len(orders.execute({"action":"my_orders"})["orders"])==1
+    clock[0]=datetime.fromisoformat("2026-10-27T21:00:00+08:00")
+    result=orders.execute({"action":"my_orders"})
+    assert result["cached"] and not result["orders"] and len(instances)==1
+
+
+def test_completed_order_detail_index_skips_known_ended_details(cache_env):
+    clock,_,instances,_=cache_env
+    orders.execute({"action":"my_orders"})
+    clock[0]=datetime.fromisoformat("2026-10-27T21:00:00+08:00")
+    result=orders.execute({"action":"my_orders","force":True})
+    assert not result["orders"]
+    assert not any(path==orders.DETAIL for path,_ in instances[-1].calls)
+    assert any(path==orders.LIST for path,_ in instances[-1].calls),"still discover new bookings"
+
+
+def test_cancel_never_authorizes_from_snapshot_and_invalidates_it(cache_env):
+    _,_,instances,_=cache_env
+    result=orders.execute({"action":"my_orders"})
+    orders.execute({"action":"cancel_order","account_fingerprint":result["account_fingerprint"],"order_id":"42","details_id":"71"})
+    assert len(instances)==2
+    assert any(path==orders.DETAIL for path,_ in instances[-1].calls)
+    assert any(path==orders.CANCEL for path,_ in instances[-1].calls)
+    assert not orders.execute({"action":"my_orders"})["cached"]
+
+
+def test_corrupt_snapshot_falls_back_to_network(cache_env):
+    *_,root=cache_env
+    orders.execute({"action":"my_orders"})
+    path=next((root/"orders-cache").glob("*.json"))
+    path.write_text("broken",encoding="utf-8")
+    assert not orders.execute({"action":"my_orders"})["cached"]

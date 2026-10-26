@@ -41,10 +41,10 @@ fn request(app: &tauri::AppHandle, payload: Value, mutation: bool) -> Result<Val
 }
 
 #[tauri::command]
-pub async fn get_my_orders(app: tauri::AppHandle) -> Result<Value, String> {
+pub async fn get_my_orders(app: tauri::AppHandle, force: Option<bool>) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let _query = crate::availability::QUERY.lock().map_err(|_| "订单查询状态不可用")?;
-        request(&app, json!({"action":"my_orders"}), false)
+        request(&app, json!({"action":"my_orders","force":force.unwrap_or(false)}), false)
     }).await.map_err(|_| "订单查询未完成".to_string())?
 }
 

@@ -292,6 +292,7 @@
 .my-order .my-order-time { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; margin: 3px 0 5px; font-variant-numeric: tabular-nums; }
 .my-order-day { color: var(--color-accent); font-size: 10px; font-weight: 500; }
 .my-order-time strong { font-size: 12px; font-weight: 600; letter-spacing: -.2px; white-space: nowrap; }
+.my-order-cancel-reason { color: var(--color-muted); font-size: 10px; line-height: 16px; margin-top: 3px !important; }
 .my-order-court { color: var(--color-muted); font-size: 10px; line-height: 16px; }
 .order-icon, .order-cancel { appearance: none; border: 0; font: inherit; background: transparent; border-radius: 6px; cursor: pointer; color: var(--color-muted); flex: none; display: inline-flex; align-items: center; justify-content: center; }
 .order-icon { width: 26px; height: 26px; }
