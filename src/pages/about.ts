@@ -5,6 +5,7 @@ import { watchAppUpdate, performAppUpdate } from "../lib/app-update";
 
 const REPOSITORY = "https://github.com/MidiAug/xmu-sports";
 const appIcon = new URL("../../assets/app-icon/source.svg", import.meta.url).href;
+const updateHint = import.meta.env.DEV ? "开发版仅手动检查更新" : "启动后自动检查，成功后间隔24小时；失败后1小时重试";
 export async function renderAbout(panel: Element, back: () => void) {
   const scope = mountPage(panel);
   let version = "版本暂不可用";
@@ -15,7 +16,7 @@ export async function renderAbout(panel: Element, back: () => void) {
     <div class="about-navigation"><button class="about-back" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>返回</span></button></div>
     <header class="about-identity"><img class="about-mark" src="${appIcon}" width="64" height="64" alt="XMU Sports 图标"><h3>XMU Sports</h3><p id="about_version"></p></header>
     <section class="preference-card about-section" aria-labelledby="update_title">
-      <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">手动获取 GitHub 上的最新正式版本</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
+      <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">${updateHint}</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
       <div class="about-update-detail" hidden>
         <details id="update_notes" hidden><summary>更新说明</summary><pre></pre></details>
       </div>
@@ -48,7 +49,7 @@ export async function renderAbout(panel: Element, back: () => void) {
     else if (phase === "error") label = state.failedAt === "install" ? "重试安装" : state.failedAt === "download" ? "重新下载" : "重新检查";
     else if (release?.status === "available") label = "下载更新";
     action.textContent = label;
-    let status = "手动获取 GitHub 上的最新正式版本";
+    let status = updateHint;
     if (phase === "checking") status = "正在连接 GitHub…";
     else if (phase === "downloading") status = "正在下载安装包…";
     else if (phase === "downloaded") status = "校验通过，安装时将退出应用";

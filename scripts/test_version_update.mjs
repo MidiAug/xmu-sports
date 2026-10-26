@@ -15,6 +15,7 @@ const controller = asModule(readFileSync('src/lib/app-update.ts', 'utf8').replac
 const lifecycle = asModule(readFileSync('src/lib/page-lifecycle.ts', 'utf8'));
 const icon = asModule(readFileSync('src/ui/version-update.ts', 'utf8').replace('"../lib/app-update"', JSON.stringify(controller)));
 const about = asModule(readFileSync('src/pages/about.ts', 'utf8')
+  .replaceAll('import.meta.env.DEV', 'false')
   .replace(/^import .*@tauri.*;\r?\n/gm, '')
   .replace('"../lib/page-lifecycle"', JSON.stringify(lifecycle))
   .replace('"../lib/app-update"', JSON.stringify(controller))
@@ -26,13 +27,18 @@ writeFileSync(fixture, `<!doctype html><html data-shell-theme="light"><meta char
 <div id="app"><div class="shell"><div class="shell-row"><aside class="nav"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button>运行</button><button>历史</button><button>设置</button></nav><div class="nav-foot"><span class="nav-version">v0.1.29</span></div></aside><div class="shell-main"><div class="titlebar"></div><main class="main"><div class="content" id="panel">预约</div></main></div></div></div></div>
 <script>window.calls=[];window.mockInvoke=async command=>{calls.push(command);if(command==='check_app_update')return {status:window.releaseStatus||'available',version:'0.2.0',size:10485760,notes:'体验改进与问题修复'};if(command==='download_app_update')return 'synthetic.exe';throw Error('Installation is unavailable in this fixture');};</script>
 <script type="module">import {mountVersionUpdate} from ${JSON.stringify(icon)};import {renderAbout} from ${JSON.stringify(about)};import {checkAppUpdate} from ${JSON.stringify(controller)};import {disposePage} from ${JSON.stringify(lifecycle)};
-const panel=document.querySelector('#panel');window.leave=()=>{disposePage(panel);panel.textContent='预约';};mountVersionUpdate(document.querySelector('.nav-foot'),()=>renderAbout(panel,leave));window.check=checkAppUpdate;window.ready=true;</script>`);
+const panel=document.querySelector('#panel');window.leave=()=>{disposePage(panel);panel.textContent='预约';};window.openAbout=()=>renderAbout(panel,leave);mountVersionUpdate(document.querySelector('.nav-foot'),openAbout);window.check=checkAppUpdate;window.ready=true;</script>`);
 const browser = await chromium.launch({ headless: true, channel: 'msedge' });
 try {
   const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
   await page.goto(pathToFileURL(fixture).href);
   await page.waitForFunction(() => window.ready);
   assert.equal(await page.locator('.version-update').isVisible(), false);
+  await page.evaluate(() => window.openAbout());
+  assert.match(await page.locator('#update_status').innerText(), /自动检查.*24小时/);
+  assert.deepEqual(await page.evaluate(() => window.calls), [], 'opening About never triggers a check');
+  await page.screenshot({ path: join(output, 'automatic-policy.png') });
+  await page.evaluate(() => window.leave());
   await page.evaluate(() => window.check());
   await page.getByRole('button', { name: '有新版本 0.2.0，查看应用更新' }).click();
   await page.getByRole('button', { name: '下载更新', exact: true }).waitFor();

@@ -35,4 +35,4 @@ completeInstall.reject('安装包已改变，请重新下载');await installRetr
 const redownload=module.performAppUpdate();await Promise.resolve();assert.equal(downloads,3);completeDownload.resolve('verified-again.exe');await redownload;
 subscribe();const old=last;const again=module.checkAppUpdate();complete({status:'unpublished',version:'',size:0,notes:''});await again;
 assert.equal(last,old,'Disposed page receives no updates');
-console.log('App update controller passed: manual-only, single-flight, navigation retention, progress, failed download retry and disposal');
+console.log('App update controller passed: no implicit requests, single-flight, navigation retention, progress, failed download retry and disposal');

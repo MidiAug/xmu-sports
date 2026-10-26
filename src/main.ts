@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { LiveStatus } from "./types";
-import { app, setLiveStatusCache, tab, themePref } from "./state";
+import { app, liveStatusCache, setLiveStatusCache, tab, themePref } from "./state";
 import { applyTheme, readThemePref } from "./lib/theme";
 import { calibrateSavedTaskTargetDate } from "./lib/calibrate-target-date";
 import { attachAppConsole, log } from "./lib/log";
@@ -12,6 +12,8 @@ import { preloadHistory } from "./pages/history";
 import { renderLive } from "./pages/live";
 import { renderSetup } from "./pages/setup";
 import { closeShellSelects } from "./ui/select";
+import { getVersion } from "@tauri-apps/api/app";
+import { startAutoAppUpdate } from "./lib/app-update";
 
 type BootNav = {
   connect_ms: number;
@@ -111,6 +113,16 @@ void invoke<LiveStatus>("get_live_status")
   })
   .catch((e) => log.warn("boot", "get_live_status_failed", { err: String(e) }));
 render();
+
+let stopAutoUpdate: (() => void) | undefined;
+if (!import.meta.env.DEV) {
+  void getVersion().then(version => {
+    stopAutoUpdate = startAutoAppUpdate({ version, enabled: true, isBusy: () =>
+      !liveStatusCache || liveStatusCache.armed || liveStatusCache.running || Boolean(liveStatusCache.stopping) || Boolean(liveStatusCache.operation),
+    });
+  }).catch(error => log.debug("update", "auto_check_unavailable", { err: String(error) }));
+}
+import.meta.hot?.dispose(() => stopAutoUpdate?.());
 
 // Warm the read-only history cache after the first paint, never block app startup.
 const warmHistory = () => void preloadHistory().catch(error => log.debug("history", "preload_failed", {err:String(error)}));
