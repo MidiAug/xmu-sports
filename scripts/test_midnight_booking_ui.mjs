@@ -60,11 +60,11 @@ try {
   assert.equal(await page.locator('#setup_now').isVisible(), false);
   await page.locator('#slot_host .shell-select-trigger').click();
   assert.match(await page.locator('#slot_host [data-value="10:00|11:00"]').innerText(), /已满/);
-  assert.match(await page.locator('#slot_host [data-value="09:00|10:00"]').innerText(), /暂不可约/);
+  assert.doesNotMatch(await page.locator('#slot_host').innerText(), /暂不可约/);
   await page.keyboard.press('Escape');
   await page.locator('#court_host .shell-select-trigger').click();
   assert.match(await page.locator('#court_host [data-value="01"]').innerText(), /已满/);
-  assert.match(await page.locator('#court_host [data-value="07"]').innerText(), /暂不可约/);
+  assert.doesNotMatch(await page.locator('#court_host').innerText(), /暂不可约/);
   assert.equal(await page.locator('#court_host [data-value="01"]').isEnabled(), true, 'quota snapshot is informational');
   await page.screenshot({ path: `${output}/counts-light.png` });
   await page.keyboard.press('Escape');

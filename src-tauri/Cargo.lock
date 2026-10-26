@@ -6496,7 +6496,7 @@ dependencies = [
 
 [[package]]
 name = "xmu-sports"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "chrono",
  "log",
