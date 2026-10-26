@@ -1,8 +1,12 @@
 //! Non-activating, click-through status attached only to the verified login window.
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::atomic::{AtomicUsize,Ordering};
+use std::sync::atomic::{AtomicU32,AtomicUsize,Ordering};
+use std::sync::Arc;
+use std::cell::Cell;
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration,Instant};
+use windows::Win32::System::Threading::GetCurrentThreadId;
+use windows::Win32::UI::Accessibility::{SetWinEventHook,UnhookWinEvent,HWINEVENTHOOK};
 use windows::core::w;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::Foundation::{COLORREF, HANDLE, HWND, LPARAM, LRESULT, RECT, WPARAM};
@@ -17,29 +21,42 @@ static SHOWN:AtomicUsize=AtomicUsize::new(0);
 static MASK_PAINTS:AtomicUsize=AtomicUsize::new(0);
 static PANEL_PAINTS:AtomicUsize=AtomicUsize::new(0);
 static LAYOUT_UPDATES:AtomicUsize=AtomicUsize::new(0);
+static DISCOVERY_SCANS:AtomicUsize=AtomicUsize::new(0);
+static LOCATION_EVENTS:AtomicUsize=AtomicUsize::new(0);
+static BATCH_FAILURES:AtomicUsize=AtomicUsize::new(0);
 pub(crate) fn diagnostics()->serde_json::Value {
     serde_json::json!({"target_samples":TARGET_SAMPLES.load(Ordering::Relaxed),"focused_samples":FOCUSED_SAMPLES.load(Ordering::Relaxed),
         "windows_created":CREATED.load(Ordering::Relaxed),"visible_samples":SHOWN.load(Ordering::Relaxed),"mask_paints":MASK_PAINTS.load(Ordering::Relaxed),
-        "panel_paints":PANEL_PAINTS.load(Ordering::Relaxed),"layout_updates":LAYOUT_UPDATES.load(Ordering::Relaxed)})
+        "panel_paints":PANEL_PAINTS.load(Ordering::Relaxed),"layout_updates":LAYOUT_UPDATES.load(Ordering::Relaxed),"discovery_scans":DISCOVERY_SCANS.load(Ordering::Relaxed),
+        "location_events":LOCATION_EVENTS.load(Ordering::Relaxed),"batch_failures":BATCH_FAILURES.load(Ordering::Relaxed)})
 }
 
-pub(crate) struct LoginOverlay { sender: Option<Sender<&'static str>>, thread: Option<JoinHandle<()>> }
+const WAKE:u32=WM_APP+49;
+pub(crate) struct LoginOverlay {
+    sender:Option<Sender<&'static str>>, thread:Option<JoinHandle<()>>, thread_id:Arc<AtomicU32>,
+}
 impl LoginOverlay {
     pub(crate) fn start() -> Self {
-        for counter in [&TARGET_SAMPLES,&FOCUSED_SAMPLES,&CREATED,&SHOWN,&MASK_PAINTS,&PANEL_PAINTS,&LAYOUT_UPDATES] {counter.store(0,Ordering::Relaxed);}
+        for counter in [&TARGET_SAMPLES,&FOCUSED_SAMPLES,&CREATED,&SHOWN,&MASK_PAINTS,&PANEL_PAINTS,&LAYOUT_UPDATES,&DISCOVERY_SCANS,&LOCATION_EVENTS,&BATCH_FAILURES] {counter.store(0,Ordering::Relaxed);}
         let (sender, receiver) = mpsc::channel();
-        let thread = std::thread::Builder::new().name("login-status-overlay".into()).spawn(move || run(receiver)).ok();
-        Self { sender: Some(sender), thread }
+        let thread_id=Arc::new(AtomicU32::new(0));let id=thread_id.clone();
+        let thread=std::thread::Builder::new().name("login-status-overlay".into()).spawn(move||run(receiver,id)).ok();
+        Self{sender:Some(sender),thread,thread_id}
     }
     pub(crate) fn phase(&self, phase: &str) {
         if let Some(text) = phase_text(phase) {
             if let Some(sender) = &self.sender { let _ = sender.send(text); }
+            self.wake();
         }
+    }
+    fn wake(&self) {
+        let id=self.thread_id.load(Ordering::Acquire);
+        if id!=0 {unsafe{let _=PostThreadMessageW(id,WAKE,WPARAM(0),LPARAM(0));}}
     }
 }
 impl Drop for LoginOverlay {
     fn drop(&mut self) {
-        self.sender.take();
+        self.sender.take();self.wake();
         if let Some(thread) = self.thread.take() { let _ = thread.join(); }
     }
 }
@@ -162,11 +179,52 @@ impl Drop for Pin {
     }}
 }
 
+#[derive(Clone,Copy)]
+struct Target { hwnd_u64:u64, pid:u32 }
+impl Target { fn hwnd(&self)->HWND {HWND(self.hwnd_u64 as usize as *mut _)} }
+
+thread_local! {
+    static WATCH_TARGET:Cell<usize>=const{Cell::new(0)};
+    static WATCH_DIRTY:Cell<bool>=const{Cell::new(false)};
+}
+unsafe extern "system" fn on_window_event(_:HWINEVENTHOOK,event:u32,hwnd:HWND,object:i32,child:i32,_:u32,_:u32) {
+    // Out-of-context notification on our message thread: no enumeration or painting here.
+    if object==OBJID_WINDOW.0 && child==0 && WATCH_TARGET.with(|target|target.get()==hwnd.0 as usize) {
+        WATCH_DIRTY.with(|dirty|dirty.set(true));
+        if event==EVENT_OBJECT_LOCATIONCHANGE {LOCATION_EVENTS.fetch_add(1,Ordering::Relaxed);}
+    }
+}
+struct EventWatch { hooks:Vec<HWINEVENTHOOK>, locations:bool }
+impl EventWatch {
+    unsafe fn new(target:Target)->Self {
+        WATCH_TARGET.with(|value|value.set(target.hwnd_u64 as usize));
+        WATCH_DIRTY.with(|dirty|dirty.set(true));
+        let mut hooks=Vec::new();let mut locations=false;
+        for (first,last) in [(EVENT_OBJECT_LOCATIONCHANGE,EVENT_OBJECT_LOCATIONCHANGE),
+            (EVENT_OBJECT_SHOW,EVENT_OBJECT_HIDE),(EVENT_OBJECT_DESTROY,EVENT_OBJECT_DESTROY),
+            (EVENT_SYSTEM_MINIMIZESTART,EVENT_SYSTEM_MINIMIZEEND)] {
+            let hook=SetWinEventHook(first,last,None,Some(on_window_event),target.pid,0,WINEVENT_OUTOFCONTEXT);
+            if !hook.0.is_null() {if first==EVENT_OBJECT_LOCATIONCHANGE {locations=true;}hooks.push(hook);}
+        }
+        Self{hooks,locations}
+    }
+}
+impl Drop for EventWatch {
+    fn drop(&mut self) {unsafe {
+        WATCH_TARGET.with(|value|value.set(0));
+        for hook in self.hooks.drain(..) {let _=UnhookWinEvent(hook);}
+    }}
+}
+
 struct Layers {
-    mask:HWND, panel:HWND, target:crate::wechat_window::NativeSurface, _pin:Pin,
+    mask:HWND, panel:HWND, target:Target, _pin:Pin, events:EventWatch,
     geometry:Option<[i32;5]>, phase:Option<&'static str>, shown:bool,
 }
 impl Layers {
+    unsafe fn alive(&self)->bool {
+        let mut pid=0;GetWindowThreadProcessId(self.target.hwnd(),Some(&mut pid));
+        self._pin.owns() && pid==self.target.pid && IsWindow(Some(self.mask)).as_bool() && IsWindow(Some(self.panel)).as_bool()
+    }
     unsafe fn hide(&mut self) {
         if self.shown {let _=ShowWindow(self.panel,SW_HIDE);let _=ShowWindow(self.mask,SW_HIDE);self.shown=false;}
     }
@@ -175,84 +233,117 @@ impl Drop for Layers {
     fn drop(&mut self) {unsafe {let _=DestroyWindow(self.panel);let _=DestroyWindow(self.mask);}}
 }
 
-fn run(receiver: Receiver<&'static str>) {
+unsafe fn move_layers(mask:HWND,panel:HWND,rect:RECT,panel_width:i32,panel_height:i32,resized:bool) {
+    let width=rect.right-rect.left;let height=rect.bottom-rect.top;
+    let flags=SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER|if resized {SET_WINDOW_POS_FLAGS(0)} else {SWP_NOSIZE};
+    // Both owned popups are desktop-level windows. Commit both positions together.
+    let moved=(||->windows::core::Result<()> {
+        let mut batch=BeginDeferWindowPos(2)?;
+        batch=DeferWindowPos(batch,mask,None,rect.left,rect.top,width,height,flags)?;
+        batch=DeferWindowPos(batch,panel,None,rect.left+(width-panel_width)/2,rect.top+(height-panel_height)/2,panel_width,panel_height,flags)?;
+        EndDeferWindowPos(batch)
+    })();
+    if moved.is_err() {
+        BATCH_FAILURES.fetch_add(1,Ordering::Relaxed);
+        let _=SetWindowPos(mask,None,rect.left,rect.top,width,height,flags);
+        let _=SetWindowPos(panel,None,rect.left+(width-panel_width)/2,rect.top+(height-panel_height)/2,panel_width,panel_height,flags);
+    }
+}
+
+fn run(receiver:Receiver<&'static str>,thread_id:Arc<AtomicU32>) {
+    run_with_discovery(receiver,thread_id,|| {
+        let candidates=crate::wechat_window::discover_wechat_candidates().ok()?;
+        let target=if candidates.len()==1 {candidates.first()?} else {return None;};
+        if !target.visible || unsafe{GetForegroundWindow()}!=target.hwnd() {return None;}
+        Some(Target{hwnd_u64:target.hwnd_u64,pid:target.owner.pid})
+    });
+}
+
+fn run_with_discovery(receiver:Receiver<&'static str>,thread_id:Arc<AtomicU32>,mut discover:impl FnMut()->Option<Target>) {
     unsafe {
         let _=SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        let mut message=MSG::default();
+        let _=PeekMessageW(&mut message,None,0,0,PM_NOREMOVE); // Create the wake-up queue.
+        thread_id.store(GetCurrentThreadId(),Ordering::Release);
         let mut mask_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:false});
         let mut panel_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:true});
         let mut layers:Option<Layers>=None;
-        loop {
-            match receiver.recv_timeout(Duration::from_millis(200)) {
+        let mut next_discovery=Instant::now();let mut next_safety=Instant::now();
+        'running:loop {
+            // Drain notifications first; location bursts coalesce into one latest rectangle.
+            while PeekMessageW(&mut message,None,0,0,PM_REMOVE).as_bool() {let _=TranslateMessage(&message);DispatchMessageW(&message);}
+            loop {match receiver.try_recv() {
                 Ok(phase)=>panel_state.phase=phase,
-                Err(mpsc::RecvTimeoutError::Disconnected)=>break,
-                Err(mpsc::RecvTimeoutError::Timeout)=>{},
-            }
-            while let Ok(phase)=receiver.try_recv() {panel_state.phase=phase;}
-            let candidates=crate::wechat_window::discover_wechat_candidates().unwrap_or_default();
-            let target=if candidates.len()==1 {candidates.first()} else {None};
-            if target.is_some() {TARGET_SAMPLES.fetch_add(1,Ordering::Relaxed);}
-            if target.is_some_and(|target|GetForegroundWindow()==target.hwnd()) {FOCUSED_SAMPLES.fetch_add(1,Ordering::Relaxed);}
-            if layers.as_ref().is_some_and(|old|!IsWindow(Some(old.mask)).as_bool() || !IsWindow(Some(old.panel)).as_bool() ||
-                target.is_none_or(|current|current.hwnd_u64!=old.target.hwnd_u64 || current.owner!=old.target.owner)) {layers.take();}
-            if layers.is_none() {
-                if let Some(target)=target.filter(|target|target.visible && GetForegroundWindow()==target.hwnd()) {
+                Err(mpsc::TryRecvError::Empty)=>break,
+                Err(mpsc::TryRecvError::Disconnected)=>break 'running,
+            }}
+            let now=Instant::now();
+            if layers.as_ref().is_some_and(|layers|!layers.alive()) {layers.take();next_discovery=now;}
+            if layers.is_none() && now>=next_discovery {
+                DISCOVERY_SCANS.fetch_add(1,Ordering::Relaxed);next_discovery=now+Duration::from_millis(250);
+                if let Some(target)=discover() {
                     if let Some(pin)=Pin::new(target.hwnd()) {
                         if let Some(mask)=create(target.hwnd(),&mut mask_state) {
                             if let Some(panel)=create(mask,&mut panel_state) {
                                 CREATED.fetch_add(1,Ordering::Relaxed);
-                                layers=Some(Layers{mask,panel,target:target.clone(),_pin:pin,geometry:None,phase:None,shown:false});
+                                layers=Some(Layers{mask,panel,target,_pin:pin,events:EventWatch::new(target),geometry:None,phase:None,shown:false});
+                                next_safety=now;
                             } else {let _=DestroyWindow(mask);}
                         }
                     }
                 }
             }
+            let dirty=WATCH_DIRTY.with(|dirty|dirty.replace(false));
             if let Some(layers)=layers.as_mut() {
-                let _=layers._pin.ensure();
-                let mut rect=RECT::default();
-                if !IsIconic(layers.target.hwnd()).as_bool() && GetWindowRect(layers.target.hwnd(),&mut rect).is_ok() {
-                    let scale=GetDpiForWindow(layers.target.hwnd()).max(96) as f32/96.0;
-                    mask_state.scale=scale;panel_state.scale=scale;
-                    let s=|n:i32|(n as f32*scale).round() as i32;
-                    let width=rect.right-rect.left;let height=rect.bottom-rect.top;
-                    if width>=s(220) && height>=s(150) {
-                        let panel_width=s(320).min(width-s(32));let panel_height=s(112).min(height-s(32));
-                        let geometry=[rect.left,rect.top,width,height,(scale*96.0) as i32];
-                        let changed=layers.geometry!=Some(geometry);
-                        let resized=layers.geometry.is_none_or(|previous|previous[2..]!=geometry[2..]);
-                        if changed {
-                            LAYOUT_UPDATES.fetch_add(1,Ordering::Relaxed);
-                            for (hwnd,x,y,w,h,radius) in [
-                                (layers.mask,rect.left,rect.top,width,height,s(12)),
-                                (layers.panel,rect.left+(width-panel_width)/2,rect.top+(height-panel_height)/2,panel_width,panel_height,s(20)),
-                            ] {
-                                // Retain Z order: repeatedly raising mask then card causes visible flashing.
-                                let _=SetWindowPos(hwnd,None,x,y,w,h,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER);
+                let safety=now>=next_safety;
+                if safety {next_safety=now+Duration::from_millis(if layers.events.locations {250} else {16});let _=layers._pin.ensure();}
+                if dirty || safety || layers.phase!=Some(panel_state.phase) {
+                    TARGET_SAMPLES.fetch_add(1,Ordering::Relaxed);
+                    if GetForegroundWindow()==layers.target.hwnd() {FOCUSED_SAMPLES.fetch_add(1,Ordering::Relaxed);}
+                    let mut rect=RECT::default();
+                    if IsWindowVisible(layers.target.hwnd()).as_bool() && !IsIconic(layers.target.hwnd()).as_bool() && GetWindowRect(layers.target.hwnd(),&mut rect).is_ok() {
+                        let scale=GetDpiForWindow(layers.target.hwnd()).max(96) as f32/96.0;
+                        mask_state.scale=scale;panel_state.scale=scale;
+                        let s=|n:i32|(n as f32*scale).round() as i32;
+                        let width=rect.right-rect.left;let height=rect.bottom-rect.top;
+                        if width>=s(220) && height>=s(150) {
+                            let panel_width=s(320).min(width-s(32));let panel_height=s(112).min(height-s(32));
+                            let geometry=[rect.left,rect.top,width,height,(scale*96.0) as i32];
+                            let changed=layers.geometry!=Some(geometry);
+                            let resized=layers.geometry.is_none_or(|previous|previous[2..]!=geometry[2..]);
+                            if changed {
+                                LAYOUT_UPDATES.fetch_add(1,Ordering::Relaxed);
+                                move_layers(layers.mask,layers.panel,rect,panel_width,panel_height,resized);
                                 if resized {
-                                    let region=CreateRoundRectRgn(0,0,w+1,h+1,radius,radius);
-                                    if SetWindowRgn(hwnd,Some(region),false)==0 {let _=DeleteObject(region.into());}
-                                    let _=InvalidateRect(Some(hwnd),None,false);
+                                    for (hwnd,w,h,radius) in [(layers.mask,width,height,s(12)),(layers.panel,panel_width,panel_height,s(20))] {
+                                        let region=CreateRoundRectRgn(0,0,w+1,h+1,radius,radius);
+                                        if SetWindowRgn(hwnd,Some(region),false)==0 {let _=DeleteObject(region.into());}
+                                        let _=InvalidateRect(Some(hwnd),None,false);
+                                    }
                                 }
+                                layers.geometry=Some(geometry);
                             }
-                            layers.geometry=Some(geometry);
-                        }
-                        let phase_changed=layers.phase!=Some(panel_state.phase);
-                        if phase_changed {let _=InvalidateRect(Some(layers.panel),None,false);layers.phase=Some(panel_state.phase);}
-                        if resized {let _=UpdateWindow(layers.mask);}
-                        if resized || phase_changed {let _=UpdateWindow(layers.panel);}
-                        if !layers.shown {
-                            let _=ShowWindow(layers.mask,SW_SHOWNOACTIVATE);let _=ShowWindow(layers.panel,SW_SHOWNOACTIVATE);
-                            layers.shown=true;
-                        }
-                        if IsWindowVisible(layers.mask).as_bool() && IsWindowVisible(layers.panel).as_bool() {SHOWN.fetch_add(1,Ordering::Relaxed);}
+                            let phase_changed=layers.phase!=Some(panel_state.phase);
+                            if phase_changed {let _=InvalidateRect(Some(layers.panel),None,false);layers.phase=Some(panel_state.phase);}
+                            if resized {let _=UpdateWindow(layers.mask);}
+                            if resized || phase_changed {let _=UpdateWindow(layers.panel);}
+                            if !layers.shown {
+                                let _=ShowWindow(layers.mask,SW_SHOWNOACTIVATE);let _=ShowWindow(layers.panel,SW_SHOWNOACTIVATE);
+                                layers.shown=true;
+                            }
+                            if IsWindowVisible(layers.mask).as_bool() && IsWindowVisible(layers.panel).as_bool() {SHOWN.fetch_add(1,Ordering::Relaxed);}
+                        } else {layers.hide();}
                     } else {layers.hide();}
-                } else {layers.hide();}
+                }
             }
-
-            let mut message=MSG::default();
-            while PeekMessageW(&mut message,None,0,0,PM_REMOVE).as_bool() {let _=TranslateMessage(&message);DispatchMessageW(&message);}
+            // Native location notifications and phase/stop messages wake this immediately.
+            let deadline=if layers.is_some() {next_safety} else {next_discovery};
+            let timeout=deadline.saturating_duration_since(Instant::now()).as_millis().min(250) as u32;
+            let waited=MsgWaitForMultipleObjectsEx(None,timeout,QS_ALLINPUT,MWMO_INPUTAVAILABLE);
+            if waited.0==u32::MAX {std::thread::sleep(Duration::from_millis(16));}
         }
-        // Destroy our two windows, then restore the original owner's topmost state.
-        drop(layers);
+        drop(layers); // Unsubscribe on this thread, destroy our windows and restore the pin.
+        thread_id.store(0,Ordering::Release);
     }
 }
 
@@ -342,6 +433,80 @@ mod tests {
             assert!(is_top(),"an originally topmost owner must remain topmost");
             assert_eq!(GetForegroundWindow(),before,"pinning never steals focus");
             let _=DestroyWindow(other);let _=DestroyWindow(owner);
+        }
+    }
+
+    #[test]
+    fn drag_events_follow_without_desktop_scans_or_move_repainting() {
+        unsafe {
+            let old_dpi=SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+            let owner=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Isolated drag trajectory"),WS_POPUP,
+                -10000,-10000,520,815,None,None,None,None).unwrap();
+            let _=ShowWindow(owner,SW_SHOWNOACTIVATE);
+            let pump=|| {
+                let mut message=MSG::default();
+                while PeekMessageW(&mut message,None,0,0,PM_REMOVE).as_bool() {let _=TranslateMessage(&message);DispatchMessageW(&message);}
+            };
+            let owned=|target:HWND| {
+                let mut current=GetTopWindow(None).unwrap_or_default();
+                while !current.0.is_null() {
+                    if GetWindow(current,GW_OWNER).unwrap_or_default()==target {return current;}
+                    current=GetWindow(current,GW_HWNDNEXT).unwrap_or_default();
+                }
+                HWND::default()
+            };
+            for counter in [&DISCOVERY_SCANS,&LOCATION_EVENTS,&BATCH_FAILURES,&LAYOUT_UPDATES] {counter.store(0,Ordering::Relaxed);}
+            let (sender,receiver)=mpsc::channel();let thread_id=Arc::new(AtomicU32::new(0));
+            let id=thread_id.clone();let handle=owner.0 as usize;
+            let thread=std::thread::spawn(move||run_with_discovery(receiver,id,||Some(Target{hwnd_u64:handle as u64,pid:std::process::id()})));
+            let controller=LoginOverlay{sender:Some(sender),thread:Some(thread),thread_id};
+            let started=Instant::now();
+            let (mask,panel)=loop {
+                pump();let mask=owned(owner);let panel=owned(mask);
+                if !mask.0.is_null() && !panel.0.is_null() && IsWindowVisible(panel).as_bool() {break (mask,panel);}
+                assert!(started.elapsed()<Duration::from_secs(5),"native fixture did not bind");
+                std::thread::sleep(Duration::from_millis(1));
+            };
+            let before_mask=MASK_PAINTS.load(Ordering::Relaxed);let before_panel=PANEL_PAINTS.load(Ordering::Relaxed);
+            let mut latencies=Vec::new();
+            for step in 1..=32 {
+                let x=-10000+step*7;let y=-10000+step*3;
+                let sent=Instant::now();
+                SetWindowPos(owner,None,x,y,520,815,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE).unwrap();
+                loop {
+                    pump();let mut rect=RECT::default();GetWindowRect(mask,&mut rect).unwrap();
+                    if rect.left==x && rect.top==y {break;}
+                    assert!(sent.elapsed()<Duration::from_millis(500),"overlay failed to track a native window move");
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                latencies.push(sent.elapsed().as_micros() as u64);
+                let mut mask_rect=RECT::default();let mut panel_rect=RECT::default();
+                GetWindowRect(mask,&mut mask_rect).unwrap();GetWindowRect(panel,&mut panel_rect).unwrap();
+                assert_eq!((panel_rect.left, panel_rect.top),(mask_rect.left+100,mask_rect.top+351),"both layers move together");
+                std::thread::sleep(Duration::from_millis(16));
+            }
+            latencies.sort_unstable();
+            let mask_paints=MASK_PAINTS.load(Ordering::Relaxed)-before_mask;
+            let panel_paints=PANEL_PAINTS.load(Ordering::Relaxed)-before_panel;
+            assert!(LOCATION_EVENTS.load(Ordering::Relaxed)>=16,"tracking must use actual location notifications");
+            assert_eq!(DISCOVERY_SCANS.load(Ordering::Relaxed),1,"bound dragging must not enumerate windows/processes");
+            assert_eq!(BATCH_FAILURES.load(Ordering::Relaxed),0,"both top-level layers must batch successfully");
+            assert!(latencies[30]<150_000,"native event tracking should beat the old 200ms polling interval");
+            assert!(mask_paints<=4 && panel_paints<=4,"pure movement must reuse painted surfaces");
+            let report=serde_json::json!({"moves":32,"latency_p50_us":latencies[16],"latency_p95_us":latencies[30],
+                "latency_max_us":latencies[31],"discovery_scans":DISCOVERY_SCANS.load(Ordering::Relaxed),
+                "location_events":LOCATION_EVENTS.load(Ordering::Relaxed),"mask_move_paints":mask_paints,
+                "panel_move_paints":panel_paints,"batch_failures":BATCH_FAILURES.load(Ordering::Relaxed)});
+            let output=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../artifacts/sidebar-orders");
+            std::fs::create_dir_all(&output).unwrap();std::fs::write(output.join("drag-benchmark.json"),report.to_string()).unwrap();
+            println!("drag benchmark: {report}");
+            // The owner must pump cross-thread window messages while the guard restores it.
+            let stopper=std::thread::spawn(move||drop(controller));let stopped=Instant::now();
+            while !stopper.is_finished() {pump();assert!(stopped.elapsed()<Duration::from_secs(2));std::thread::sleep(Duration::from_millis(1));}
+            stopper.join().unwrap();
+            assert!(!IsWindow(Some(mask)).as_bool() && !IsWindow(Some(panel)).as_bool());
+            assert_eq!(GetWindowLongPtrW(owner,GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0,0);
+            let _=DestroyWindow(owner);let _=SetThreadDpiAwarenessContext(old_dpi);
         }
     }
 
