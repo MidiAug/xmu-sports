@@ -87,16 +87,36 @@ fn client() -> Result<Client, String> {
         .map_err(|_| "无法启动更新服务".into())
 }
 fn open(client: &Client, raw: &str, seconds: u64) -> Result<Response, String> {
-    let mut url = Url::parse(raw).map_err(|_| "更新地址无效")?;
+    open_route(client, raw, seconds, None)
+}
+fn package_mirror(raw: &str, mirror: Option<&str>) -> Result<Option<Url>, String> {
+    let prefix = match mirror {
+        None | Some("official") => return Ok(None),
+        Some("gh-proxy") => "https://gh-proxy.com/",
+        Some("ghproxy") => "https://ghproxy.net/",
+        _ => return Err("请选择内置下载线路".into()),
+    };
+    let source = Url::parse(raw).map_err(|_| "更新地址无效")?;
+    if !allowed(&source) || source.host_str() != Some("github.com")
+        || source.query().is_some() || !source.path().ends_with("_x64-setup.exe") {
+        return Err("镜像仅用于官方下载的安装包".into());
+    }
+    Url::parse(&format!("{prefix}{raw}")).map(Some).map_err(|_| "下载线路无效".into())
+}
+fn download_allowed(url: &Url, mirror: Option<&Url>) -> bool {
+    allowed(url) || mirror == Some(url)
+}
+fn open_route(client: &Client, raw: &str, seconds: u64, mirror: Option<&Url>) -> Result<Response, String> {
+    let mut url = match mirror { Some(url) => url.clone(), None => Url::parse(raw).map_err(|_| "更新地址无效")? };
     for _ in 0..6 {
-        if !allowed(&url) {
+        if !download_allowed(&url, mirror) {
             return Err("更新地址不受信任，请查看发布页".into());
         }
         let response = client
             .get(url.clone())
             .timeout(Duration::from_secs(seconds))
             .send()
-            .map_err(|_| "无法连接 GitHub，请检查网络后重试".to_string())?;
+            .map_err(|_| if mirror.is_some() { "无法连接所选下载线路，请更换线路后重试" } else { "无法连接 GitHub，请检查网络后重试" }.to_string())?;
         let code = response.status().as_u16();
         if code == 200 {
             return Ok(response);
@@ -111,6 +131,8 @@ fn open(client: &Client, raw: &str, seconds: u64) -> Result<Response, String> {
             continue;
         }
         return Err(match code {
+            404 if mirror.is_some() => "所选下载线路暂未同步安装包，请更换线路重试",
+            403 | 429 if mirror.is_some() => "所选下载线路请求受限，请更换线路重试",
             404 => "尚无正式发布或发布文件不完整",
             403 | 429 => "GitHub 请求受限，请稍后重试或查看发布页",
             _ => "更新服务暂不可用，请稍后重试",
@@ -329,12 +351,13 @@ pub async fn check_app_update() -> Result<ReleaseInfo, String> {
         .map_err(|_| "更新检查中断")?
 }
 #[tauri::command]
-pub async fn download_app_update(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn download_app_update(app: tauri::AppHandle, mirror: Option<String>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut state = state()
             .try_lock()
             .map_err(|_| "正在检查或下载更新，请稍候")?;
         let candidate = state.candidate.as_ref().ok_or("请先检查更新")?;
+        let mirror = package_mirror(&candidate.url, mirror.as_deref())?;
         let folder = app
             .path()
             .download_dir()
@@ -344,7 +367,7 @@ pub async fn download_app_update(app: tauri::AppHandle) -> Result<String, String
         fs::create_dir_all(&folder).map_err(|_| "无法创建下载文件夹")?;
         let part = folder.join("download.part");
         let final_path = folder.join(&candidate.name);
-        let response = open(&client()?, &candidate.url, 600)?;
+        let response = open_route(&client()?, &candidate.url, 600, mirror.as_ref())?;
         let mut last = Instant::now() - Duration::from_secs(1);
         stream_package(
             response,
@@ -540,6 +563,27 @@ mod tests {
         assert_eq!(checksum(&line, "installer.exe").unwrap(), "a".repeat(64));
         assert!(checksum(&format!("{line}\n{line}"), "installer.exe").is_err());
         assert!(checksum(&line, "other.exe").is_err());
+    }
+    #[test]
+    fn mirrors_only_route_the_exact_official_installer() {
+        let raw="https://github.com/MidiAug/xmu-sports/releases/download/v0.1.31/XMU.Sports_0.1.31_x64-setup.exe";
+        assert_eq!(package_mirror(raw,None).unwrap(),None);
+        assert_eq!(package_mirror(raw,Some("official")).unwrap(),None);
+        for (route,prefix) in [("gh-proxy","https://gh-proxy.com/"),("ghproxy","https://ghproxy.net/")] {
+            let routed=package_mirror(raw,Some(route)).unwrap().unwrap();
+            assert_eq!(routed.as_str(),format!("{prefix}{raw}"));
+            assert!(download_allowed(&routed,Some(&routed)));
+            assert!(!allowed(&routed),"metadata must never inherit mirror access");
+            assert!(!download_allowed(&Url::parse(&format!("{prefix}other")).unwrap(),Some(&routed)));
+            assert!(!download_allowed(&Url::parse("https://evil.test/file").unwrap(),Some(&routed)));
+            assert!(package_mirror(LATEST,Some(route)).is_err());
+            assert!(package_mirror(&raw.replace("x64-setup.exe","SHA256SUMS.txt"),Some(route)).is_err());
+            assert!(package_mirror(&raw.replace("MidiAug/xmu-sports","other/repo"),Some(route)).is_err());
+            assert!(package_mirror(&format!("{raw}?token=secret"),Some(route)).is_err());
+        }
+        for route in ["http://gh-proxy.com/","https://evil.test/","other",""] {
+            assert!(package_mirror(raw,Some(route)).is_err());
+        }
     }
     #[test]
     fn partial_or_corrupted_download_is_never_an_installer() {

@@ -18,12 +18,15 @@ const purifier = asModule(readFileSync('node_modules/dompurify/dist/purify.es.mj
 const notesRenderer = asModule(readFileSync('src/lib/release-notes.ts', 'utf8')
   .replace('"marked"', JSON.stringify(marked)).replace('"dompurify"', JSON.stringify(purifier)));
 const icon = asModule(readFileSync('src/ui/version-update.ts', 'utf8').replace('"../lib/app-update"', JSON.stringify(controller)));
+const icons = asModule(readFileSync('src/ui/icons.ts', 'utf8'));
+const select = asModule(readFileSync('src/ui/select.ts', 'utf8').replace('"./icons"',JSON.stringify(icons)));
 const about = asModule(readFileSync('src/pages/about.ts', 'utf8')
   .replaceAll('import.meta.env.DEV', 'false')
   .replace(/^import .*@tauri.*;\r?\n/gm, '')
   .replace('"../lib/page-lifecycle"', JSON.stringify(lifecycle))
   .replace('"../lib/app-update"', JSON.stringify(controller))
   .replace('"../lib/release-notes"', JSON.stringify(notesRenderer))
+  .replace('"../ui/select"', JSON.stringify(select))
   .replace('new URL("../../assets/app-icon/source.svg", import.meta.url).href', JSON.stringify(`data:image/svg+xml;base64,${Buffer.from(readFileSync('assets/app-icon/source.svg')).toString('base64')}`))
   + '\nconst getVersion=async()=>"0.1.29",open=async url=>window.opened.push(url);');
 const css = readFileSync(join('dist/assets', readdirSync('dist/assets').find(name => name.endsWith('.css'))), 'utf8');

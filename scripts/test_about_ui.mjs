@@ -16,7 +16,7 @@ try {
       if(cmd==="list_recent_events") return [];
       if(cmd.includes("version")) return "0.1.26";
       if(cmd==="check_app_update") {window.__checks++;if(window.__holdCheck) await new Promise(r=>window.__finishCheck=r);if(window.__updateError) throw window.__updateError;return window.__updateResult;}
-      if(cmd==="download_app_update") {window.__downloads++;await new Promise(r=>window.__finishDownload=r);if(window.__downloadError) throw window.__downloadError;return "C:\\Downloads\\fixture-setup.exe";}
+      if(cmd==="download_app_update") {window.__downloadMirror=args?.mirror;window.__downloads++;await new Promise(r=>window.__finishDownload=r);if(window.__downloadError) throw window.__downloadError;return "C:\\Downloads\\fixture-setup.exe";}
       if(cmd==="install_app_update") {window.__installs=(window.__installs??0)+1;await new Promise(r=>window.__finishInstall=r);throw '请先结束预约、取消定时任务或完成登录，再安装更新';}
       if(cmd.includes("listen")) {if(args?.event==="app-update-progress") window.__progressCallback=args.handler;return 1;}
       return null;
@@ -27,7 +27,13 @@ try {
   const settings=async()=>{await page.locator('[data-tab="settings"]').click();await page.locator('.settings-about-entry').click();await page.locator('.about-identity').waitFor();};
   await settings();
   const action=page.locator('#update_action');
-  const singleButton=async()=>assert.equal(await page.locator('.about-section').first().locator('button').count(),1);
+  const singleButton=async()=>assert.equal(await page.locator('.about-update-button').count(),1);
+  const route=page.locator('#update_route');
+  await route.locator('.shell-select-trigger').click();
+  await route.locator('[data-value="gh-proxy"]').click();
+  assert.equal(await page.evaluate(()=>window.__checks),0,'switching route never checks or downloads');
+  await page.locator('.about-back').click();await page.locator('.settings-about-entry').click();
+  assert.match(await route.locator('.shell-select-value').innerText(),/gh-proxy.com/);
   assert.equal((await page.locator('.about-back').innerText()).trim(),'返回');
   assert.equal(await page.locator('.about-page h2,.about-tagline,#update_releases,#update_folder').count(),0);
   assert.equal(await page.locator('img.about-mark').evaluate(img=>img.complete&&img.naturalWidth>0),true);
@@ -47,6 +53,8 @@ try {
   mkdirSync('artifacts/about-updates',{recursive:true});
   await page.screenshot({path:'artifacts/about-updates/available.png'});
   await action.click();await page.waitForFunction(()=>typeof window.__finishDownload==='function');
+  assert.equal(await page.evaluate(()=>window.__downloadMirror),'gh-proxy');
+  assert.equal(await route.locator('.shell-select-trigger').isDisabled(),true);
   assert.equal(await action.isDisabled(),true);await singleButton();
   assert.equal(await page.evaluate(()=>window.__action===document.querySelector('#update_action')),true);
   await page.locator('.about-back').click();await page.locator('.settings-about-entry').click();
@@ -63,6 +71,7 @@ try {
   assert.match(await page.locator('#update_status').innerText(),/结束预约/);await singleButton();
   for(const status of ['current','unpublished','error']) {
     await page.reload();await settings();
+    assert.match(await route.locator('.shell-select-value').innerText(),/gh-proxy.com/,'selected mirror persists across reload');
     await page.evaluate(status=>{window.__updateResult={status,version:'0.1.26',size:0,notes:''};if(status==='error')window.__updateError='GitHub 请求受限，请稍后重试';},status);
     await action.click();await page.waitForFunction(()=>!document.querySelector('#update_action').disabled);
     assert.match(await page.locator('#update_status').innerText(),status==='current'?/最新版本/:status==='unpublished'?/暂未发布/:/请求受限/);

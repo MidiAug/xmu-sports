@@ -1,8 +1,9 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-shell";
 import { mountPage } from "../lib/page-lifecycle";
-import { watchAppUpdate, performAppUpdate } from "../lib/app-update";
+import { watchAppUpdate, performAppUpdate, updateDownloadRoutes, updateDownloadRoute, setUpdateDownloadRoute } from "../lib/app-update";
 import { renderReleaseNotes } from "../lib/release-notes";
+import { mountShellSelect } from "../ui/select";
 
 const REPOSITORY = "https://github.com/MidiAug/xmu-sports";
 const appIcon = new URL("../../assets/app-icon/source.svg", import.meta.url).href;
@@ -18,6 +19,7 @@ export async function renderAbout(panel: Element, back: () => void) {
     <header class="about-identity"><img class="about-mark" src="${appIcon}" width="64" height="64" alt="XMU Sports 图标"><h3>XMU Sports</h3><p id="about_version"></p></header>
     <section class="preference-card about-section" aria-labelledby="update_title">
       <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">${updateHint}</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
+      <div class="about-download-route"><label id="update_route_label">下载线路</label><div id="update_route" aria-labelledby="update_route_label"></div></div>
       <div class="about-update-detail" hidden>
         <details id="update_notes" hidden><summary>更新说明</summary><div class="release-notes"></div></details>
       </div>
@@ -30,6 +32,13 @@ export async function renderAbout(panel: Element, back: () => void) {
   query("#about_version").textContent = version;
   query<HTMLButtonElement>(".about-back").onclick = back;
   const message = (text: string) => { if (scope.current()) query("#about_message").textContent = text; };
+  const routeSelect=mountShellSelect(query("#update_route"), updateDownloadRoutes, updateDownloadRoute(), value=>{
+    if (!setUpdateDownloadRoute(value)) {
+      routeSelect.setOptions(updateDownloadRoutes,updateDownloadRoute());
+      message("下载线路保存失败，请稍后重试");
+    } else message("");
+  },{compact:true});
+  query<HTMLButtonElement>("#update_route .shell-select-trigger").setAttribute("aria-label","更新下载线路");
   const launch = async (url: string) => { try { await open(url); } catch { message("无法打开浏览器，请复制项目地址后访问"); } };
   query<HTMLButtonElement>("#about_repository").onclick = () => { void launch(REPOSITORY); };
   query<HTMLButtonElement>("#about_copy").onclick = async () => { try { await navigator.clipboard.writeText(REPOSITORY); message("已复制项目地址"); } catch { message(`请复制：${REPOSITORY}`); } };
@@ -38,6 +47,7 @@ export async function renderAbout(panel: Element, back: () => void) {
     if (!scope.current()) return;
     const { phase, release } = state;
     const busy = ["checking", "downloading", "installing"].includes(phase);
+    routeSelect.setDisabled(busy);
     const action = query<HTMLButtonElement>("#update_action");
     action.disabled = busy;
     action.dataset.phase = phase;

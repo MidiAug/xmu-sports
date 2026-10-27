@@ -11,6 +11,22 @@ type CheckRecord = { nextCheckAt: number; release?: ReleaseInfo };
 let record: CheckRecord = { nextCheckAt: 0 };
 let recordKey: string | undefined;
 let hostCandidateReady = false;
+export const updateDownloadRoutes = [
+  { value: "official", label: "GitHub 直连" },
+  { value: "gh-proxy", label: "gh-proxy.com" },
+  { value: "ghproxy", label: "ghproxy.net" },
+];
+const routeKey = "xmu.appUpdate.downloadRoute.v1";
+export function updateDownloadRoute():string {
+  try {
+    const value=localStorage.getItem(routeKey);
+    return updateDownloadRoutes.some(route=>route.value===value) ? value! : "official";
+  } catch { return "official"; }
+}
+export function setUpdateDownloadRoute(value:string):boolean {
+  if (!updateDownloadRoutes.some(route=>route.value===value) || ["downloading","installing"].includes(view.phase)) return false;
+  try { localStorage.setItem(routeKey,value); return true; } catch { return false; }
+}
 function saveRecord(next: CheckRecord) {
   record = next;
   try { if (recordKey) localStorage.setItem(recordKey, JSON.stringify(record)); } catch { /* Keep in-memory cooldown when storage is unavailable. */ }
@@ -66,7 +82,7 @@ export async function downloadAppUpdate() {
     unlisten = await listen<{ received: number; total: number }>("app-update-progress", ({ payload }) => {
       if (payload.total > 0) publish({ progress: Math.min(100, Math.round(payload.received * 100 / payload.total)) });
     });
-    const path = await invoke<string>("download_app_update");
+    const path = await invoke<string>("download_app_update", { mirror: updateDownloadRoute() });
     publish({ phase: "downloaded", progress: 100, path });
   } catch (e) { publish({ phase: "error", failedAt: "download", error: String(e) }); }
   finally { unlisten?.(); }

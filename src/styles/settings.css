@@ -83,6 +83,10 @@
 .about-row p { margin: 6px 0 0; color: var(--color-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .about-row > .btn, .about-row > .about-actions { flex-shrink: 0; }
 .about-update-detail { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--color-line); }
+.about-download-route { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; padding-top:14px; border-top:1px solid var(--color-line); }
+.about-download-route > label { color:var(--color-muted); font-size:12px; }
+.about-download-route .shell-select { width:180px; min-width:0; }
+.about-download-route .shell-select-trigger { height:34px; font-size:12px; border-radius:8px; }
 .about-update-detail summary { color: var(--color-muted); font-size: 12px; cursor: pointer; }
 .release-notes { max-height: 300px; overflow: auto; margin-top: 12px; padding-right: 8px; overflow-wrap: anywhere; font-size: 12px; line-height: 1.8; color: var(--color-ink); user-select: text; }
 .release-notes > :first-child { margin-top: 0; }

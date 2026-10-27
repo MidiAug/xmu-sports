@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
 let complete, completeDownload, completeInstall, progress, calls=0, downloads=0, installs=0;
-globalThis.__updateInvoke=async command=>{
+let downloadArgs;
+const stored=new Map();
+globalThis.localStorage={getItem:key=>stored.get(key) ?? null,setItem:(key,value)=>stored.set(key,value)};
+globalThis.__updateInvoke=async (command,args)=>{
   if(command==='check_app_update') {calls++;return new Promise(resolve=>complete=resolve);}
-  if(command==='download_app_update') {downloads++;return new Promise((resolve,reject)=>completeDownload={resolve,reject});}
+  if(command==='download_app_update') {downloadArgs=args;downloads++;return new Promise((resolve,reject)=>completeDownload={resolve,reject});}
   if(command==='install_app_update') {installs++;return new Promise((resolve,reject)=>completeInstall={resolve,reject});}
   throw Error(command);
 };
@@ -21,11 +24,19 @@ const check=module.checkAppUpdate();await module.checkAppUpdate();assert.equal(c
 unsubscribe();const subscribe=module.watchAppUpdate(state=>last=state);
 assert.equal(last.phase,'checking');
 complete({status:'available',version:'0.2.0',size:100,notes:''});await check;assert.equal(last.phase,'ready');
+assert.equal(module.updateDownloadRoute(),'official');
+assert.equal(module.setUpdateDownloadRoute('https://evil.test/'),false);
+assert.equal(module.setUpdateDownloadRoute('gh-proxy'),true);
+assert.equal(module.updateDownloadRoute(),'gh-proxy');
 const download=module.downloadAppUpdate();await Promise.resolve();
+assert.deepEqual(downloadArgs,{mirror:'gh-proxy'});
+assert.equal(module.setUpdateDownloadRoute('official'),false,'active download route remains fixed');
 await module.downloadAppUpdate();await module.checkAppUpdate();assert.equal(calls,1);assert.equal(downloads,1);
 progress({payload:{received:40,total:100}});assert.equal(last.progress,40);
 completeDownload.reject('校验失败');await download;assert.equal(last.phase,'error');assert.equal(stopped,1);
+assert.equal(module.setUpdateDownloadRoute('ghproxy'),true);
 const retry=module.downloadAppUpdate();await Promise.resolve();completeDownload.resolve('verified.exe');await retry;
+assert.deepEqual(downloadArgs,{mirror:'ghproxy'},'retry uses newly selected route without repeating metadata check');
 assert.equal(last.phase,'downloaded');assert.equal(last.path,'verified.exe');assert.equal(stopped,2);
 const install=module.performAppUpdate();assert.equal(last.phase,'installing');
 await module.performAppUpdate();assert.equal(installs,1);
