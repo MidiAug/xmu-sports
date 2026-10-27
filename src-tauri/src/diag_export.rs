@@ -392,6 +392,26 @@ CAPTCHA_REJECTED：只在服务端明确拒绝验证码时换图重试，首次�
         }
     }
 
+    // Login-only operations have no booking run; export their independent evidence too.
+    let login_root=runs_dir.parent().unwrap_or(runs_dir).join("login-diagnostics");
+    let login_picks=select_recent_run_events(scan_run_event_files(&login_root),SystemTime::now(),RUNS_MAX_AGE,RUNS_MAX_TASKS);
+    if !login_picks.is_empty() {
+        notes.push("login-diagnostics 含登录阶段、Windows/微信版本及故障窗口截图；截图可能含个人资料，请仅本人留存或脱敏后分享。检查登录强制重开小程序，不代表已注销微信或制造服务端过期。".into());
+    }
+    for pick in login_picks {
+        let prefix=archive_run_prefix(&pick).replacen("runs/","login-diagnostics/",1);
+        let arc=format!("{prefix}/events.jsonl");
+        zip_add_file(&mut zip,&arc,&pick.events_path)?;included.push(arc);
+        if let Some(dir)=pick.events_path.parent() {
+            for path in collect_run_evidence(dir) {
+                if let Some(name)=path.file_name().and_then(|name|name.to_str()) {
+                    let arc=format!("{prefix}/evidence/{name}");
+                    zip_add_file(&mut zip,&arc,&path)?;included.push(arc);
+                }
+            }
+        }
+    }
+
     let manifest = Manifest {
         product: "xmu-sports".into(),
         version: version.into(),
@@ -552,6 +572,10 @@ mod tests {
         let legacy = runs_dir.join("task-legacy");
         fs::create_dir_all(&legacy).unwrap();
         fs::write(legacy.join("events.jsonl"), b"{}\n").unwrap();
+        let login=dir.join("login-diagnostics/login-1");
+        fs::create_dir_all(login.join("evidence")).unwrap();
+        fs::write(login.join("events.jsonl"),b"{\"phase\":\"final_failure\"}\n").unwrap();
+        fs::write(login.join("evidence/login-01.bmp"),b"BMlogin").unwrap();
 
         let out = write_diagnostic_zip(
             &dl,
@@ -584,6 +608,8 @@ mod tests {
             .by_name("runs/task-1/run-abc/evidence/failure.bmp")
             .is_ok());
         assert!(archive.by_name("runs/task-legacy/events.jsonl").is_ok());
+        assert!(archive.by_name("login-diagnostics/login-1/events.jsonl").is_ok());
+        assert!(archive.by_name("login-diagnostics/login-1/evidence/login-01.bmp").is_ok());
         let _ = fs::remove_dir_all(&dir);
     }
 

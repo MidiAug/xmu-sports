@@ -40,6 +40,16 @@ pub(crate) struct Observation {
 
 impl Observation { pub(crate) fn has_controls(&self)->bool {!self.controls.is_empty()} }
 
+#[cfg(test)]
+impl Observation {
+    pub(crate) fn fixture(h5:bool,controls:&[(Control,bool,Option<bool>)])->Self {
+        Self{decision:choose(h5,controls),target_app_verified:true,nodes_examined:77,truncated:false,
+            controls:controls.iter().map(|(control,enabled,selected)|ControlEvidence{control:*control,
+                enabled:*enabled,selected:*selected,invoke:true,toggle:false,select:false,legacy_action:false,
+                element_bounds_available:true}).collect()}
+    }
+}
+
 struct Candidate { control: Control, element: IUIAutomationElement, evidence: ControlEvidence }
 struct Scan { report: Observation, candidates: Vec<Candidate> }
 
@@ -196,6 +206,18 @@ impl Session {
     }
 
     pub(crate) fn observe(&self) -> Result<Observation,String> { self.scan().map(|s|s.report) }
+
+    pub(crate) fn refresh(&mut self)->Result<(),String> {
+        crate::wechat_window::foreground_surface(&self.surface)?;
+        // Recreate the client on this initialized thread without rebinding the surface.
+        unsafe {
+            let api:IUIAutomation=CoCreateInstance(&CUIAutomation8,None,CLSCTX_INPROC_SERVER).map_err(|_|"UIA_UNAVAILABLE")?;
+            if let Ok(timed)=api.cast::<IUIAutomation2>() {let _=timed.SetConnectionTimeout(1000);let _=timed.SetTransactionTimeout(2000);}
+            self.validate_window()?;
+            self.api=api;
+        }
+        Ok(())
+    }
 
     /// Re-resolve and recheck before one input. Coordinates, when necessary,
     /// come only from the live named UIA element, never OCR or a fixed layout.

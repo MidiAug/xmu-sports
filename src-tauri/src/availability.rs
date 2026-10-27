@@ -80,14 +80,15 @@ pub async fn reauthenticate_availability(app:tauri::AppHandle,operation_id:Strin
     let guard=RecoveryGuard(operation_id);
     tauri::async_runtime::spawn_blocking(move|| {
         let _guard=guard;
+        let login_id=format!("availability-login-{}",_guard.0);
         let _query=QUERY.lock().map_err(|_|"场次查询状态不可用")?;
         let state=app.state::<crate::AppState>();
         let enabled=||active.load(Ordering::SeqCst) && !crate::child_running(&state) && !crate::load_arm().armed;
         let checked=readonly_check(&app,&enabled)?;
         let result=login_only(checked,expected_account.as_deref(),&enabled,|expected|crate::normal_login::recover(
-            &crate::data_root(),"availability-login",expected,&enabled,
+            &crate::data_root(),&login_id,expected,&enabled,
             ||readonly_check(&app,&enabled),
-            |phase|log::info!(target:"http","[availability_login_phase] phase={phase}"),
+            |phase|log::info!(target:"http","[availability_login_phase] operation_id={} phase={phase}",_guard.0),
             |_|{},
         ))?;
         log::info!(target:"http","[availability_login_result] ok={} code={} booking_actions_available=false",result["ok"],result["code"]);

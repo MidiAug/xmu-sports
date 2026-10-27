@@ -25,6 +25,8 @@ assert.equal(progressMessage({...done, result:"http_prepared"}), "预约预检�
 assert.match(progressMessage({...submit, result:"runtime_ready"}), /兼容性检查通过/);
 assert.equal(progressStep({...submit, result:"h5_entry_reused"}), "auth");
 assert.match(progressMessage({...submit, result:"h5_entry_reused"}), /已有场馆入口有效.*账号核验通过/);
+assert.match(progressMessage({...submit, result:"normal_ui_refreshing"}), /重新识别.*等待/);
+assert.match(progressMessage({...submit, result:"normal_ui_reenter"}), /重新打开厦大体育.*场馆预约/);
 assert.match(progressMessage({...submit, result:"scheduled_h5_ready"}), /提前就绪/);
 assert.match(progressMessage({...submit, result:"scheduled_h5_rechecking"}), /重新验证/);
 assert.match(progressMessage({...submit, result:"scheduled_h5_reused"}), /继续定时预约/);

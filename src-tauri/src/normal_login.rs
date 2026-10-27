@@ -59,40 +59,87 @@ fn handoff(expected: Option<&str>, active: &impl Fn()->bool,
 pub(crate) fn recover(
     root: &Path, run_id: &str, expected: Option<&str>,
     active: impl Fn() -> bool,
-    mut verify: impl FnMut() -> Result<Value, String>,
-    mut progress: impl FnMut(&str),
-    mut element_evidence: impl FnMut(Value),
+    verify: impl FnMut() -> Result<Value, String>,
+    progress: impl FnMut(&str),
+    element_evidence: impl FnMut(Value),
+) -> Result<Value,String> {
+    recover_mode(root,run_id,expected,false,active,verify,progress,element_evidence)
+}
+
+pub(crate) fn recover_fresh(
+    root: &Path, run_id: &str, expected: Option<&str>,
+    active: impl Fn() -> bool, verify: impl FnMut() -> Result<Value,String>,
+    progress: impl FnMut(&str),element_evidence:impl FnMut(Value),
+) -> Result<Value,String> {
+    recover_mode(root,run_id,expected,true,active,verify,progress,element_evidence)
+}
+
+pub(crate) fn recover_mode(
+    root:&Path,run_id:&str,expected:Option<&str>,fresh:bool,
+    active:impl Fn()->bool,mut verify:impl FnMut()->Result<Value,String>,
+    mut progress:impl FnMut(&str),mut element_evidence:impl FnMut(Value),
 ) -> Result<Value,String> {
     if !active() {return Err("已取消".into());}
+    let evidence=std::cell::RefCell::new(crate::login_evidence::LoginEvidence::new(root,run_id));
     let overlay=crate::login_overlay::LoginOverlay::start();
-    let mut report=|phase:&str| {overlay.phase(phase);progress(phase);};
-    let mut result=recover_once(root,run_id,expected,&active,&mut verify,&mut report,&mut element_evidence)?;
-    if should_reenter(&result) {
-        if !active() { return Err("已取消".into()); }
-        report("normal_ui_reenter");
-        if let Err(code)=reopen_miniprogram(&active) {
-            return if code=="已取消" {Err(code)} else {Ok(manual(&code))};
+    let mut report=|phase:&str| {evidence.borrow_mut().record(phase,json!({}));overlay.phase(phase);progress(phase);};
+    let mut observe=|value:Value| {
+        if active() && value["diagnostic_capture"]==true {
+            evidence.borrow_mut().snapshot(value["reason"].as_str().unwrap_or("unknown"),&overlay,&active);
         }
-        result=recover_once(root,run_id,expected,&active,&mut verify,&mut report,&mut element_evidence)?;
-    }
-    if result["ok"]==true {
-        if !active() {return Err("已取消".into());}
-        let account=result["account_fingerprint"].as_str().map(str::to_owned);
-        report("closing_miniprogram");
-        match close_miniprogram(&active) {
-            Ok(())=> {
-                // Closing the mini-program must not be mistaken for a logout.
-                let previous=result;
-                result=validate(verify()?,account.as_deref());
-                for key in ["recovery_mode","login_adapter","kernel_hook_used"] {result[key]=previous[key].clone();}
-                result["mini_program_closed"]=json!(true);
-                report("normal_ui_closed");
-            },
-            Err(code) if code=="已取消"=>return Err(code),
-            Err(_)=>{result["mini_program_closed"]=json!(false);report("normal_ui_close_pending");},
+        evidence.borrow_mut().record("login_elements",value.clone());element_evidence(value);
+    };
+    let outcome=(|| {
+        let mut attempts=0;
+        let mut result=recovery_attempts(fresh,&active,|reopen| {
+            if reopen {
+                if !active() {return Err("已取消".into());}
+                if attempts>0 {observe(json!({"diagnostic_capture":true,"reason":"before_reopen"}));}
+                report("normal_ui_reenter");
+                if let Err(code)=reopen_miniprogram(&active) {
+                    return if code=="已取消" {Err(code)} else {Ok(manual(&code))};
+                }
+            }
+            attempts+=1;
+            let result=recover_once(root,run_id,expected,&active,&mut verify,&mut report,&mut observe)?;
+            observe(json!({"attempt_finished":true,"result":result}));
+            Ok(result)
+        })?;
+        if result["ok"]==true {
+            if !active() {return Err("已取消".into());}
+            let account=result["account_fingerprint"].as_str().map(str::to_owned);
+            report("closing_miniprogram");
+            match close_miniprogram(&active) {
+                Ok(())=> {
+                    // Closing the mini-program must not be mistaken for a logout.
+                    let previous=result;
+                    if !active() {return Err("已取消".into());}
+                    result=validate(verify()?,account.as_deref());
+                    for key in ["recovery_mode","login_adapter","kernel_hook_used"] {result[key]=previous[key].clone();}
+                    result["mini_program_closed"]=json!(true);
+                    report("normal_ui_closed");
+                },
+                Err(code) if code=="已取消"=>return Err(code),
+                Err(_)=>{result["mini_program_closed"]=json!(false);report("normal_ui_close_pending");},
+            }
         }
+        Ok(result)
+    })();
+    if active() && !matches!(&outcome,Ok(result) if result["ok"]==true) {
+        evidence.borrow_mut().snapshot("final_failure",&overlay,&active);
     }
-    Ok(result)
+    evidence.borrow_mut().record("finished",match &outcome {
+        Ok(result)=>result.clone(),Err(code)=>json!({"ok":false,"code":code}),
+    });
+    outcome
+}
+
+fn recovery_attempts(fresh:bool,active:&impl Fn()->bool,mut attempt:impl FnMut(bool)->Result<Value,String>)->Result<Value,String> {
+    if !active() {return Err("已取消".into());}
+    let result=attempt(fresh)?;
+    if !should_reenter(&result) {return Ok(result);}
+    if !active() {return Err("已取消".into());}
+    attempt(true)
 }
 
 fn close_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
@@ -113,7 +160,8 @@ fn close_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
 }
 
 fn should_reenter(result:&Value)->bool {
-    result["ok"]!=true && result["code"]=="LOGIN_CONFIRM_REQUIRED" && result["reason"]=="H5_ENTRY_STILL_EXPIRED"
+    result["ok"]!=true && result["code"]=="LOGIN_CONFIRM_REQUIRED" && matches!(result["reason"].as_str(),
+        Some("H5_ENTRY_STILL_EXPIRED"|"UIA_LOGIN_UNAVAILABLE"|"UIA_NAVIGATION_TIMEOUT"|"UIA_LOGIN_TIMEOUT"))
 }
 
 fn reopen_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
@@ -121,7 +169,7 @@ fn reopen_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
     use windows::Win32::UI::WindowsAndMessaging::{PostMessageW,WM_CLOSE};
     if !active() {return Err("已取消".into());}
     let candidates=crate::wechat_window::discover_wechat_candidates().map_err(|_|"MINIPROGRAM_DISCOVERY_FAILED")?;
-    let targets=candidates.into_iter().filter(|s|s.visible && s.title.contains("厦大体育")).collect::<Vec<_>>();
+    let targets=candidates.into_iter().filter(|s|s.title.contains("厦大体育")).collect::<Vec<_>>();
     if targets.len()>1 { return Err("UIA_TARGET_AMBIGUOUS".into()); }
     if let Some(target)=targets.first() {
         unsafe{PostMessageW(Some(target.hwnd()),WM_CLOSE,WPARAM(0),LPARAM(0))}.map_err(|_|"MINIPROGRAM_CLOSE_FAILED")?;
@@ -129,7 +177,7 @@ fn reopen_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
         loop {
             if !active() {return Err("已取消".into());}
             let surfaces=crate::wechat_window::discover_wechat_candidates().map_err(|_|"MINIPROGRAM_DISCOVERY_FAILED")?;
-            if !surfaces.iter().any(|s|s.visible && s.hwnd_u64==target.hwnd_u64 && s.owner==target.owner) {break;}
+            if !surfaces.iter().any(|s|s.hwnd_u64==target.hwnd_u64 && s.owner==target.owner) {break;}
             if started.elapsed()>Duration::from_secs(3) {return Err("MINIPROGRAM_CLOSE_PENDING".into());}
             std::thread::sleep(Duration::from_millis(100));
         }
@@ -169,39 +217,89 @@ fn recover_once(
     if !present() {return Ok(manual("MINIPROGRAM_NOT_VISIBLE"));}
     if let Err(code)=crate::wechat_window::foreground_miniprogram_window() {return Ok(manual(&code));}
     progress("normal_ui_foreground");
-    let semantic=match crate::semantic_login::Session::open() {
+    let mut semantic=match crate::semantic_login::Session::open() {
         Ok(session)=>session,Err(code)=>return Ok(manual(&code)),
     };
-    let mut pending:Option<(crate::semantic_login::Control,Instant)>=None;
-    let mut empty_since:Option<Instant>=None;
-    while started.elapsed()<Duration::from_secs(180) {
-        if !active() {return Err("已取消".into());}
-        let report=match semantic.observe() {
-            Ok(report)=>report,Err(code)=>return Ok(manual(&code)),
-        };
-        if report.has_controls() || report.decision==crate::semantic_login::Decision::Handoff {empty_since=None;}
-        else if empty_since.get_or_insert_with(Instant::now).elapsed()>Duration::from_secs(12) {return Ok(manual("UIA_LOGIN_UNAVAILABLE"));}
-        element_evidence(json!(report));
-        use crate::semantic_login::{Decision,Control};
-        match report.decision {
-            Decision::Handoff=>return handoff(expected,&active,&mut verify,&mut progress,"uia"),
+    navigate(&mut semantic,expected,&active,&mut verify,&mut progress,&mut element_evidence,
+        ||started.elapsed(),pause)
+}
+
+trait LoginUi {
+    fn observe(&mut self)->Result<crate::semantic_login::Observation,String>;
+    fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String>;
+    fn refresh(&mut self)->Result<(),String>;
+}
+impl LoginUi for crate::semantic_login::Session {
+    fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {Self::observe(self)}
+    fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String> {Self::activate(self,control)}
+    fn refresh(&mut self)->Result<(),String> {Self::refresh(self)}
+}
+
+#[derive(Default)]
+struct NavigationState {
+    pending:Option<(crate::semantic_login::Control,Duration)>,
+    empty_since:Option<Duration>,refreshed:bool,
+}
+#[derive(Debug,PartialEq)]
+enum NavigationAction { Handoff,Activate(crate::semantic_login::Control),Refresh,Wait,Fail(&'static str) }
+impl NavigationState {
+    fn next(&mut self,report:&crate::semantic_login::Observation,now:Duration)->NavigationAction {
+        use crate::semantic_login::Decision;
+        if report.has_controls() || report.decision==Decision::Handoff {self.empty_since=None;}
+        let stalled=match report.decision {
+            Decision::Handoff=>return NavigationAction::Handoff,
             Decision::Activate(control)=> {
-                if let Some((previous,sent_at))=&pending {
-                    if *previous==control {
-                        if sent_at.elapsed()>Duration::from_secs(15) {return Ok(manual("UIA_NAVIGATION_TIMEOUT"));}
-                        pause(500)?;continue;
-                    }
-                }
+                if let Some((previous,sent))=self.pending {
+                    if previous==control {Some((now.saturating_sub(sent),"UIA_NAVIGATION_TIMEOUT"))}
+                    else {self.refreshed=false;return NavigationAction::Activate(control);}
+                } else {self.refreshed=false;return NavigationAction::Activate(control);}
+            },
+            Decision::Wait|Decision::Unsupported=>Some((now.saturating_sub(*self.empty_since.get_or_insert(now)),"UIA_LOGIN_UNAVAILABLE")),
+        };
+        if let Some((duration,code))=stalled {
+            if duration>=Duration::from_secs(30) {return NavigationAction::Fail(code);}
+            if duration>=Duration::from_secs(12) && !self.refreshed {self.refreshed=true;return NavigationAction::Refresh;}
+        }
+        NavigationAction::Wait
+    }
+}
+
+fn navigate(
+    ui:&mut impl LoginUi,expected:Option<&str>,active:&impl Fn()->bool,
+    verify:&mut impl FnMut()->Result<Value,String>,progress:&mut impl FnMut(&str),
+    evidence:&mut impl FnMut(Value),elapsed:impl Fn()->Duration,mut pause:impl FnMut(u64)->Result<(),String>,
+)->Result<Value,String> {
+    let mut state=NavigationState::default();
+    while elapsed()<Duration::from_secs(180) {
+        if !active() {return Err("已取消".into());}
+        let report=match ui.observe() {Ok(report)=>report,Err(code)=>return Ok(manual(&code))};
+        if !active() {return Err("已取消".into());}
+        let action=state.next(&report,elapsed());
+        evidence(json!(report));
+        use crate::semantic_login::Control;
+        match action {
+            NavigationAction::Handoff=> {
+                evidence(json!({"diagnostic_capture":true,"reason":"stadium_handoff"}));
+                return handoff(expected,active,verify,progress,"uia");
+            },
+            NavigationAction::Refresh=> {
+                evidence(json!({"diagnostic_capture":true,"reason":"UIA_PAGE_STALLED","elapsed_ms":elapsed().as_millis()}));
+                if !active() {return Err("已取消".into());}
+                progress("normal_ui_refreshing");
+                if let Err(code)=ui.refresh() {return Ok(manual(&code));}
+                pause(500)?;
+            },
+            NavigationAction::Activate(control)=> {
                 progress("semantic_login_control");
                 progress(match control {Control::Login=>"native_login_opening",Control::Agreement=>"native_agreement",Control::Authorize=>"native_authorizing",Control::Stadium=>"entering_stadium"});
                 if !active() {return Err("已取消".into());}
-                match semantic.activate(control) {
-                    Ok(Some(method))=> {progress(method);pending=Some((control,Instant::now()));pause(600)?;},
-                    Ok(None)=>pause(300)?,
-                    Err(code)=>return Ok(manual(&code)),
+                match ui.activate(control) {
+                    Ok(Some(method))=>{progress(method);state.pending=Some((control,elapsed()));pause(600)?;},
+                    Ok(None)=>pause(300)?,Err(code)=>return Ok(manual(&code)),
                 }
-            }
-            Decision::Wait|Decision::Unsupported=>pause(500)?,
+            },
+            NavigationAction::Wait=>pause(500)?,
+            NavigationAction::Fail(code)=>return Ok(manual(code)),
         }
     }
     Ok(manual("UIA_LOGIN_TIMEOUT"))
@@ -224,12 +322,116 @@ mod tests {
         assert_eq!(result.unwrap_err(),"已取消");
     }
     #[test]
-    fn only_server_rejected_stadium_entries_get_one_reentry() {
+    fn only_known_navigation_stalls_and_rejected_entries_get_reentry() {
         assert!(should_reenter(&manual("H5_ENTRY_STILL_EXPIRED")));
+        assert!(should_reenter(&manual("UIA_LOGIN_UNAVAILABLE")));
+        assert!(should_reenter(&manual("UIA_NAVIGATION_TIMEOUT")));
         for result in [manual("NORMAL_UI_TIMEOUT"),manual("UIA_INPUT_OUTCOME_UNKNOWN"),
             json!({"ok":false,"code":"ACCOUNT_CHANGED"}),json!({"ok":false,"code":"NETWORK_ERROR"}),
             json!({"ok":true,"reason":"H5_ENTRY_STILL_EXPIRED"})] {
             assert!(!should_reenter(&result));
         }
+    }
+
+    struct FixtureUi {
+        time:std::rc::Rc<std::cell::Cell<u64>>,phase:u32,ready_after:u64,
+        activations:Vec<crate::semantic_login::Control>,refreshes:u32,unknown_input:bool,
+    }
+    impl LoginUi for FixtureUi {
+        fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {
+            use crate::semantic_login::{Control,Observation};
+            Ok(match self.phase {
+                0=>Observation::fixture(false,&[(Control::Login,true,None)]),
+                1=>Observation::fixture(false,&[(Control::Agreement,true,Some(false)),(Control::Authorize,false,None)]),
+                2=>Observation::fixture(false,&[(Control::Agreement,true,Some(true)),(Control::Authorize,true,None)]),
+                3 if self.time.get()<self.ready_after=>Observation::fixture(false,&[]),
+                3=>Observation::fixture(false,&[(Control::Stadium,true,None)]),
+                _=>Observation::fixture(true,&[]),
+            })
+        }
+        fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
+            if self.unknown_input {return Err("UIA_INPUT_OUTCOME_UNKNOWN".into());}
+            self.activations.push(control);self.phase+=1;Ok(Some("fixture_input"))
+        }
+        fn refresh(&mut self)->Result<(),String> {self.refreshes+=1;Ok(())}
+    }
+    fn fixture(time:std::rc::Rc<std::cell::Cell<u64>>,ready_after:u64)->FixtureUi {
+        FixtureUi{time,phase:0,ready_after,activations:vec![],refreshes:0,unknown_input:false}
+    }
+
+    #[test]
+    fn expired_login_completes_after_authorization_page_is_unrecognized_for_twenty_seconds() {
+        use crate::semantic_login::Control;
+        let time=std::rc::Rc::new(std::cell::Cell::new(0));let mut ui=fixture(time.clone(),22_000);
+        let mut verified=0;let mut captures=0;
+        let result=navigate(&mut ui,Some("original"),&||true,&mut || {
+            verified+=1;Ok(json!({"ok":true,"authenticated":true,"account_checked":true,"account_fingerprint":"original"}))
+        },&mut |_|{},&mut |value| {if value["diagnostic_capture"]==true {captures+=1;}},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
+        assert_eq!(result["ok"],true);assert_eq!(verified,1);assert_eq!(ui.refreshes,1);assert_eq!(captures,2);
+        assert_eq!(ui.activations,vec![Control::Login,Control::Agreement,Control::Authorize,Control::Stadium]);
+    }
+
+    #[test]
+    fn persistent_missing_page_reopens_once_and_preserves_failure() {
+        let time=std::rc::Rc::new(std::cell::Cell::new(0));let mut reopens=vec![];
+        let result=recovery_attempts(false,&||true,|reopen| {
+            reopens.push(reopen);let start=time.get();let mut ui=fixture(time.clone(),u64::MAX);
+            let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5 was reached"),&mut |_|{},&mut |_|{},
+                ||Duration::from_millis(time.get()-start),|ms|{time.set(time.get()+ms);Ok(())})?;
+            assert_eq!(ui.refreshes,1);assert_eq!(ui.activations.len(),3);
+            Ok(result)
+        }).unwrap();
+        assert_eq!(reopens,vec![false,true]);assert_eq!(result["reason"],"UIA_LOGIN_UNAVAILABLE");
+        assert!(time.get()>=60_000 && time.get()<70_000);
+    }
+
+    #[test]
+    fn reopening_recovers_a_stalled_authorization_without_replaying_booking() {
+        let mut opens=vec![];
+        let result=recovery_attempts(false,&||true,|reopen| {
+            opens.push(reopen);
+            if !reopen {return Ok(manual("UIA_LOGIN_UNAVAILABLE"));}
+            let time=std::rc::Rc::new(std::cell::Cell::new(0));let mut ui=fixture(time.clone(),0);
+            navigate(&mut ui,None,&||true,&mut ||Ok(json!({"ok":true,"authenticated":true,"account_checked":true,"account_fingerprint":"a"})),
+                &mut |_|{},&mut |_|{},||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())})
+        }).unwrap();
+        assert_eq!(result["ok"],true);assert_eq!(opens,vec![false,true]);
+    }
+
+    #[test]
+    fn cancellation_and_unknown_input_never_reopen_or_verify() {
+        let active=std::cell::Cell::new(true);let mut attempts=0;
+        assert_eq!(recovery_attempts(false,&||active.get(),|_| {
+            attempts+=1;active.set(false);Ok(manual("UIA_LOGIN_UNAVAILABLE"))
+        }).unwrap_err(),"已取消");assert_eq!(attempts,1);
+        let time=std::rc::Rc::new(std::cell::Cell::new(0));let mut ui=fixture(time.clone(),0);ui.unknown_input=true;
+        let result=recovery_attempts(false,&||true,|reopen| {
+            assert!(!reopen);
+            navigate(&mut ui,None,&||true,&mut ||panic!("must not verify"),&mut |_|{},&mut |_|{},
+                ||Duration::ZERO,|_|panic!("must not wait after unknown input"))
+        }).unwrap();
+        assert_eq!(result["reason"],"UIA_INPUT_OUTCOME_UNKNOWN");assert!(ui.activations.is_empty());
+        let mut ui=fixture(time.clone(),u64::MAX);let active=||time.get()<15_000;
+        assert_eq!(navigate(&mut ui,None,&active,&mut ||panic!("cancelled"),&mut |_|{},&mut |_|{},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap_err(),"已取消");
+    }
+
+    #[test]
+    fn unchanged_authorize_button_is_not_clicked_again_while_waiting() {
+        struct Stuck {clicks:u32,refreshes:u32}
+        impl LoginUi for Stuck {
+            fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {
+                Ok(crate::semantic_login::Observation::fixture(false,&[(crate::semantic_login::Control::Authorize,true,None)]))
+            }
+            fn activate(&mut self,_:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
+                self.clicks+=1;Ok(Some("fixture_invoke"))
+            }
+            fn refresh(&mut self)->Result<(),String> {self.refreshes+=1;Ok(())}
+        }
+        let time=std::cell::Cell::new(0);let mut ui=Stuck{clicks:0,refreshes:0};
+        let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5 reached"),&mut |_|{},&mut |_|{},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
+        assert_eq!(result["reason"],"UIA_NAVIGATION_TIMEOUT");assert_eq!(ui.clicks,1);assert_eq!(ui.refreshes,1);
     }
 }

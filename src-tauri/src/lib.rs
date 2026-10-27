@@ -25,6 +25,7 @@ mod worker_process;
 mod pending_orders;
 mod worker_diagnostic;
 mod normal_login;
+mod login_evidence;
 mod login_overlay;
 mod semantic_login;
 mod login_diagnostic;
@@ -560,7 +561,8 @@ fn spawn_task_with_schedule(
         let outcome = (|| {
             {
                 let expected = schedule.as_ref().and_then(|s| s.account_fingerprint.clone());
-                let auth = http_booking::ensure_auth(&app, run_gen, &trace, expected.as_deref(), schedule.is_some())?;
+                let auth = if auth_only {http_booking::check_login(&app,run_gen,&trace)?}
+                    else {http_booking::ensure_auth(&app, run_gen, &trace, expected.as_deref(), schedule.is_some())?};
                 if auth["ok"] != true {
                     return Err(http_booking::auth_failure(&trace, &auth));
                 }

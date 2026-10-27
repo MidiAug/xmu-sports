@@ -162,8 +162,13 @@ pub(crate) fn check_auth(app: &tauri::AppHandle, run_gen: u64, trace: &run_trace
 
 pub(crate) fn recover_auth(app: &tauri::AppHandle, run_gen: u64, trace: &run_trace::RunTraceHandle,
                           expected_account: Option<&str>) -> Result<Value, String> {
+    recover_auth_mode(app,run_gen,trace,expected_account,false)
+}
+
+fn recover_auth_mode(app:&tauri::AppHandle,run_gen:u64,trace:&run_trace::RunTraceHandle,
+                     expected_account:Option<&str>,fresh:bool)->Result<Value,String> {
     let observation_step=std::cell::Cell::new(0u32);
-    let result = crate::normal_login::recover(&crate::data_root(), trace.run_id(), expected_account,
+    let result = crate::normal_login::recover_mode(&crate::data_root(), trace.run_id(), expected_account,fresh,
         || run_control::run_still_active(app, run_gen),
         || check_auth(app, run_gen, trace),
         |phase| {
@@ -179,6 +184,19 @@ pub(crate) fn recover_auth(app: &tauri::AppHandle, run_gen: u64, trace: &run_tra
                            None, None, None, json!({"http":result}));
     let _ = app.emit("run-changed", ());
     Ok(result)
+}
+
+/// The explicit button exercises UI even when the old H5 still verifies.
+pub(crate) fn check_login(app:&tauri::AppHandle,run_gen:u64,trace:&run_trace::RunTraceHandle)->Result<Value,String> {
+    let checked=check_auth(app,run_gen,trace)?;
+    explicit_login_check(checked,None,|expected|recover_auth_mode(app,run_gen,trace,expected,true))
+}
+
+pub(crate) fn explicit_login_check(checked:Value,expected:Option<&str>,recover:impl FnOnce(Option<&str>)->Result<Value,String>)->Result<Value,String> {
+    let checked=crate::normal_login::validate(checked,expected);
+    if checked["ok"]!=true && !needs_reauthorization(&checked) {return Ok(checked);}
+    let bound=expected.or_else(||checked["account_fingerprint"].as_str()).map(str::to_owned);
+    Ok(crate::normal_login::validate(recover(bound.as_deref())?,bound.as_deref()))
 }
 
 /// Reuse only an entry just verified by the school, recovering only a missing or
@@ -436,6 +454,22 @@ mod tests {
     fn ready(account: &str) -> Value {
         json!({"ok":true,"state":"ready","authenticated":true,
                "account_checked":true,"account_fingerprint":account})
+    }
+
+    #[test]
+    fn explicit_check_always_exercises_ui_and_keeps_account_binding() {
+        for checked in [ready("a"),json!({"ok":false,"code":"SESSION_EXPIRED","account_fingerprint":"a"})] {
+            let called=std::cell::Cell::new(false);
+            let result=explicit_login_check(checked,None,|expected| {
+                called.set(true);assert_eq!(expected,Some("a"));Ok(ready("a"))
+            }).unwrap();
+            assert!(called.get());assert_eq!(result,ready("a"));
+        }
+        assert_eq!(explicit_login_check(ready("a"),None,|_|Ok(ready("b"))).unwrap()["code"],"ACCOUNT_CHANGED");
+        for checked in [json!({"ok":false,"code":"NETWORK_ERROR"}),ready("b")] {
+            let result=explicit_login_check(checked,Some("a"),|_|panic!("must not open UI")).unwrap();
+            assert_ne!(result["ok"],true);
+        }
     }
 
     #[test]

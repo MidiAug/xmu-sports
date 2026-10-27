@@ -1,4 +1,4 @@
-//! Small Win32 window/protocol adapter. No capture, OCR, vision packs or hooks.
+//! Small Win32 window/protocol adapter. Login screenshots live in login_evidence.
 use std::path::Path;
 use windows::core::{w, PCWSTR, BOOL};
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT, TRUE};
@@ -118,5 +118,6 @@ pub fn background_status()->serde_json::Value {
 
 pub fn device_diagnostics()->serde_json::Value {
     serde_json::json!({"os":std::env::consts::OS,"architecture":std::env::consts::ARCH,
-        "edition":"http-only","login":"windows_uia","visual_components":false,"kernel_hook":false})
+        "edition":"http-only","login":"windows_uia","visual_components":false,"kernel_hook":false,
+        "environment":crate::login_evidence::environment()})
 }

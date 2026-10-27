@@ -32,8 +32,9 @@ pub(crate) fn diagnostics()->serde_json::Value {
 }
 
 const WAKE:u32=WM_APP+49;
+enum OverlayCommand { Phase(&'static str), Suspend(Sender<()>), Resume }
 pub(crate) struct LoginOverlay {
-    sender:Option<Sender<&'static str>>, thread:Option<JoinHandle<()>>, thread_id:Arc<AtomicU32>,
+    sender:Option<Sender<OverlayCommand>>, thread:Option<JoinHandle<()>>, thread_id:Arc<AtomicU32>,
 }
 impl LoginOverlay {
     pub(crate) fn start() -> Self {
@@ -45,13 +46,29 @@ impl LoginOverlay {
     }
     pub(crate) fn phase(&self, phase: &str) {
         if let Some(text) = phase_text(phase) {
-            if let Some(sender) = &self.sender { let _ = sender.send(text); }
+            if let Some(sender) = &self.sender { let _ = sender.send(OverlayCommand::Phase(text)); }
             self.wake();
         }
+    }
+    /// Wait for both layers to hide before capturing the actual mini-program.
+    /// A dropped guard restores them even when capture fails.
+    pub(crate) fn suspend(&self)->Result<OverlaySuspension<'_>,String> {
+        let guard=OverlaySuspension(self);
+        let (tx,rx)=mpsc::channel();
+        self.sender.as_ref().ok_or("OVERLAY_UNAVAILABLE")?.send(OverlayCommand::Suspend(tx)).map_err(|_|"OVERLAY_UNAVAILABLE")?;
+        self.wake();
+        rx.recv_timeout(Duration::from_secs(1)).map_err(|_|"OVERLAY_HIDE_TIMEOUT")?;
+        Ok(guard)
     }
     fn wake(&self) {
         let id=self.thread_id.load(Ordering::Acquire);
         if id!=0 {unsafe{let _=PostThreadMessageW(id,WAKE,WPARAM(0),LPARAM(0));}}
+    }
+}
+pub(crate) struct OverlaySuspension<'a>(&'a LoginOverlay);
+impl Drop for OverlaySuspension<'_> {
+    fn drop(&mut self) {
+        if let Some(sender)=&self.0.sender {let _=sender.send(OverlayCommand::Resume);self.0.wake();}
     }
 }
 impl Drop for LoginOverlay {
@@ -70,6 +87,7 @@ fn phase_text(phase: &str) -> Option<&'static str> {
         "normal_ui_http_verifying" => "正在核验登录状态",
         "normal_ui_http_ready" => "登录已验证，正在完成准备",
         "normal_ui_reenter" => "正在重新打开小程序",
+        "normal_ui_refreshing" => "页面加载中，正在重新识别",
         "closing_miniprogram" | "normal_ui_closed" => "登录已完成，正在收起窗口",
         _ => return None,
     })
@@ -250,7 +268,7 @@ unsafe fn move_layers(mask:HWND,panel:HWND,rect:RECT,panel_width:i32,panel_heigh
     }
 }
 
-fn run(receiver:Receiver<&'static str>,thread_id:Arc<AtomicU32>) {
+fn run(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>) {
     run_with_discovery(receiver,thread_id,|| {
         let candidates=crate::wechat_window::discover_wechat_candidates().ok()?;
         let target=if candidates.len()==1 {candidates.first()?} else {return None;};
@@ -259,7 +277,7 @@ fn run(receiver:Receiver<&'static str>,thread_id:Arc<AtomicU32>) {
     });
 }
 
-fn run_with_discovery(receiver:Receiver<&'static str>,thread_id:Arc<AtomicU32>,mut discover:impl FnMut()->Option<Target>) {
+fn run_with_discovery(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>,mut discover:impl FnMut()->Option<Target>) {
     unsafe {
         let _=SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         let mut message=MSG::default();
@@ -268,12 +286,19 @@ fn run_with_discovery(receiver:Receiver<&'static str>,thread_id:Arc<AtomicU32>,m
         let mut mask_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:false});
         let mut panel_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:true});
         let mut layers:Option<Layers>=None;
+        let mut suspended=false;
         let mut next_discovery=Instant::now();let mut next_safety=Instant::now();
         'running:loop {
             // Drain notifications first; location bursts coalesce into one latest rectangle.
             while PeekMessageW(&mut message,None,0,0,PM_REMOVE).as_bool() {let _=TranslateMessage(&message);DispatchMessageW(&message);}
             loop {match receiver.try_recv() {
-                Ok(phase)=>panel_state.phase=phase,
+                Ok(OverlayCommand::Phase(phase))=>panel_state.phase=phase,
+                Ok(OverlayCommand::Suspend(ack))=> {
+                    suspended=true;
+                    if let Some(layers)=layers.as_mut() {layers.hide();}
+                    let _=ack.send(());
+                },
+                Ok(OverlayCommand::Resume)=> {suspended=false;WATCH_DIRTY.with(|dirty|dirty.set(true));},
                 Err(mpsc::TryRecvError::Empty)=>break,
                 Err(mpsc::TryRecvError::Disconnected)=>break 'running,
             }}
@@ -301,7 +326,7 @@ fn run_with_discovery(receiver:Receiver<&'static str>,thread_id:Arc<AtomicU32>,m
                     TARGET_SAMPLES.fetch_add(1,Ordering::Relaxed);
                     if GetForegroundWindow()==layers.target.hwnd() {FOCUSED_SAMPLES.fetch_add(1,Ordering::Relaxed);}
                     let mut rect=RECT::default();
-                    if IsWindowVisible(layers.target.hwnd()).as_bool() && !IsIconic(layers.target.hwnd()).as_bool() && GetWindowRect(layers.target.hwnd(),&mut rect).is_ok() {
+                    if !suspended && IsWindowVisible(layers.target.hwnd()).as_bool() && !IsIconic(layers.target.hwnd()).as_bool() && GetWindowRect(layers.target.hwnd(),&mut rect).is_ok() {
                         let scale=GetDpiForWindow(layers.target.hwnd()).max(96) as f32/96.0;
                         mask_state.scale=scale;panel_state.scale=scale;
                         let s=|n:i32|(n as f32*scale).round() as i32;
@@ -350,6 +375,8 @@ fn run_with_discovery(receiver:Receiver<&'static str>,thread_id:Arc<AtomicU32>,m
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Native fixtures share desktop Z-order and diagnostic counters.
+    static NATIVE_FIXTURE:std::sync::Mutex<()>=std::sync::Mutex::new(());
     #[test]
     fn only_real_login_stages_change_the_message() {
         assert_eq!(phase_text("native_authorizing"),Some("正在等待微信授权"));
@@ -358,6 +385,7 @@ mod tests {
     }
     #[test]
     fn native_fixture_does_not_take_focus_and_draws_status() {
+        let _serial=NATIVE_FIXTURE.lock().unwrap_or_else(|error|error.into_inner());
         unsafe {
             let before=GetForegroundWindow();
             let owner=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Isolated login fixture"),WS_POPUP,
@@ -408,6 +436,7 @@ mod tests {
 
     #[test]
     fn pin_preserves_original_state_and_outlives_other_normal_windows() {
+        let _serial=NATIVE_FIXTURE.lock().unwrap_or_else(|error|error.into_inner());
         unsafe {
             let owner=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Isolated pin fixture"),WS_POPUP,
                 -10000,-10000,520,815,None,None,None,None).unwrap();
@@ -438,6 +467,7 @@ mod tests {
 
     #[test]
     fn drag_events_follow_without_desktop_scans_or_move_repainting() {
+        let _serial=NATIVE_FIXTURE.lock().unwrap_or_else(|error|error.into_inner());
         unsafe {
             let old_dpi=SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
             let owner=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Isolated drag trajectory"),WS_POPUP,
@@ -460,6 +490,7 @@ mod tests {
             let id=thread_id.clone();let handle=owner.0 as usize;
             let thread=std::thread::spawn(move||run_with_discovery(receiver,id,||Some(Target{hwnd_u64:handle as u64,pid:std::process::id()})));
             let controller=LoginOverlay{sender:Some(sender),thread:Some(thread),thread_id};
+            let checked=std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let started=Instant::now();
             let (mask,panel)=loop {
                 pump();let mask=owned(owner);let panel=owned(mask);
@@ -500,13 +531,38 @@ mod tests {
             let output=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../artifacts/sidebar-orders");
             std::fs::create_dir_all(&output).unwrap();std::fs::write(output.join("drag-benchmark.json"),report.to_string()).unwrap();
             println!("drag benchmark: {report}");
+            // Capturing hides both layers across safety ticks and restores them on guard drop.
+            let mask_value=mask.0 as usize;let panel_value=panel.0 as usize;
+            std::thread::scope(|scope| {
+                let checker=scope.spawn(|| {
+                    let hidden=controller.suspend().expect("overlay must acknowledge capture suspension");
+                    for _ in 0..3 {
+                        assert!(!IsWindowVisible(HWND(mask_value as *mut _)).as_bool());
+                        assert!(!IsWindowVisible(HWND(panel_value as *mut _)).as_bool());
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                    drop(hidden);
+                });
+                while !checker.is_finished() {pump();std::thread::sleep(Duration::from_millis(1));}
+                checker.join().unwrap();
+            });
+            let resumed=Instant::now();
+            while !IsWindowVisible(panel).as_bool() {
+                pump();assert!(resumed.elapsed()<Duration::from_secs(2));std::thread::sleep(Duration::from_millis(1));
+            }
+            (mask.0 as usize,panel.0 as usize)
+            }));
             // The owner must pump cross-thread window messages while the guard restores it.
             let stopper=std::thread::spawn(move||drop(controller));let stopped=Instant::now();
             while !stopper.is_finished() {pump();assert!(stopped.elapsed()<Duration::from_secs(2));std::thread::sleep(Duration::from_millis(1));}
             stopper.join().unwrap();
-            assert!(!IsWindow(Some(mask)).as_bool() && !IsWindow(Some(panel)).as_bool());
+            if let Ok((mask,panel))=&checked {
+                assert!(!IsWindow(Some(HWND(*mask as *mut _))).as_bool() && !IsWindow(Some(HWND(*panel as *mut _))).as_bool());
+            }
+
             assert_eq!(GetWindowLongPtrW(owner,GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0,0);
             let _=DestroyWindow(owner);let _=SetThreadDpiAwarenessContext(old_dpi);
+            if let Err(panic)=checked {std::panic::resume_unwind(panic);}
         }
     }
 

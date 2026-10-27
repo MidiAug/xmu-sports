@@ -59,12 +59,12 @@ pub(crate) fn run(ui: bool, output: &Path) -> Result<(),String> {
         let initial=crate::normal_login::validate(check()?,None);
         initial_report=initial.clone();
         emit(json!({"kind":"initial_check","result":initial}));
-        let expected=initial["account_fingerprint"].as_str().map(str::to_owned);
-        if !ui || (initial["ok"]!=true && !crate::http_booking::needs_reauthorization(&initial)) { return Ok(initial); }
-        crate::normal_login::recover(&crate::data_root(), &format!("login-only-{}",uuid::Uuid::new_v4()),
-            expected.as_deref(), ||true, check,
+        if !ui {return Ok(initial);}
+        crate::http_booking::explicit_login_check(initial,None,|expected|crate::normal_login::recover_fresh(
+            &crate::data_root(), &format!("login-only-{}",uuid::Uuid::new_v4()),
+            expected, ||true, check,
             |phase| { phases.push(phase.to_owned()); let state=json!({"phase":phase,"window":crate::wechat_window::background_status()}); window_states.push(state.clone());emit(state); },
-            |observation| { emit(json!({"kind":"elements","observation":observation})); observations.push(observation); })
+            |observation| { emit(json!({"kind":"elements","observation":observation})); observations.push(observation); }))
     })().unwrap_or_else(|code:String|json!({"ok":false,"code":code}));
     // No tokens, signed URLs, cookies or order contents in the saved report.
     let report=json!({"mode":"login_and_existing_orders_only","app_version":env!("CARGO_PKG_VERSION"),
