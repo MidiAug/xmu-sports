@@ -111,6 +111,20 @@
 .release-notes hr { border: 0; border-top: 1px solid var(--color-line-strong); margin: 14px 0; }
 .about-actions { display: flex; align-items: center; gap: 12px; }
 .about-footnote { text-align: center; color: var(--color-muted); font-size: 11px; line-height: 1.9; margin: 8px 0 0; }
+.settings-developer .btn { margin-top:12px; }
+.dev-about-preview { width:100%; max-width:760px; margin:0 auto; }
+.dev-preview-controls { display:flex; flex-wrap:wrap; align-items:flex-end; gap:18px 24px; }
+.dev-preview-control { display:grid; gap:8px; font-size:12px; color:var(--color-muted); }
+.dev-preview-control .shell-select { width:190px; min-width:0; max-width:100%; }
+.dev-preview-buttons { display:flex; gap:6px; }
+.dev-preview-buttons .btn { min-height:32px; padding:5px 10px; font-size:12px; }
+.dev-preview-buttons .btn[aria-pressed="true"] { color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 10%,transparent); }
+.dev-preview-control .nav-foot { display:flex; padding:0; margin:0; }
+.dev-preview-progress { flex-basis:100%; display:flex; gap:12px; align-items:center; font-size:12px; color:var(--color-muted); }
+.dev-preview-progress[hidden] { display:none; }
+.dev-preview-progress input { min-width:80px; flex:1; accent-color:var(--color-accent); }
+.dev-preview-controls .msg { flex-basis:100%; margin:0; }
+#preview_canvas { width:100%; margin:0 auto; }
 @media (max-width: 620px) { .about-row { flex-wrap: wrap; } .about-row > div:first-child { flex: 1 1 180px; } }
 @media (max-width: 580px) {
   .preference-card { padding: 16px; }

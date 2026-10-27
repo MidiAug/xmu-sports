@@ -19,6 +19,7 @@ try {
       if(cmd==="download_app_update") {window.__downloadMirror=args?.mirror;window.__downloads++;await new Promise(r=>window.__finishDownload=r);if(window.__downloadError) throw window.__downloadError;return "C:\\Downloads\\fixture-setup.exe";}
       if(cmd==="install_app_update") {window.__installs=(window.__installs??0)+1;await new Promise(r=>window.__finishInstall=r);throw '请先结束预约、取消定时任务或完成登录，再安装更新';}
       if(cmd==="force_quit_app") {window.__quits=(window.__quits??0)+1;return;}
+      if(cmd.startsWith('plugin:shell')) {window.__browserOpens=(window.__browserOpens??0)+1;return;}
       if(cmd.includes("listen")) {if(args?.event==="app-update-progress") window.__progressCallback=args.handler;if(args?.event==="shell-update-exit")window.__exitCallback=args.handler;return 1;}
       return null;
     }};
@@ -110,5 +111,52 @@ try {
   await page.screenshot({path:'artifacts/about-updates/route-menu-dark.png'});
   await page.keyboard.press('Escape');
   await page.screenshot({path:'artifacts/about-updates/narrow-dark.png'});
-  console.log('About UI passed: manual checks, navigation, progress, retry, safe notes, empty releases, errors and narrow layout');
+  await page.reload();
+  await page.locator('[data-tab="settings"]').click();
+  await page.locator('#about_preview_entry').waitFor();
+  const originalTheme=await page.evaluate(()=>document.documentElement.dataset.shellTheme);
+  const storedUpdate=await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.entries(localStorage).filter(([key])=>key.startsWith('xmu.appUpdate')))));
+  await page.locator('#about_preview_entry').click();
+  await page.locator('.dev-about-preview').waitFor();
+  const scenario=page.locator('#preview_scenario');
+  const selectScenario=async value=>{await scenario.locator('.shell-select-trigger').click();await scenario.locator(`[data-value="${value}"]`).click();};
+  for(const [value,phase,label] of [
+    ['idle','idle','检查更新'],['checking','checking','检查中…'],['current','ready','检查更新'],
+    ['unpublished','ready','检查更新'],['available','ready','下载更新'],['downloading','downloading','下载 42%'],
+    ['downloaded','downloaded','退出并安装'],['installing','installing','正在启动…'],
+    ['check-error','error','重新检查'],['download-error','error','重新下载'],['install-error','error','重试安装'],['paused','ready','下载更新'],
+  ]) {
+    await selectScenario(value);
+    assert.equal(await action.getAttribute('data-phase'),phase);
+    assert.equal(await action.innerText(),label);
+    assert.equal(await action.isDisabled(),['checking','downloading','installing'].includes(phase));
+  }
+  assert.match(await page.locator('#update_status').innerText(),/空闲后自动下载/);
+  await selectScenario('downloading');
+  await page.locator('#preview_progress').focus();await page.keyboard.press('End');
+  assert.equal(await action.innerText(),'下载 100%');
+  await selectScenario('downloaded');
+  assert.equal(await page.locator('#preview_version .version-update-label').innerText(),'可安装');
+  assert.equal(await page.locator('#preview_version .version-update-status').isVisible(),true,'preview version entry stays visible in a narrow window');
+  assert.ok((await scenario.locator('.shell-select-trigger').boundingBox()).width>=150,'scenario control is not squeezed by mobile settings rules');
+  await action.click();assert.equal(await action.getAttribute('data-phase'),'installing');
+  await selectScenario('available');
+  await page.locator('#about_repository').click();assert.match(await page.locator('#preview_notice').innerText(),/不会打开外部链接/);
+  await route.locator('.shell-select-trigger').click();await route.locator('[data-value="ghproxy"]').click();
+  await page.locator('[data-preview-theme="dark"]').click();
+  await page.locator('[data-preview-width="360"]').click();
+  assert.equal(await page.locator('#preview_canvas').evaluate(el=>el.getBoundingClientRect().width),360);
+  await page.locator('#update_notes summary').click();
+  await page.setViewportSize({width:960,height:1100});
+  await page.locator('.content').evaluate(el=>el.scrollTop=0);
+  await page.screenshot({path:'artifacts/about-updates/developer-preview-dark.png',fullPage:true});
+  assert.equal(await page.locator('#nav_foot .version-update-status').isVisible(),false,'preview never changes the real version entry');
+  await page.locator('[data-preview-theme="light"]').click();
+  assert.equal(await page.evaluate(()=>document.documentElement.dataset.shellTheme),'light');
+  await page.screenshot({path:'artifacts/about-updates/developer-preview-light.png',fullPage:true});
+  assert.deepEqual(await page.evaluate(()=>[window.__checks,window.__downloads,window.__installs??0,window.__browserOpens??0]),[0,0,0,0]);
+  assert.equal(await page.evaluate(()=>JSON.stringify(Object.fromEntries(Object.entries(localStorage).filter(([key])=>key.startsWith('xmu.appUpdate'))))),storedUpdate);
+  await page.locator('#preview_canvas .about-back').click();await page.locator('#about_preview_entry').waitFor();
+  assert.equal(await page.evaluate(()=>document.documentElement.dataset.shellTheme),originalTheme,'leaving restores the real theme');
+  console.log('About UI passed: release states, developer preview scenarios, progress, isolated transport/preferences, theme restore, keyboard and layout');
 } finally { await browser.close(); }

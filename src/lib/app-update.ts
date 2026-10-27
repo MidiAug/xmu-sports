@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 export type ReleaseInfo = { status: "available" | "current" | "unpublished"; version: string; notes: string; size: number };
-type UpdateView = { phase: "idle" | "checking" | "ready" | "downloading" | "downloaded" | "installing" | "error"; release?: ReleaseInfo; error?: string; failedAt?: "check" | "download" | "install"; progress: number; path?: string; paused?:boolean };
+export type UpdateView = { phase: "idle" | "checking" | "ready" | "downloading" | "downloaded" | "installing" | "error"; release?: ReleaseInfo; error?: string; failedAt?: "check" | "download" | "install"; progress: number; path?: string; paused?:boolean };
 // Shared across settings subpages; navigation neither repeats nor cancels a request.
 let view: UpdateView = { phase: "idle", progress: 0 };
 const HOUR = 60 * 60 * 1000;
