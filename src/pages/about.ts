@@ -4,24 +4,14 @@ import { mountPage } from "../lib/page-lifecycle";
 import { watchAppUpdate, performAppUpdate, updateDownloadRoutes, updateDownloadRoute, setUpdateDownloadRoute } from "../lib/app-update";
 import { renderReleaseNotes } from "../lib/release-notes";
 import { mountShellSelect } from "../ui/select";
-import type { UpdateView } from "../lib/app-update";
-
-export type AboutUpdateSource={
-  watch:(listener:(state:UpdateView)=>void)=>()=>void;
-  perform:()=>void|Promise<void>;
-  route:()=>string;
-  setRoute:(value:string)=>boolean;
-};
-type AboutOptions={updates?:AboutUpdateSource;version?:string;openLink?:(url:string)=>Promise<void>};
 
 const REPOSITORY = "https://github.com/MidiAug/xmu-sports";
 const appIcon = new URL("../../assets/app-icon/source.svg", import.meta.url).href;
 const updateHint = import.meta.env.DEV ? "开发版仅手动检查更新" : "启动后自动检查，成功后间隔24小时；失败后1小时重试";
-export async function renderAbout(panel: Element, back: () => void, options:AboutOptions={}) {
+export async function renderAbout(panel: Element, back: () => void) {
   const scope = mountPage(panel);
-  const updates=options.updates ?? {watch:watchAppUpdate,perform:performAppUpdate,route:updateDownloadRoute,setRoute:setUpdateDownloadRoute};
   let version = "版本暂不可用";
-  try { version = `版本 ${options.version ?? await getVersion()}`; } catch { /* Browser preview. */ }
+  try { version = `版本 ${await getVersion()}`; } catch { /* Browser preview. */ }
   if (!scope.current()) return;
   panel.closest<HTMLElement>(".content")?.scrollTo({ top: 0 });
   panel.innerHTML = `<div class="page-stack settings-page about-page">
@@ -42,17 +32,17 @@ export async function renderAbout(panel: Element, back: () => void, options:Abou
   query("#about_version").textContent = version;
   query<HTMLButtonElement>(".about-back").onclick = back;
   const message = (text: string) => { if (scope.current()) query("#about_message").textContent = text; };
-  const routeSelect=mountShellSelect(query("#update_route"), updateDownloadRoutes, updates.route(), value=>{
-    if (!updates.setRoute(value)) {
-      routeSelect.setOptions(updateDownloadRoutes,updates.route());
+  const routeSelect=mountShellSelect(query("#update_route"), updateDownloadRoutes, updateDownloadRoute(), value=>{
+    if (!setUpdateDownloadRoute(value)) {
+      routeSelect.setOptions(updateDownloadRoutes,updateDownloadRoute());
       message("下载线路保存失败，请稍后重试");
     } else message("");
   },{compact:true,matchTrigger:true});
   query<HTMLButtonElement>("#update_route .shell-select-trigger").setAttribute("aria-label","更新下载线路");
-  const launch = async (url: string) => { try { await (options.openLink ?? open)(url); } catch { message(`无法打开浏览器，请访问：${url}`); } };
+  const launch = async (url: string) => { try { await open(url); } catch { message(`无法打开浏览器，请访问：${url}`); } };
   query<HTMLButtonElement>("#about_repository").onclick = () => { void launch(REPOSITORY); };
-  query<HTMLButtonElement>("#update_action").onclick = () => { void updates.perform(); };
-  scope.onDispose(updates.watch(state => {
+  query<HTMLButtonElement>("#update_action").onclick = () => { void performAppUpdate(); };
+  scope.onDispose(watchAppUpdate(state => {
     if (!scope.current()) return;
     const { phase, release } = state;
     const busy = ["checking", "downloading", "installing"].includes(phase);

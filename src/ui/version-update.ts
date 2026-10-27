@@ -1,7 +1,7 @@
 import { watchAppUpdate } from "../lib/app-update";
 
 /** The shell keeps the detected release visible while the user visits other pages. */
-export function mountVersionUpdate(foot: Element, openAbout: () => void, watch=watchAppUpdate) {
+export function mountVersionUpdate(foot: Element, openAbout: () => void) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "version-update";
@@ -13,7 +13,7 @@ export function mountVersionUpdate(foot: Element, openAbout: () => void, watch=w
   button.append(status);
   button.onclick = openAbout;
   foot.append(button);
-  return watch(state => {
+  return watchAppUpdate(state => {
     const available=state.release?.status==="available";
     const ready=state.phase==="downloaded" || state.phase==="installing" || state.phase==="error" && state.failedAt==="install";
     status.hidden=!available;

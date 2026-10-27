@@ -130,7 +130,6 @@ export async function renderSettings(panel: Element) {
           </div>
         </div>
       </details>
-      ${import.meta.env.DEV ? '<section class="preference-card settings-developer"><div class="preference-card-heading"><h3>开发者工具</h3><p>仅开发版可见</p></div><button class="btn ghost" id="about_preview_entry" type="button">关于页状态预览</button></section>' : ''}
       <button type="button" class="preference-card settings-about-entry"><div><strong>关于 XMU Sports</strong><span>版本 ${version}　项目地址与应用更新</span></div><span aria-hidden="true">›</span></button>
       <p class="msg" id="settings_msg"></p>
     </div>
@@ -148,12 +147,6 @@ export async function renderSettings(panel: Element) {
   panel.querySelector<HTMLButtonElement>(".settings-about-entry")!.onclick = () => {
     void renderAbout(panel, () => { void renderSettings(panel); });
   };
-  if(import.meta.env.DEV){
-    panel.querySelector<HTMLButtonElement>("#about_preview_entry")!.onclick=async()=>{
-      const {renderAboutPreview}=await import("./dev/about-preview");
-      if(scope.current())void renderAboutPreview(panel,()=>{void renderSettings(panel);});
-    };
-  }
 
   panel.querySelectorAll("[data-theme]").forEach((btn) => {
     btn.addEventListener("click", () => {
