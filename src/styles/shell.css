@@ -245,9 +245,10 @@ h1, h2, h3, button, summary, .nav-foot, .page-heading { user-select: none; }
   font-family: var(--mono);
 }
 
-.nav-foot[hidden], .version-update[hidden] { display: none; }
+.nav-foot[hidden], .version-update-status[hidden] { display: none; }
 .nav-version { opacity: 1; font-weight:500; }
-.version-update { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: color-mix(in srgb,var(--color-accent) 12%,transparent); color: var(--color-accent); cursor: pointer; transition: background 120ms ease; }
+.version-update { display:inline-flex; align-items:center; gap:8px; max-width:100%; min-height:30px; padding:3px 2px; border:0; border-radius:6px; background:transparent; color:inherit; font:inherit; cursor:pointer; }
+.version-update-status { display:inline-flex; align-items:center; gap:4px; padding:2px 6px; border-radius:5px; background:color-mix(in srgb,var(--color-accent) 12%,transparent); color:var(--color-accent); font:500 11px/18px system-ui,sans-serif; white-space:nowrap; }
 .version-update:hover { color: var(--color-accent); }
 .version-update:focus-visible { outline: none; box-shadow: inset 0 -2px var(--color-accent); color: var(--color-accent); }
 

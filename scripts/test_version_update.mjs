@@ -42,8 +42,10 @@ try {
   const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
   await page.goto(pathToFileURL(fixture).href);
   await page.waitForFunction(() => window.ready);
-  assert.equal(await page.locator('.version-update').isVisible(), false);
-  await page.evaluate(() => window.openAbout());
+  assert.equal(await page.locator('.version-update').isVisible(), true);
+  assert.equal(await page.locator('.version-update-status').isVisible(), false);
+  assert.match(await page.locator('.version-update').innerText(),/v0.1.29/);
+  await page.locator('.version-update .nav-version').click();
   assert.match(await page.locator('#update_status').innerText(), /自动检查.*24小时/);
   assert.deepEqual(await page.evaluate(() => window.calls), [], 'opening About never triggers a check');
   await page.screenshot({ path: join(output, 'automatic-policy.png') });
@@ -51,6 +53,8 @@ try {
   await page.evaluate(() => window.check());
   await page.getByRole('button', { name: '有新版本 0.2.0，查看应用更新' }).click();
   await page.getByRole('button', { name: '下载更新', exact: true }).waitFor();
+  assert.equal(await page.locator('.version-update-label').innerText(),'有更新');
+  assert.equal(await page.locator('.version-update .nav-version').count(),1,'version text belongs to the same clickable entry');
   assert.match(await page.locator('#update_status').innerText(), /发现新版本 0.2.0/);
   assert.deepEqual(await page.evaluate(() => window.calls), ['check_app_update']);
   await page.locator('#update_notes summary').click();
@@ -67,6 +71,7 @@ try {
   await page.screenshot({ path: join(output, 'available-light.png') });
   await page.getByRole('button', { name: '下载更新', exact: true }).click();
   await page.getByRole('button', { name: '退出并安装', exact: true }).waitFor();
+  assert.equal(await page.locator('.version-update-label').innerText(),'可安装');
   assert.equal(await page.locator('.release-notes').evaluate(el => el.firstChild===window.notesNode && el.scrollTop===window.notesScroll), true, 'progress keeps rendered notes and scroll position');
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await page.locator('.version-update').focus();
@@ -79,6 +84,7 @@ try {
   await page.locator('.version-update').evaluate(button => button.blur());
   await page.screenshot({ path: join(output, 'downloaded-dark.png') });
   await page.evaluate(async () => { window.releaseStatus = 'current'; await window.check(); });
-  assert.equal(await page.locator('.version-update').isVisible(), false);
+  assert.equal(await page.locator('.version-update').isVisible(), true);
+  assert.equal(await page.locator('.version-update-status').isVisible(), false);
   console.log('Version update browser checks passed: visibility, keyboard navigation, retained release/download, no duplicate check, current version hides icon');
 } finally { await browser.close(); }

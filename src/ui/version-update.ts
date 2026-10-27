@@ -5,13 +5,24 @@ export function mountVersionUpdate(foot: Element, openAbout: () => void) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "version-update";
-  button.hidden = true;
-  button.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 16V4m-4 4 4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const version=foot.querySelector(".nav-version");
+  if(version)button.append(version);
+  const status=document.createElement("span");
+  status.className="version-update-status";
+  status.innerHTML='<span aria-hidden="true">↑</span><span class="version-update-label"></span>';
+  button.append(status);
   button.onclick = openAbout;
   foot.append(button);
   return watchAppUpdate(state => {
-    button.hidden = state.release?.status !== "available";
-    button.title = state.release ? `有新版本 ${state.release.version}，查看应用更新` : "查看应用更新";
-    button.setAttribute("aria-label", button.title);
+    const available=state.release?.status==="available";
+    const ready=state.phase==="downloaded" || state.phase==="installing" || state.phase==="error" && state.failedAt==="install";
+    status.hidden=!available;
+    status.querySelector(".version-update-label")!.textContent=ready ? "可安装" : "有更新";
+    button.classList.toggle("has-update",available);
+    if(available)button.title=`新版本 ${state.release!.version}`;
+    else button.removeAttribute("title");
+    button.setAttribute("aria-label",available
+      ? ready ? `更新 ${state.release!.version} 已下载，查看安装` : `有新版本 ${state.release!.version}，查看应用更新`
+      : "关于与应用更新");
   });
 }
