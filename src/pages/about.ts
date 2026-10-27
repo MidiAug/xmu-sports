@@ -1,7 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-shell";
 import { mountPage } from "../lib/page-lifecycle";
-import { watchAppUpdate, performAppUpdate, updateDownloadRoutes, updateDownloadRoute, setUpdateDownloadRoute, autoDownloadUpdate, setAutoDownloadUpdate } from "../lib/app-update";
+import { watchAppUpdate, performAppUpdate, updateDownloadRoutes, updateDownloadRoute, setUpdateDownloadRoute } from "../lib/app-update";
 import { renderReleaseNotes } from "../lib/release-notes";
 import { mountShellSelect } from "../ui/select";
 
@@ -20,12 +20,11 @@ export async function renderAbout(panel: Element, back: () => void) {
     <section class="preference-card about-section" aria-labelledby="update_title">
       <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">${updateHint}</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
       <div class="about-download-route"><label id="update_route_label">下载线路</label><div id="update_route" aria-labelledby="update_route_label"></div></div>
-      <div class="about-auto-download"><div><label for="update_auto_download">自动下载更新</label><p>空闲时下载，安装前由你确认</p></div><label class="switch"><input id="update_auto_download" type="checkbox" ${autoDownloadUpdate() ? "checked" : ""}><span class="slider"></span></label></div>
       <div class="about-update-detail" hidden>
         <details id="update_notes" hidden><summary>更新说明</summary><div class="release-notes"></div></details>
       </div>
     </section>
-    <section class="preference-card about-section" aria-labelledby="repository_title"><div class="about-row"><div><h3 id="repository_title">开源项目</h3><p>MidiAug / xmu-sports</p></div><div class="about-actions"><button class="btn ghost" id="about_copy" type="button">复制地址</button><button class="btn ghost" id="about_repository" type="button">GitHub ↗</button></div></div></section>
+    <section class="preference-card about-section" aria-labelledby="repository_title"><div class="about-row"><div><h3 id="repository_title">开源项目</h3><p>MidiAug / xmu-sports</p></div><button class="btn ghost" id="about_repository" type="button">GitHub ↗</button></div></section>
     <p class="about-footnote">在本机为本人或已授权账号预约场馆<br>独立开源项目，与厦大体育无官方关联</p>
     <p class="msg" id="about_message" role="status"></p>
   </div>`;
@@ -38,22 +37,16 @@ export async function renderAbout(panel: Element, back: () => void) {
       routeSelect.setOptions(updateDownloadRoutes,updateDownloadRoute());
       message("下载线路保存失败，请稍后重试");
     } else message("");
-  },{compact:true});
+  },{compact:true,matchTrigger:true});
   query<HTMLButtonElement>("#update_route .shell-select-trigger").setAttribute("aria-label","更新下载线路");
-  query<HTMLInputElement>("#update_auto_download").onchange=event=>{
-    const input=event.target as HTMLInputElement;
-    if(!setAutoDownloadUpdate(input.checked)){input.checked=autoDownloadUpdate();message("自动下载设置保存失败");}
-  };
-  const launch = async (url: string) => { try { await open(url); } catch { message("无法打开浏览器，请复制项目地址后访问"); } };
+  const launch = async (url: string) => { try { await open(url); } catch { message(`无法打开浏览器，请访问：${url}`); } };
   query<HTMLButtonElement>("#about_repository").onclick = () => { void launch(REPOSITORY); };
-  query<HTMLButtonElement>("#about_copy").onclick = async () => { try { await navigator.clipboard.writeText(REPOSITORY); message("已复制项目地址"); } catch { message(`请复制：${REPOSITORY}`); } };
   query<HTMLButtonElement>("#update_action").onclick = () => { void performAppUpdate(); };
   scope.onDispose(watchAppUpdate(state => {
     if (!scope.current()) return;
     const { phase, release } = state;
     const busy = ["checking", "downloading", "installing"].includes(phase);
     routeSelect.setDisabled(busy);
-    query<HTMLInputElement>("#update_auto_download").disabled=busy;
     const action = query<HTMLButtonElement>("#update_action");
     action.disabled = busy;
     action.dataset.phase = phase;

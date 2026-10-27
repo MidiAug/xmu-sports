@@ -75,7 +75,9 @@
 .about-mark { display: block; margin: 0 auto 16px; width: 64px; height: 64px; object-fit: contain; }
 .about-identity h3 { margin: 0 0 7px; font-size: 23px; font-weight: 600; letter-spacing: -.5px; }
 .about-identity p { margin: 0; color: var(--color-muted); font-size: 12px; }
-.about-update-button { min-width: 112px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.about-page { --about-control-width:180px; }
+.about-update-button, #about_repository, .about-download-route .shell-select { width:var(--about-control-width); min-width:var(--about-control-width); flex:none; }
+.about-update-button { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .about-update-button[data-phase="downloading"] { opacity: 1; background: linear-gradient(to right, color-mix(in srgb, var(--color-accent) 12%, var(--color-panel)) var(--update-progress), var(--color-panel) var(--update-progress)); }
 .about-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .about-row > div:first-child { min-width: 0; }
@@ -84,12 +86,8 @@
 .about-row > .btn, .about-row > .about-actions { flex-shrink: 0; }
 .about-update-detail { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--color-line); }
 .about-download-route { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:24px; }
-.about-download-route > label, .about-auto-download label[for] { color:var(--color-ink); font-size:13px; font-weight:500; }
-.about-download-route .shell-select { width:180px; min-width:0; }
+.about-download-route > label { color:var(--color-ink); font-size:13px; font-weight:500; }
 .about-download-route .shell-select-trigger { height:32px; font-size:12px; border-radius:8px; }
-.about-auto-download { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:18px; }
-.about-auto-download p { margin:5px 0 0; font-size:11px; color:var(--color-muted); }
-.about-auto-download .switch::after { pointer-events:none; }
 .about-section .about-update-detail { margin-top:24px; padding-top:20px; }
 .about-section .about-update-detail summary { color:var(--color-ink); font-size:13px; font-weight:500; }
 .about-section .release-notes { margin-top:16px; font-size:13px; }

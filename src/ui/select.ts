@@ -9,7 +9,7 @@ export function mountShellSelect(
   options: SelectOption[],
   selected: string,
   onChange: (value: string) => void,
-  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean },
+  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean; matchTrigger?:boolean },
 ): { getValue: () => string; setOptions: (opts: SelectOption[], sel?: string) => void; setDisabled: (disabled: boolean) => void } {
   let value = selected;
   let selectOpts = options;
@@ -95,7 +95,7 @@ export function mountShellSelect(
     const bottom = Math.min(window.innerHeight - 8, (container?.bottom ?? window.innerHeight) - 8);
     if (anchor.bottom < top || anchor.top > bottom || right <= left) { close(host); return; }
     const detailed=selectOpts.some(o=>o.badge);
-    const wantedWidth = compact ? Math.min(320, Math.max(280, anchor.width))
+    const wantedWidth = opts?.matchTrigger ? anchor.width : compact ? Math.min(320, Math.max(280, anchor.width))
       : Math.max(anchor.width, detailed ? 420 : useColumns() ? selectOpts.length >= 9 ? 400 : 300 : anchor.width);
     const width = Math.min(wantedWidth, right - left);
     const columns = useColumns() ? Math.max(1, Math.min(compact || detailed ? 2 : selectOpts.length >= 9 ? 3 : 2, Math.floor((width - 12) / (compact ? 130 : detailed ? 190 : 124)))) : 1;

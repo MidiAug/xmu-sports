@@ -30,15 +30,14 @@ try {
   const action=page.locator('#update_action');
   const singleButton=async()=>assert.equal(await page.locator('.about-update-button').count(),1);
   const route=page.locator('#update_route');
-  const auto=page.locator('#update_auto_download');
-  assert.equal(await auto.isChecked(),true);
-  await auto.uncheck();
+  assert.equal(await page.locator('#update_auto_download,#about_copy').count(),0);
   await route.locator('.shell-select-trigger').click();
+  const widths=await Promise.all([action, page.locator('#about_repository'),route.locator('.shell-select-trigger'),route.locator('.shell-select-menu')].map(async el=>(await el.boundingBox()).width));
+  assert.ok(widths.every(width=>Math.abs(width-widths[0])<1),'update, GitHub, selector and popup have equal widths');
   await route.locator('[data-value="gh-proxy"]').click();
   assert.equal(await page.evaluate(()=>window.__checks),0,'switching route never checks or downloads');
   await page.locator('.about-back').click();await page.locator('.settings-about-entry').click();
   assert.match(await route.locator('.shell-select-value').innerText(),/gh-proxy.com/);
-  assert.equal(await auto.isChecked(),false,'auto-download opt-out persists across navigation');await auto.check();
   assert.equal((await page.locator('.about-back').innerText()).trim(),'返回');
   assert.equal(await page.locator('.about-page h2,.about-tagline,#update_releases,#update_folder').count(),0);
   assert.equal(await page.locator('img.about-mark').evaluate(img=>img.complete&&img.naturalWidth>0),true);
@@ -103,6 +102,12 @@ try {
   await page.setViewportSize({width:480,height:750});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.evaluate(()=>document.documentElement.dataset.shellTheme='dark');
+  await route.locator('.shell-select-trigger').click();
+  const menuBox=await route.locator('.shell-select-menu').boundingBox();
+  const triggerBox=await route.locator('.shell-select-trigger').boundingBox();
+  assert.ok(Math.abs(menuBox.width-triggerBox.width)<1 && menuBox.x>=0 && menuBox.x+menuBox.width<=480,'narrow popup matches trigger without overflow');
+  await page.screenshot({path:'artifacts/about-updates/route-menu-dark.png'});
+  await page.keyboard.press('Escape');
   await page.screenshot({path:'artifacts/about-updates/narrow-dark.png'});
   console.log('About UI passed: manual checks, navigation, progress, retry, safe notes, empty releases, errors and narrow layout');
 } finally { await browser.close(); }
