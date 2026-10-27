@@ -1053,10 +1053,14 @@ fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
+    tray::request_update_quit(&app);
+}
+#[tauri::command]
+fn force_quit_app(app:tauri::AppHandle) {
     tray::quit_app(&app);
 }
 
-fn busy_now(app: &tauri::AppHandle) -> bool {
+fn busy_now<R:tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
     let armed = load_arm().armed;
     let running = app
         .try_state::<AppState>()
@@ -1273,6 +1277,9 @@ pub fn run() {
                 if prefs.close_to_tray {
                     api.prevent_close();
                     let _ = window.hide();
+                } else if updates::has_update() {
+                    api.prevent_close();
+                    tray::request_update_quit(window.app_handle());
                 }
                 // else: allow close → exit
             }
@@ -1305,7 +1312,8 @@ pub fn run() {
             get_shell_prefs,
             save_shell_prefs,
             hide_to_tray,
-            quit_app
+            quit_app,
+            force_quit_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

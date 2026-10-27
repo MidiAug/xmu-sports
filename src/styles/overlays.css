@@ -18,6 +18,11 @@
   background: var(--color-panel);
   box-shadow: var(--shadow-lv3);
 }
+.update-exit { position:relative; padding:26px 24px 22px; width:min(390px,100%); }
+.update-exit-cancel { position:absolute; right:12px; top:10px; width:28px; height:28px; border:0; border-radius:6px; background:transparent; color:var(--color-muted); font-size:20px; cursor:pointer; }
+.update-exit-cancel:hover { background:var(--color-panel-hover); }
+.update-exit .close-ask-title { padding-right:20px; }
+.update-exit .close-ask-actions { margin-top:24px; }
 
 .close-ask-title {
   margin: 0;

@@ -3,14 +3,14 @@ use reqwest::{
     blocking::{Client, Response},
     Url,
 };
-use serde::Serialize;
+use serde::{Deserialize,Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Mutex, OnceLock},
+    sync::{Mutex, OnceLock, atomic::{AtomicBool,Ordering}},
     time::{Duration, Instant},
 };
 use tauri::{Emitter, Manager};
@@ -32,6 +32,7 @@ struct Candidate {
     url: String,
     sha256: String,
 }
+#[derive(Deserialize,Serialize)]
 struct Downloaded {
     path: PathBuf,
     size: u64,
@@ -44,6 +45,8 @@ struct UpdateState {
     downloaded: Option<Downloaded>,
 }
 static STATE: OnceLock<Mutex<UpdateState>> = OnceLock::new();
+static UPDATE_AVAILABLE:AtomicBool=AtomicBool::new(false);
+pub(crate) fn has_update()->bool {UPDATE_AVAILABLE.load(Ordering::Relaxed)}
 fn state() -> &'static Mutex<UpdateState> {
     STATE.get_or_init(Default::default)
 }
@@ -297,17 +300,26 @@ fn check() -> Result<ReleaseInfo, String> {
         }
         Ok(info)
     })();
+    if let Ok(info)=&result {UPDATE_AVAILABLE.store(info.status=="available",Ordering::Relaxed);}
     state.cached = Some((Instant::now(), result.clone()));
     result
 }
 
+#[cfg(test)]
 fn stream_package(
-    mut source: impl Read,
+    source: impl Read,
     dest: &Path,
     size: u64,
     hash: &str,
-    mut progress: impl FnMut(u64),
+    progress: impl FnMut(u64),
 ) -> Result<(), String> {
+    stream_package_checked(source,dest,size,hash,||Ok(()),progress)
+}
+fn stream_package_checked(
+    mut source:impl Read,dest:&Path,size:u64,hash:&str,
+    mut ready:impl FnMut()->Result<(),String>,mut progress:impl FnMut(u64),
+) -> Result<(),String> {
+    ready()?;
     // A failed create_new must never delete a pre-existing file.
     let mut file = fs::OpenOptions::new()
         .write(true)
@@ -319,7 +331,9 @@ fn stream_package(
         let mut count = 0;
         let mut buffer = [0u8; 65536];
         loop {
+            ready()?;
             let len = source.read(&mut buffer).map_err(|_| "下载中断，请重试")?;
+            ready()?;
             if len == 0 {
                 break;
             }
@@ -350,30 +364,55 @@ pub async fn check_app_update() -> Result<ReleaseInfo, String> {
         .await
         .map_err(|_| "更新检查中断")?
 }
+fn cached_download(saved:&Path,root:&Path,candidate:&Candidate)->Option<Downloaded> {
+    let download:Downloaded=serde_json::from_slice(&fs::read(saved).ok()?).ok()?;
+    if download.size!=candidate.info.size || download.sha256!=candidate.sha256
+        || download.path.file_name().is_none_or(|name|name!=candidate.name.as_str())
+        || download.path.parent().and_then(Path::parent)!=Some(root)
+        || verify_downloaded(&download).is_err() {return None;}
+    Some(download)
+}
 #[tauri::command]
-pub async fn download_app_update(app: tauri::AppHandle, mirror: Option<String>) -> Result<String, String> {
+pub async fn download_app_update(app: tauri::AppHandle, mirror: Option<String>, automatic: Option<bool>) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut state = state()
             .try_lock()
             .map_err(|_| "正在检查或下载更新，请稍候")?;
         let candidate = state.candidate.as_ref().ok_or("请先检查更新")?;
         let mirror = package_mirror(&candidate.url, mirror.as_deref())?;
-        let folder = app
+        let root = app
             .path()
             .download_dir()
             .map_err(|_| "无法访问下载文件夹")?
-            .join("XMU Sports Updates")
-            .join(uuid::Uuid::new_v4().to_string());
+            .join("XMU Sports Updates");
+        // Avoid reading the arm file and taking runtime locks for every 64 KiB chunk.
+        let last_ready=std::cell::Cell::new(Instant::now()-Duration::from_secs(1));
+        let ready=|| {
+            if automatic!=Some(true) || last_ready.get().elapsed()<Duration::from_millis(100) {return Ok(());}
+            last_ready.set(Instant::now());
+            if automatic==Some(true) && (crate::busy_now(&app) || crate::availability::recovering() || crate::my_orders::mutating()
+                || app.state::<crate::AppState>().stopping.load(Ordering::SeqCst)) {
+                Err("UPDATE_PAUSED: 预约进行中，空闲后继续下载".into())
+            } else {Ok(())}
+        };
+        ready()?;
+        let saved=crate::data_root().join("updates").join("downloaded.json");
+        if let Some(download)=cached_download(&saved,&root,candidate) {
+            let path=download.path.to_string_lossy().into_owned();
+            state.downloaded=Some(download);return Ok(path);
+        }
+        let folder=root.join(uuid::Uuid::new_v4().to_string());
         fs::create_dir_all(&folder).map_err(|_| "无法创建下载文件夹")?;
         let part = folder.join("download.part");
         let final_path = folder.join(&candidate.name);
         let response = open_route(&client()?, &candidate.url, 600, mirror.as_ref())?;
         let mut last = Instant::now() - Duration::from_secs(1);
-        stream_package(
+        stream_package_checked(
             response,
             &part,
             candidate.info.size,
             &candidate.sha256,
+            ready,
             |received| {
                 if last.elapsed() >= Duration::from_millis(150) || received == candidate.info.size {
                     let _ = app.emit(
@@ -393,6 +432,9 @@ pub async fn download_app_update(app: tauri::AppHandle, mirror: Option<String>) 
             size: candidate.info.size,
             sha256: candidate.sha256.clone(),
         });
+        if let Some(download)=&state.downloaded {
+            if let Ok(bytes)=serde_json::to_vec(download) {let _=crate::atomic_fs::write_atomic(&saved,bytes);}
+        }
         Ok(final_path.to_string_lossy().into_owned())
     })
     .await
@@ -602,5 +644,35 @@ mod tests {
         assert!(stream_package(&b"xxx"[..], &file, 3, &hash, |_| {}).is_err());
         assert_eq!(fs::read(&file).unwrap(), b"abc");
         fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn automatic_pause_removes_partial_and_download_can_restart() {
+        let dir=std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());fs::create_dir_all(&dir).unwrap();
+        let path=dir.join("download.part");let hash=format!("{:x}",Sha256::digest(b"abc"));
+        let mut checks=0;
+        let result=stream_package_checked(&b"abc"[..],&path,3,&hash,||{
+            checks+=1;if checks>=3 {Err("UPDATE_PAUSED".into())}else{Ok(())}
+        },|_|{});
+        assert!(result.unwrap_err().contains("UPDATE_PAUSED"));assert!(!path.exists());
+        stream_package(&b"abc"[..],&path,3,&hash,|_|{}).unwrap();
+        fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn saved_download_requires_matching_official_candidate_and_valid_file() {
+        let root=std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let folder=root.join("download-id");fs::create_dir_all(&folder).unwrap();
+        let path=folder.join("test.exe");fs::write(&path,b"abc").unwrap();
+        let hash=format!("{:x}",Sha256::digest(b"abc"));
+        let saved=root.join("downloaded.json");
+        let mut item=Downloaded{path:path.clone(),size:3,sha256:hash.clone()};
+        let candidate=Candidate{info:ReleaseInfo{status:"available".into(),version:"0.2.0".into(),notes:String::new(),size:3},name:"test.exe".into(),url:String::new(),sha256:hash};
+        fs::write(&saved,serde_json::to_vec(&item).unwrap()).unwrap();
+        assert!(cached_download(&saved,&root,&candidate).is_some());
+        fs::write(&path,b"abd").unwrap();assert!(cached_download(&saved,&root,&candidate).is_none());
+        fs::write(&path,b"abc").unwrap();item.path=root.join("outside.exe");
+        fs::write(&saved,serde_json::to_vec(&item).unwrap()).unwrap();
+        assert!(cached_download(&saved,&root,&candidate).is_none());
+        fs::write(&saved,b"broken").unwrap();assert!(cached_download(&saved,&root,&candidate).is_none());
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -3,7 +3,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Runtime,
+    AppHandle, Emitter, Manager, Runtime,
 };
 
 const TRAY_ID: &str = "main-tray";
@@ -32,7 +32,12 @@ pub fn setup_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
         .tooltip(crate::APP_DISPLAY_NAME)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => show_main(app),
-            "quit" => quit_app(app),
+            "quit" => {
+                if crate::busy_now(app) {
+                    show_main(app);
+                    let _=app.emit("shell-ask-close",serde_json::json!({"armed":true}));
+                } else {request_update_quit(app);}
+            },
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -66,4 +71,11 @@ pub fn quit_app<R: Runtime>(app: &AppHandle<R>) {
         crate::kill_child(&state);
     }
     app.exit(0);
+}
+
+pub fn request_update_quit<R:Runtime>(app:&AppHandle<R>) {
+    if crate::updates::has_update() {
+        show_main(app);
+        let _=app.emit("shell-update-exit",());
+    } else {quit_app(app);}
 }

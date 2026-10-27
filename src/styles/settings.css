@@ -71,7 +71,7 @@
 .about-back { padding: 0; border: 0; background: transparent; color: var(--color-muted); font: inherit; font-size: 12px; cursor: pointer; }
 .about-back { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 4px 0; }
 .about-back:hover { color: var(--color-accent); }
-.about-identity { text-align: center; padding: 8px 0 24px; }
+.about-identity { text-align: center; padding: 20px 0 28px; }
 .about-mark { display: block; margin: 0 auto 16px; width: 64px; height: 64px; object-fit: contain; }
 .about-identity h3 { margin: 0 0 7px; font-size: 23px; font-weight: 600; letter-spacing: -.5px; }
 .about-identity p { margin: 0; color: var(--color-muted); font-size: 12px; }
@@ -83,10 +83,17 @@
 .about-row p { margin: 6px 0 0; color: var(--color-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .about-row > .btn, .about-row > .about-actions { flex-shrink: 0; }
 .about-update-detail { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--color-line); }
-.about-download-route { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; padding-top:14px; border-top:1px solid var(--color-line); }
-.about-download-route > label { color:var(--color-muted); font-size:12px; }
+.about-download-route { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:24px; }
+.about-download-route > label, .about-auto-download label[for] { color:var(--color-ink); font-size:13px; font-weight:500; }
 .about-download-route .shell-select { width:180px; min-width:0; }
-.about-download-route .shell-select-trigger { height:34px; font-size:12px; border-radius:8px; }
+.about-download-route .shell-select-trigger { height:32px; font-size:12px; border-radius:8px; }
+.about-auto-download { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:18px; }
+.about-auto-download p { margin:5px 0 0; font-size:11px; color:var(--color-muted); }
+.about-auto-download .switch::after { pointer-events:none; }
+.about-section .about-update-detail { margin-top:24px; padding-top:20px; }
+.about-section .about-update-detail summary { color:var(--color-ink); font-size:13px; font-weight:500; }
+.about-section .release-notes { margin-top:16px; font-size:13px; }
+.about-section .release-notes :is(h1,h2,h3,h4,h5,h6) { font-size:13px; line-height:1.6; }
 .about-update-detail summary { color: var(--color-muted); font-size: 12px; cursor: pointer; }
 .release-notes { max-height: 300px; overflow: auto; margin-top: 12px; padding-right: 8px; overflow-wrap: anywhere; font-size: 12px; line-height: 1.8; color: var(--color-ink); user-select: text; }
 .release-notes > :first-child { margin-top: 0; }

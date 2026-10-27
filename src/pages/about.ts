@@ -1,7 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-shell";
 import { mountPage } from "../lib/page-lifecycle";
-import { watchAppUpdate, performAppUpdate, updateDownloadRoutes, updateDownloadRoute, setUpdateDownloadRoute } from "../lib/app-update";
+import { watchAppUpdate, performAppUpdate, updateDownloadRoutes, updateDownloadRoute, setUpdateDownloadRoute, autoDownloadUpdate, setAutoDownloadUpdate } from "../lib/app-update";
 import { renderReleaseNotes } from "../lib/release-notes";
 import { mountShellSelect } from "../ui/select";
 
@@ -20,6 +20,7 @@ export async function renderAbout(panel: Element, back: () => void) {
     <section class="preference-card about-section" aria-labelledby="update_title">
       <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">${updateHint}</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
       <div class="about-download-route"><label id="update_route_label">下载线路</label><div id="update_route" aria-labelledby="update_route_label"></div></div>
+      <div class="about-auto-download"><div><label for="update_auto_download">自动下载更新</label><p>空闲时下载，安装前由你确认</p></div><label class="switch"><input id="update_auto_download" type="checkbox" ${autoDownloadUpdate() ? "checked" : ""}><span class="slider"></span></label></div>
       <div class="about-update-detail" hidden>
         <details id="update_notes" hidden><summary>更新说明</summary><div class="release-notes"></div></details>
       </div>
@@ -39,6 +40,10 @@ export async function renderAbout(panel: Element, back: () => void) {
     } else message("");
   },{compact:true});
   query<HTMLButtonElement>("#update_route .shell-select-trigger").setAttribute("aria-label","更新下载线路");
+  query<HTMLInputElement>("#update_auto_download").onchange=event=>{
+    const input=event.target as HTMLInputElement;
+    if(!setAutoDownloadUpdate(input.checked)){input.checked=autoDownloadUpdate();message("自动下载设置保存失败");}
+  };
   const launch = async (url: string) => { try { await open(url); } catch { message("无法打开浏览器，请复制项目地址后访问"); } };
   query<HTMLButtonElement>("#about_repository").onclick = () => { void launch(REPOSITORY); };
   query<HTMLButtonElement>("#about_copy").onclick = async () => { try { await navigator.clipboard.writeText(REPOSITORY); message("已复制项目地址"); } catch { message(`请复制：${REPOSITORY}`); } };
@@ -48,6 +53,7 @@ export async function renderAbout(panel: Element, back: () => void) {
     const { phase, release } = state;
     const busy = ["checking", "downloading", "installing"].includes(phase);
     routeSelect.setDisabled(busy);
+    query<HTMLInputElement>("#update_auto_download").disabled=busy;
     const action = query<HTMLButtonElement>("#update_action");
     action.disabled = busy;
     action.dataset.phase = phase;
@@ -65,6 +71,7 @@ export async function renderAbout(panel: Element, back: () => void) {
     else if (phase === "downloading") status = "正在下载安装包…";
     else if (phase === "downloaded") status = "校验通过，安装时将退出应用";
     else if (phase === "installing") status = "正在校验并启动安装器…";
+    else if (phase === "ready" && state.paused) status = "预约或登录进行中，空闲后自动下载";
     else if (phase === "error") status = state.error ?? "更新失败，请重试";
     else if (release?.status === "available") status = `发现新版本 ${release.version}　${(release.size / 1024 / 1024).toFixed(1)} MB`;
     else if (release?.status === "current") status = "当前已是最新版本";

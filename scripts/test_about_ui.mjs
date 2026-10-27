@@ -18,7 +18,8 @@ try {
       if(cmd==="check_app_update") {window.__checks++;if(window.__holdCheck) await new Promise(r=>window.__finishCheck=r);if(window.__updateError) throw window.__updateError;return window.__updateResult;}
       if(cmd==="download_app_update") {window.__downloadMirror=args?.mirror;window.__downloads++;await new Promise(r=>window.__finishDownload=r);if(window.__downloadError) throw window.__downloadError;return "C:\\Downloads\\fixture-setup.exe";}
       if(cmd==="install_app_update") {window.__installs=(window.__installs??0)+1;await new Promise(r=>window.__finishInstall=r);throw '请先结束预约、取消定时任务或完成登录，再安装更新';}
-      if(cmd.includes("listen")) {if(args?.event==="app-update-progress") window.__progressCallback=args.handler;return 1;}
+      if(cmd==="force_quit_app") {window.__quits=(window.__quits??0)+1;return;}
+      if(cmd.includes("listen")) {if(args?.event==="app-update-progress") window.__progressCallback=args.handler;if(args?.event==="shell-update-exit")window.__exitCallback=args.handler;return 1;}
       return null;
     }};
   });
@@ -29,11 +30,15 @@ try {
   const action=page.locator('#update_action');
   const singleButton=async()=>assert.equal(await page.locator('.about-update-button').count(),1);
   const route=page.locator('#update_route');
+  const auto=page.locator('#update_auto_download');
+  assert.equal(await auto.isChecked(),true);
+  await auto.uncheck();
   await route.locator('.shell-select-trigger').click();
   await route.locator('[data-value="gh-proxy"]').click();
   assert.equal(await page.evaluate(()=>window.__checks),0,'switching route never checks or downloads');
   await page.locator('.about-back').click();await page.locator('.settings-about-entry').click();
   assert.match(await route.locator('.shell-select-value').innerText(),/gh-proxy.com/);
+  assert.equal(await auto.isChecked(),false,'auto-download opt-out persists across navigation');await auto.check();
   assert.equal((await page.locator('.about-back').innerText()).trim(),'返回');
   assert.equal(await page.locator('.about-page h2,.about-tagline,#update_releases,#update_folder').count(),0);
   assert.equal(await page.locator('img.about-mark').evaluate(img=>img.complete&&img.naturalWidth>0),true);
@@ -44,6 +49,12 @@ try {
   assert.equal(await page.evaluate(()=>window.__checks),1);
   await page.evaluate(()=>{window.__holdCheck=false;window.__finishCheck();});
   await page.getByRole('button',{name:'下载更新',exact:true}).waitFor();
+  await route.locator('.shell-select-trigger').click();
+  await page.evaluate(()=>window.__callbacks[window.__exitCallback]({payload:{}}));
+  assert.equal(await route.locator('.shell-select-trigger').getAttribute('aria-expanded'),'false','exit reminder closes top-layer menus');
+  await page.getByRole('dialog',{name:'有可用更新'}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'查看更新',exact:true}).isEnabled(),true);
+  await page.keyboard.press('Escape');assert.equal(await page.locator('#update_exit_root').count(),0);
   await page.evaluate(()=>window.__action=document.querySelector('#update_action'));
   const box=await action.boundingBox();
   await page.locator('#update_notes summary').click();
@@ -64,11 +75,17 @@ try {
   await page.evaluate(()=>window.__finishDownload());
   await page.getByRole('button',{name:'退出并安装',exact:true}).waitFor();await singleButton();
   const installedBox=await action.boundingBox();assert.equal(box.x,installedBox.x);assert.equal(box.width,installedBox.width);
-  await action.click();await page.waitForFunction(()=>typeof window.__finishInstall==='function');
+  await page.evaluate(()=>window.__callbacks[window.__exitCallback]({payload:{}}));
+  await page.getByRole('button',{name:'安装并退出',exact:true}).waitFor();
+  await page.getByRole('dialog',{name:'有可用更新'}).screenshot({path:'artifacts/about-updates/exit-ready.png'});
+  await page.getByRole('button',{name:'安装并退出',exact:true}).click();await page.waitForFunction(()=>typeof window.__finishInstall==='function');
   assert.equal(await action.isDisabled(),true);
   await page.evaluate(()=>window.__finishInstall());
   await page.getByRole('button',{name:'重试安装',exact:true}).waitFor();
   assert.match(await page.locator('#update_status').innerText(),/结束预约/);await singleButton();
+  assert.match(await page.locator('#update_exit_root .close-ask-lead').innerText(),/结束预约/);
+  await page.getByRole('button',{name:'直接退出',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.__quits),1);await page.keyboard.press('Escape');
   for(const status of ['current','unpublished','error']) {
     await page.reload();await settings();
     assert.match(await route.locator('.shell-select-value').innerText(),/gh-proxy.com/,'selected mirror persists across reload');

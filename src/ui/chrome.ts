@@ -123,6 +123,7 @@ async function fillNavFoot() {
   }
 }
 
+export function openAppUpdates() {void showTab("settings",true);}
 async function showTab(next: Tab, about = false) {
   const request = ++navigation;
   log.debug("chrome", "show_tab", { tab: next });

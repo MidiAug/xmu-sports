@@ -6,7 +6,8 @@ import { applyTheme, readThemePref } from "./lib/theme";
 import { calibrateSavedTaskTargetDate } from "./lib/calibrate-target-date";
 import { attachAppConsole, log } from "./lib/log";
 import { ingestLiveStatus, seedRunFeedback } from "./lib/run-feedback";
-import { render, syncMaximized, win } from "./ui/chrome";
+import { render, syncMaximized, win, openAppUpdates } from "./ui/chrome";
+import { showUpdateExit } from "./ui/update-exit";
 import { showCloseAsk } from "./ui/close-ask";
 import { preloadHistory } from "./pages/history";
 import { renderLive } from "./pages/live";
@@ -63,6 +64,7 @@ void listen<{ armed?: boolean }>("shell-ask-close", (ev) => {
   log.info("shell", "ask_close", { armed: Boolean(ev.payload?.armed) });
   showCloseAsk(Boolean(ev.payload?.armed));
 });
+void listen("shell-update-exit",()=>{closeShellSelects();showUpdateExit(openAppUpdates);});
 void listen("arm-changed", () => {
   log.debug("arm", "arm_changed");
   refreshLiveStatusOnly();

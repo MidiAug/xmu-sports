@@ -5,6 +5,7 @@ import ts from 'typescript';
 const HOUR = 3_600_000, DAY = 24 * HOUR;
 const original = { now: Date.now, setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout };
 let now = 1_790_000_000_000, serial = 0, timerId = 0, calls = [], response = 'current', busy = false;
+let downloadMode='ok',downloadArgs;
 const timers = new Map(), storage = new Map();
 globalThis.window = new EventTarget();
 globalThis.document = new EventTarget();
@@ -12,13 +13,18 @@ globalThis.localStorage = { getItem: key => storage.get(key) ?? null, setItem: (
 Date.now = () => now;
 globalThis.setTimeout = (callback, delay) => { const id = ++timerId; timers.set(id, { at: now + delay, callback }); return id; };
 globalThis.clearTimeout = id => timers.delete(id);
-globalThis.__autoInvoke = async command => {
+globalThis.__autoInvoke = async (command,args) => {
   calls.push(command);
   if (command === 'check_app_update') {
     if (response === 'error') throw Error('GitHub 请求受限');
     return { status: response, version: '0.2.0', size: 100, notes: 'public notes' };
   }
-  if (command === 'download_app_update') return 'verified.exe';
+  if (command === 'download_app_update') {
+    downloadArgs=args;
+    if(downloadMode==='paused')throw Error('UPDATE_PAUSED');
+    if(downloadMode==='error')throw Error('连接中断');
+    return 'verified.exe';
+  }
   throw Error(`Unexpected action: ${command}`);
 };
 const source = readFileSync('src/lib/app-update.ts', 'utf8').replace(/^import .*;\r?\n/gm, '');
@@ -39,7 +45,7 @@ async function advance(ms) {
   }
   now = end; await settle();
 }
-function reset() { storage.clear(); timers.clear(); calls = []; response = 'current'; busy = false; }
+function reset() { storage.clear();storage.set('xmu.appUpdate.autoDownload.v1','false'); timers.clear(); calls = []; response = 'current'; busy = false;downloadMode='ok'; }
 try {
   let app = await load(); app.start(false)();
   assert.equal(timers.size, 0); assert.equal(calls.length, 0, 'development mode never schedules a request');
@@ -92,7 +98,25 @@ try {
   reset(); globalThis.localStorage = { getItem() { throw Error('unavailable'); }, setItem() { throw Error('quota'); } };
   app = await load(); stop = app.start(); await advance(30_000); await advance(HOUR);
   assert.equal(calls.length, 1, 'storage errors retain in-memory cooldown'); stop();
-  console.log('Automatic update checks passed: development guard, startup delay, daily cadence, restart, failure backoff, resume, booking, retained release, verified download hydration and cleanup');
+  globalThis.localStorage = {getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)};
+  reset();storage.delete('xmu.appUpdate.autoDownload.v1');response='available';app=await load();stop=app.start();
+  assert.equal(app.api.autoDownloadUpdate(),true,'automatic download defaults on');
+  await advance(30_000);
+  assert.equal(app.view().phase,'downloaded');
+  assert.deepEqual(calls,['check_app_update','download_app_update']);
+  assert.deepEqual(downloadArgs,{mirror:'official',automatic:true});
+  assert.ok(!calls.includes('install_app_update'),'installation is always explicit');stop();
+
+  reset();storage.delete('xmu.appUpdate.autoDownload.v1');response='available';downloadMode='paused';app=await load();stop=app.start();
+  await advance(30_000);assert.equal(app.view().phase,'ready');assert.equal(app.view().error,undefined);
+  busy=true;await advance(60_000);assert.equal(calls.length,2);
+  busy=false;downloadMode='ok';await advance(60_000);assert.equal(app.view().phase,'downloaded');stop();
+
+  reset();storage.delete('xmu.appUpdate.autoDownload.v1');response='available';downloadMode='error';app=await load();stop=app.start();
+  await advance(30_000);assert.equal(app.view().failedAt,'download');
+  const failures=calls.length;await advance(HOUR-1);assert.equal(calls.length,failures);
+  downloadMode='ok';await advance(1);assert.equal(app.view().phase,'downloaded');stop();
+  console.log('Automatic updates passed: checks, opt-out, idle download, pause/resume, hourly failure backoff, no automatic install, restart and cleanup');
 } finally {
   Date.now = original.now; globalThis.setTimeout = original.setTimeout; globalThis.clearTimeout = original.clearTimeout;
 }
