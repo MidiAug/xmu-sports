@@ -34,6 +34,7 @@ try {
   await route.locator('.shell-select-trigger').click();
   const widths=await Promise.all([action, page.locator('#about_repository'),route.locator('.shell-select-trigger'),route.locator('.shell-select-menu')].map(async el=>(await el.boundingBox()).width));
   assert.ok(widths.every(width=>Math.abs(width-widths[0])<1),'update, GitHub, selector and popup have equal widths');
+  assert.equal(await route.locator('.shell-select-option-label').evaluateAll(labels=>labels.every(label=>label.scrollWidth<=label.clientWidth)) ,true,'route names remain fully visible in the compact menu');
   await route.locator('[data-value="gh-proxy"]').click();
   assert.equal(await page.evaluate(()=>window.__checks),0,'switching route never checks or downloads');
   await page.locator('.about-back').click();await page.locator('.settings-about-entry').click();

@@ -75,7 +75,7 @@
 .about-mark { display: block; margin: 0 auto 16px; width: 64px; height: 64px; object-fit: contain; }
 .about-identity h3 { margin: 0 0 7px; font-size: 23px; font-weight: 600; letter-spacing: -.5px; }
 .about-identity p { margin: 0; color: var(--color-muted); font-size: 12px; }
-.about-page { --about-control-width:180px; }
+.about-page { --about-control-width:132px; }
 .about-update-button, #about_repository, .about-download-route .shell-select { width:var(--about-control-width); min-width:var(--about-control-width); flex:none; }
 .about-update-button { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .about-update-button[data-phase="downloading"] { opacity: 1; background: linear-gradient(to right, color-mix(in srgb, var(--color-accent) 12%, var(--color-panel)) var(--update-progress), var(--color-panel) var(--update-progress)); }
@@ -88,6 +88,7 @@
 .about-download-route { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:24px; }
 .about-download-route > label { color:var(--color-ink); font-size:13px; font-weight:500; }
 .about-download-route .shell-select-trigger { height:32px; font-size:12px; border-radius:8px; }
+.about-download-route .shell-select-option { font-size:12px; gap:6px; }
 .about-section .about-update-detail { margin-top:24px; padding-top:20px; }
 .about-section .about-update-detail summary { color:var(--color-ink); font-size:13px; font-weight:500; }
 .about-section .release-notes { margin-top:16px; font-size:13px; }
