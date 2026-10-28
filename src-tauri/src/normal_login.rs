@@ -2,9 +2,15 @@
 use std::path::Path;
 use std::time::{Duration,Instant};
 use serde_json::{json,Value};
+use crate::semantic_login::{SearchPage,ScrollDirection};
 pub(crate) fn manual(reason: &str) -> Value {
     let message=match reason {
-        "UIA_STADIUM_ENTRY_NOT_FOUND"=>"已识别厦大体育首页，但自动滚动查找后仍未找到可操作的“场馆预约”入口；可能是页面布局、缩放或控件未暴露。请手动进入场馆预约后重试；预约会话尚未核验，未提交预约",
+        "UIA_STADIUM_ENTRY_NOT_FOUND"=>"已识别厦大体育首页，已尝试向下查找和回顶重扫，仍未找到可操作的“场馆预约”入口；可能是页面布局、缩放、控件未暴露或滚动未生效。请手动进入场馆预约后重试；预约会话尚未核验，未提交预约",
+        "UIA_LOGIN_CONTROL_NOT_FOUND"=>"已识别小程序登录页，已尝试向下查找和回顶重扫，仍未找到可操作的“立即登录”。请查看页面是否加载完整或滚动是否生效，手动点击立即登录后重试；未提交预约",
+        "UIA_AUTH_CONTROL_NOT_FOUND"=>"已识别协议或微信授权页，已尝试向下查找和回顶重扫，仍未找到可操作的协议勾选或“授权登录”；也可能是协议状态无法读取、按钮仍禁用或滚动未生效。请查看当前页面并完成协议及授权后重试；未提交预约",
+        "UIA_SCROLL_UNAVAILABLE"=>"已识别登录或授权页面，但当前窗口或页面未能执行自动滚动。请保持小程序可见，手动滚动找到登录、协议或授权控件后重试；未提交预约",
+        "UIA_SCROLL_LIMIT_REACHED"=>"查找登录或场馆入口时已达到单方向48步上限，尚未确认页面首尾，已停止自动查找。请手动定位所需控件后重试；未提交预约",
+        "UIA_SEARCH_TIMEOUT"=>"登录或场馆入口查找已达到180秒总时限，本次扫描尚未完成，已停止自动查找。请查看小程序当前页面，手动定位所需控件后重试；未提交预约",
         "UIA_HOME_SCROLL_UNAVAILABLE"=>"已识别厦大体育首页，但未找到可见的“场馆预约”入口，且当前窗口或页面未能执行自动滚动。请保持小程序可见，手动向下滚动并进入场馆预约后重试；未提交预约",
         "UIA_STADIUM_NAVIGATION_TIMEOUT"=>"已点击“场馆预约”，但未检测到预约页面；可能是页面加载或跳转异常。请查看小程序页面后重试；未提交预约",
         "MINIPROGRAM_NOT_VISIBLE"|"UIA_TARGET_MISSING"=>"未检测到可见的厦大体育小程序窗口，无法继续自动导航。请确认电脑微信已登录并打开厦大体育后重试；未提交预约",
@@ -246,28 +252,75 @@ trait LoginUi {
     fn observe(&mut self)->Result<crate::semantic_login::Observation,String>;
     fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String>;
     fn refresh(&mut self)->Result<(),String>;
-    fn scroll_home(&mut self,active:&dyn Fn()->bool)->Result<Option<&'static str>,String>;
+    fn scroll(&mut self,direction:ScrollDirection,active:&dyn Fn()->bool)->Result<Option<&'static str>,String>;
 }
 impl LoginUi for crate::semantic_login::Session {
     fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {Self::observe(self)}
     fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String> {Self::activate(self,control)}
     fn refresh(&mut self)->Result<(),String> {Self::refresh(self)}
-    fn scroll_home(&mut self,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {Self::scroll_home(self,active)}
+    fn scroll(&mut self,direction:ScrollDirection,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {Self::scroll(self,direction,active)}
 }
 
 #[derive(Default)]
 struct NavigationState {
     pending:Option<(crate::semantic_login::Control,Duration)>,
     empty_since:Option<Duration>,refreshed:bool,
-    home_seen:bool,scrolls:u32,scrolls_sent:u32,last_scroll:Option<Duration>,
+    search:SearchState,
 }
 #[derive(Debug,PartialEq)]
-enum NavigationAction { Handoff,Activate(crate::semantic_login::Control),Scroll,Refresh,Wait,Fail(&'static str) }
+enum NavigationAction { Handoff,Activate(crate::semantic_login::Control),Scroll(ScrollDirection),Refresh,Wait,Fail(&'static str) }
+
+struct SearchState {
+    page:Option<SearchPage>,pass:u8,direction:ScrollDirection,steps:u32,
+    previous_mark:Option<u64>,unchanged:u8,awaiting:bool,
+    started:Option<Duration>,last_scroll:Option<Duration>,unavailable:u8,
+    boundary:Option<&'static str>,
+}
+impl Default for SearchState {
+    fn default()->Self {Self{page:None,pass:0,direction:ScrollDirection::Down,steps:0,
+        previous_mark:None,unchanged:0,awaiting:false,started:None,last_scroll:None,unavailable:0,boundary:None}}
+}
+impl SearchState {
+    fn next(&mut self,report:&crate::semantic_login::Observation,now:Duration)->NavigationAction {
+        let page=report.search_page.or(if report.home_page {Some(SearchPage::Home)} else {None});
+        if self.page!=page {*self=Self{page,..Self::default()};}
+        if page.is_none() {return NavigationAction::Wait;}
+        if now.saturating_sub(*self.started.get_or_insert(now))<Duration::from_secs(2) {return NavigationAction::Wait;}
+        if self.last_scroll.is_some_and(|sent|now.saturating_sub(sent)<Duration::from_millis(800)) {return NavigationAction::Wait;}
+        if self.awaiting {
+            self.unchanged=if self.previous_mark.is_some() && self.previous_mark==report.viewport_mark {self.unchanged+1} else {0};
+            self.awaiting=false;
+        }
+        let boundary=match self.direction {ScrollDirection::Down=>report.at_bottom,ScrollDirection::Up=>report.at_top};
+        // Geometry is a fallback only when the provider has no scroll position.
+        let reached=boundary==Some(true) || (boundary.is_none() && self.unchanged>=2);
+        if reached {
+            self.boundary=Some(if boundary==Some(true) {if self.direction==ScrollDirection::Down {"uia_bottom"} else {"uia_top"}} else {"geometry_unchanged_twice"});
+            match (self.direction,self.pass) {
+                (ScrollDirection::Down,0)=>{self.pass=1;self.direction=ScrollDirection::Up;},
+                (ScrollDirection::Up,_)=>self.direction=ScrollDirection::Down,
+                (ScrollDirection::Down,_)=>return NavigationAction::Fail(match page {
+                    Some(SearchPage::Home)=>"UIA_STADIUM_ENTRY_NOT_FOUND",
+                    Some(SearchPage::Login)=>"UIA_LOGIN_CONTROL_NOT_FOUND",
+                    _=>"UIA_AUTH_CONTROL_NOT_FOUND",
+                }),
+            }
+            self.steps=0;self.unchanged=0;self.previous_mark=None;
+            // Observe again after changing direction, before dispatching input.
+            return NavigationAction::Wait;
+        }
+        if self.steps>=48 {return NavigationAction::Fail("UIA_SCROLL_LIMIT_REACHED");}
+        self.steps+=1;self.previous_mark=report.viewport_mark;self.awaiting=true;self.last_scroll=Some(now);
+        NavigationAction::Scroll(self.direction)
+    }
+}
 impl NavigationState {
     fn next(&mut self,report:&crate::semantic_login::Observation,now:Duration)->NavigationAction {
         use crate::semantic_login::Decision;
-        self.home_seen|=report.home_page;
         if report.has_controls() || report.decision==Decision::Handoff {self.empty_since=None;}
+        // While rewinding, finish returning to the top before resuming clicks.
+        if self.search.direction==ScrollDirection::Up && self.search.page==report.search_page
+            && report.decision!=Decision::Handoff {return self.search.next(report,now);}
         let stalled=match report.decision {
             Decision::Handoff=>return NavigationAction::Handoff,
             Decision::Activate(control)=> {
@@ -276,17 +329,15 @@ impl NavigationState {
                     else {self.refreshed=false;return NavigationAction::Activate(control);}
                 } else {self.refreshed=false;return NavigationAction::Activate(control);}
             },
-            Decision::Wait|Decision::Unsupported=>Some((now.saturating_sub(*self.empty_since.get_or_insert(now)),
-                if self.pending.is_some_and(|(c,_)|c==crate::semantic_login::Control::Stadium) {"UIA_STADIUM_NAVIGATION_TIMEOUT"}
-                else if self.home_seen {"UIA_STADIUM_ENTRY_NOT_FOUND"} else {"UIA_LOGIN_UNAVAILABLE"})),
+            Decision::Wait|Decision::Unsupported=> {
+                if let Some((control,sent))=self.pending.filter(|(c,_)|Some(*c)==report.next_control || (*c==crate::semantic_login::Control::Stadium && report.home_page)) {
+                    Some((now.saturating_sub(sent),if control==crate::semantic_login::Control::Stadium {"UIA_STADIUM_NAVIGATION_TIMEOUT"} else {"UIA_NAVIGATION_TIMEOUT"}))
+                } else if report.search_page.is_some() || report.home_page {return self.search.next(report,now);}
+                else {Some((now.saturating_sub(*self.empty_since.get_or_insert(now)),"UIA_LOGIN_UNAVAILABLE"))}
+            },
         };
         if let Some((duration,code))=stalled {
             if duration>=Duration::from_secs(30) {return NavigationAction::Fail(code);}
-            if report.home_page && report.decision==Decision::Wait && self.pending.is_none_or(|(c,_)|c!=crate::semantic_login::Control::Stadium)
-                && duration>=Duration::from_secs(2) && self.scrolls<6
-                && self.last_scroll.is_none_or(|sent|now.saturating_sub(sent)>=Duration::from_millis(800)) {
-                self.scrolls+=1;self.last_scroll=Some(now);return NavigationAction::Scroll;
-            }
             if duration>=Duration::from_secs(12) && !self.refreshed {self.refreshed=true;return NavigationAction::Refresh;}
         }
         NavigationAction::Wait
@@ -305,13 +356,22 @@ fn navigate(
         if !active() {return Err("已取消".into());}
         let action=state.next(&report,elapsed());
         evidence(json!(report));
+        if let Some(boundary)=state.search.boundary.take() {
+            evidence(json!({"search_boundary":boundary,"search_page":state.search.page,
+                "scroll_pass":state.search.pass+1,"next_direction":state.search.direction}));
+        }
         use crate::semantic_login::Control;
         match action {
-            NavigationAction::Scroll=> {
-                progress("normal_ui_scrolling");
+            NavigationAction::Scroll(direction)=> {
+                progress(if direction==ScrollDirection::Up {"normal_ui_scroll_top"} else {"normal_ui_scrolling"});
                 if !active() {return Err("已取消".into());}
-                match ui.scroll_home(active) {
-                    Ok(method)=>{if method.is_some() {state.scrolls_sent+=1;} evidence(json!({"scroll_step":state.scrolls,"scroll_method":method}));},
+                match ui.scroll(direction,active) {
+                    Ok(method)=>{
+                        state.search.unavailable=if method.is_none() {state.search.unavailable+1} else {0};
+                        evidence(json!({"scroll_step":state.search.steps,"scroll_pass":state.search.pass+1,"scroll_direction":direction,
+                            "search_page":state.search.page,"scroll_method":method,"boundary_basis":if report.at_bottom.is_some() {"uia_percent"} else {"geometry_stability"}}));
+                        if state.search.unavailable>=3 {return Ok(manual(if state.search.page==Some(SearchPage::Home) {"UIA_HOME_SCROLL_UNAVAILABLE"} else {"UIA_SCROLL_UNAVAILABLE"}));}
+                    },
                     Err(code) if code=="已取消"=>return Err(code),
                     Err(code)=>return Ok(manual(&code)),
                 }
@@ -333,13 +393,18 @@ fn navigate(
                 progress(match control {Control::Login=>"native_login_opening",Control::Agreement=>"native_agreement",Control::Authorize=>"native_authorizing",Control::Stadium=>"entering_stadium"});
                 if !active() {return Err("已取消".into());}
                 match ui.activate(control) {
-                    Ok(Some(method))=>{progress(method);state.pending=Some((control,elapsed()));pause(600)?;},
+                    Ok(Some(method))=>{progress(method);state.pending=Some((control,elapsed()));state.search=SearchState::default();pause(600)?;},
                     Ok(None)=>pause(300)?,Err(code)=>return Ok(manual(&code)),
                 }
             },
             NavigationAction::Wait=>pause(500)?,
-            NavigationAction::Fail(code)=>return Ok(manual(if code=="UIA_STADIUM_ENTRY_NOT_FOUND" && state.scrolls_sent==0 {"UIA_HOME_SCROLL_UNAVAILABLE"} else {code})),
+            NavigationAction::Fail(code)=>return Ok(manual(code)),
         }
+    }
+    if state.search.page.is_some() {
+        let mut failure=manual("UIA_SEARCH_TIMEOUT");failure["search_page"]=json!(state.search.page);
+        failure["scroll_direction"]=json!(state.search.direction);failure["scroll_pass"]=json!(state.search.pass+1);
+        failure["scroll_step"]=json!(state.search.steps);return Ok(failure);
     }
     Ok(manual("UIA_LOGIN_TIMEOUT"))
 }
@@ -394,7 +459,7 @@ mod tests {
             self.activations.push(control);self.phase+=1;Ok(Some("fixture_input"))
         }
         fn refresh(&mut self)->Result<(),String> {self.refreshes+=1;Ok(())}
-        fn scroll_home(&mut self,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("unknown page must not scroll")}
+        fn scroll(&mut self,_:ScrollDirection,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("unknown page must not scroll")}
     }
     fn fixture(time:std::rc::Rc<std::cell::Cell<u64>>,ready_after:u64)->FixtureUi {
         FixtureUi{time,phase:0,ready_after,activations:vec![],refreshes:0,unknown_input:false}
@@ -463,13 +528,13 @@ mod tests {
         struct Stuck {clicks:u32,refreshes:u32}
         impl LoginUi for Stuck {
             fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {
-                Ok(crate::semantic_login::Observation::fixture(false,&[(crate::semantic_login::Control::Authorize,true,None)]))
+                Ok(crate::semantic_login::Observation::fixture(false,&[(crate::semantic_login::Control::Authorize,true,None),(crate::semantic_login::Control::Agreement,true,Some(true))]))
             }
             fn activate(&mut self,_:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
                 self.clicks+=1;Ok(Some("fixture_invoke"))
             }
             fn refresh(&mut self)->Result<(),String> {self.refreshes+=1;Ok(())}
-            fn scroll_home(&mut self,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("authorization must not scroll")}
+            fn scroll(&mut self,_:ScrollDirection,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("pending authorization must not scroll")}
         }
         let time=std::cell::Cell::new(0);let mut ui=Stuck{clicks:0,refreshes:0};
         let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5 reached"),&mut |_|{},&mut |_|{},
@@ -483,13 +548,14 @@ mod tests {
             use crate::semantic_login::{Observation,Control};
             if self.clicks>0 && !self.stuck {return Ok(Observation::fixture(true,&[]));}
             if self.scrolls>=self.reveal_after {return Ok(Observation::fixture(false,&[(Control::Stadium,true,None)]));}
-            let mut report=Observation::fixture(false,&[]);report.home_page=true;Ok(report)
+            let mut report=Observation::fixture(false,&[]);report.home_page=true;report.search_page=Some(SearchPage::Home);
+            report.viewport_mark=Some(self.scrolls.min(6) as u64);Ok(report)
         }
         fn activate(&mut self,c:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
             assert_eq!(c,crate::semantic_login::Control::Stadium);self.clicks+=1;Ok(Some("fixture_click"))
         }
         fn refresh(&mut self)->Result<(),String> {Ok(())}
-        fn scroll_home(&mut self,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
+        fn scroll(&mut self,_:ScrollDirection,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
             self.scrolls+=1;
             if self.unknown {Err("UIA_INPUT_OUTCOME_UNKNOWN".into())} else if self.unavailable {Ok(None)} else {Ok(Some("fixture_scroll"))}
         }
@@ -510,7 +576,7 @@ mod tests {
         let time=std::cell::Cell::new(0);let mut ui=home(u32::MAX);
         let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5"),&mut |_|{},&mut |_|{},
             ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
-        assert_eq!(ui.scrolls,6);assert_eq!(ui.clicks,0);assert_eq!(result["reason"],"UIA_STADIUM_ENTRY_NOT_FOUND");
+        assert!(ui.scrolls>6 && ui.scrolls<48);assert_eq!(ui.clicks,0);assert_eq!(result["reason"],"UIA_STADIUM_ENTRY_NOT_FOUND");
         assert!(!should_reenter(&result));assert!(result["message"].as_str().unwrap().contains("已识别厦大体育首页"));
         let time=std::cell::Cell::new(0);let mut ui=home(u32::MAX);ui.unavailable=true;
         let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5"),&mut |_|{},&mut |_|{},
@@ -542,5 +608,112 @@ mod tests {
             ("H5_ENTRY_STILL_EXPIRED","首页登录不代表预约会话有效"),("H5_ENTRY_UNAVAILABLE","未能从本机读取"),("UIA_STADIUM_NAVIGATION_TIMEOUT","已点击")] {
             assert!(manual(reason)["message"].as_str().unwrap().contains(expected));
         }
+    }
+
+    // Layouts mirror images/5,6,8 using synthetic text, with a 320px viewport.
+    // The fixture clips controls by geometry instead of revealing them by step count.
+    struct ViewportUi {
+        page:u8,offset:i32,checked:bool,geometry_only:bool,hide_first:bool,rewound:bool,
+        absent:bool,oversized:bool,trace:Vec<Value>,clicks:Vec<crate::semantic_login::Control>,
+    }
+    impl ViewportUi {
+        fn new()->Self {Self{page:0,offset:0,checked:false,geometry_only:false,hide_first:false,rewound:false,
+            absent:false,oversized:false,trace:vec![],clicks:vec![]}}
+        fn height(&self)->i32 {if self.oversized {20_000} else {match self.page {0=>1000,1=>1250,_=>1900}}}
+        fn desired(&self)->(crate::semantic_login::Control,i32) {
+            use crate::semantic_login::Control;
+            match self.page {0=>(Control::Login,600),1 if !self.checked=>(Control::Agreement,690),1=>(Control::Authorize,920),_=>(Control::Stadium,1450)}
+        }
+        fn visible(&self,y:i32)->bool {y>=self.offset && y+50<=self.offset+320 && !self.absent && !(self.hide_first && !self.rewound)}
+        fn page_kind(&self)->SearchPage {match self.page {0=>SearchPage::Login,1=>SearchPage::Authorization,_=>SearchPage::Home}}
+    }
+    impl LoginUi for ViewportUi {
+        fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {
+            use crate::semantic_login::{Control,Decision,Observation};
+            if self.page==3 {return Ok(Observation::fixture(true,&[]));}
+            let (desired,y)=self.desired();let visible=self.visible(y);
+            let controls=if self.page==1 {
+                [(Control::Agreement,true,Some(self.checked),690),(Control::Authorize,self.checked,None,920)]
+                    .into_iter().filter(|(_,_,_,y)|self.visible(*y)).map(|(c,e,s,_)|(c,e,s)).collect::<Vec<_>>()
+            } else if visible {vec![(desired,true,None)]} else {vec![]};
+            let mut report=Observation::fixture(false,&controls);
+            report.decision=if visible {Decision::Activate(desired)} else {Decision::Wait};
+            report.next_control=Some(desired);report.search_page=Some(self.page_kind());report.home_page=self.page==2;
+            report.viewport_mark=Some(self.offset as u64);
+            report.at_top=if self.geometry_only {None} else {Some(self.offset==0)};
+            report.at_bottom=if self.geometry_only {None} else {Some(self.offset==self.height()-320)};
+            self.trace.push(json!({"event":"observe","page":self.page_kind(),"offset":self.offset,
+                "height":self.height(),"target":desired,"target_y":y,"target_visible":visible,"checked":self.checked}));
+            Ok(report)
+        }
+        fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
+            let (desired,y)=self.desired();assert_eq!(control,desired);assert!(self.visible(y));
+            self.trace.push(json!({"event":"activate","page":self.page_kind(),"offset":self.offset,"control":control}));self.clicks.push(control);
+            if control==crate::semantic_login::Control::Agreement {assert!(!self.checked);self.checked=true;}
+            else {if control==crate::semantic_login::Control::Authorize {assert!(self.checked);}
+                self.page+=1;self.offset=0;}
+            Ok(Some("fixture_click"))
+        }
+        fn refresh(&mut self)->Result<(),String> {Ok(())}
+        fn scroll(&mut self,direction:ScrollDirection,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
+            assert!(active());let before=self.offset;
+            self.offset=(self.offset+if direction==ScrollDirection::Down {160} else {-160}).clamp(0,self.height()-320);
+            if direction==ScrollDirection::Up && self.offset==0 {self.rewound=true;}
+            self.trace.push(json!({"event":"scroll","page":self.page_kind(),"direction":direction,"before":before,"offset":self.offset}));
+            Ok(Some("fixture_wheel"))
+        }
+    }
+    fn run_viewport(ui:&mut ViewportUi)->Value {
+        let time=std::cell::Cell::new(0);
+        navigate(ui,Some("original"),&||true,&mut ||Ok(json!({"ok":true,"authenticated":true,"account_checked":true,"account_fingerprint":"original"})),
+            &mut |_|{},&mut |_|{},||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap()
+    }
+    #[test]
+    fn small_viewport_scans_login_agreement_authorize_and_home_then_verifies_http() {
+        use crate::semantic_login::Control;
+        for geometry_only in [false,true] {
+            let mut ui=ViewportUi::new();ui.geometry_only=geometry_only;
+            assert_eq!(run_viewport(&mut ui)["ok"],true);
+            assert_eq!(ui.clicks,vec![Control::Login,Control::Agreement,Control::Authorize,Control::Stadium]);
+            for page in [SearchPage::Login,SearchPage::Authorization,SearchPage::Home] {
+                assert!(ui.trace.iter().any(|e|e["event"]=="scroll" && e["page"]==json!(page)));
+            }
+            let output=Path::new(env!("CARGO_MANIFEST_DIR")).join("../artifacts/login-scroll-fixture");
+            std::fs::create_dir_all(&output).unwrap();
+            std::fs::write(output.join(if geometry_only {"geometry-chain.json"} else {"percent-chain.json"}),serde_json::to_vec_pretty(&ui.trace).unwrap()).unwrap();
+        }
+    }
+    #[test]
+    fn first_sweep_misses_then_returns_to_top_and_second_sweep_finds_button() {
+        for geometry_only in [false,true] {
+            for page in 0..=2 {
+                let mut ui=ViewportUi::new();ui.page=page;ui.hide_first=true;ui.geometry_only=geometry_only;
+                assert_eq!(run_viewport(&mut ui)["ok"],true);assert!(ui.rewound);
+                let up=ui.trace.iter().position(|e|e["direction"]=="up").unwrap();
+                let top=ui.trace[up..].iter().position(|e|e["event"]=="scroll" && e["offset"]==0).unwrap()+up;
+                assert!(ui.trace[top+1..].iter().any(|e|e["direction"]=="down"));
+                assert!(ui.trace[..top].iter().all(|e|e["event"]!="activate"),"no input while returning to top");
+                let output=Path::new(env!("CARGO_MANIFEST_DIR")).join("../artifacts/login-scroll-fixture");
+                std::fs::create_dir_all(&output).unwrap();
+                std::fs::write(output.join(format!("retry-{page}-{geometry_only}.json")),serde_json::to_vec_pretty(&ui.trace).unwrap()).unwrap();
+            }
+        }
+    }
+    #[test]
+    fn two_sweeps_missing_or_scroll_limit_report_the_actual_failure() {
+        for geometry_only in [false,true] {
+            for (page,reason) in [(0,"UIA_LOGIN_CONTROL_NOT_FOUND"),(1,"UIA_AUTH_CONTROL_NOT_FOUND"),(2,"UIA_STADIUM_ENTRY_NOT_FOUND")] {
+                let mut ui=ViewportUi::new();ui.page=page;ui.absent=true;ui.geometry_only=geometry_only;
+                let result=run_viewport(&mut ui);assert_eq!(result["reason"],reason);assert!(ui.rewound);assert!(ui.clicks.is_empty());
+                assert!(!should_reenter(&result));
+            }
+        }
+        let mut ui=ViewportUi::new();ui.absent=true;ui.oversized=true;
+        let result=run_viewport(&mut ui);assert_eq!(result["reason"],"UIA_SCROLL_LIMIT_REACHED");
+        assert!(!ui.rewound);assert!(ui.clicks.is_empty());
+        let mut ui=ViewportUi::new();let time=std::cell::Cell::new(179_000);
+        let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5 reached"),&mut |_|{},&mut |_|{},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
+        assert_eq!(result["reason"],"UIA_SEARCH_TIMEOUT");assert_eq!(result["search_page"],"login");
     }
 }

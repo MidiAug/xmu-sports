@@ -29,6 +29,7 @@ assert.match(progressMessage({...submit, result:"normal_ui_refreshing"}), /重�
 assert.match(progressMessage({...submit, result:"normal_ui_reenter"}), /重新打开厦大体育.*场馆预约/);
 assert.equal(progressStep({...submit,result:"normal_ui_scrolling"}),"auth");
 assert.match(progressMessage({...submit,result:"normal_ui_scrolling"}),/首页.*滚动.*场馆预约/);
+assert.match(progressMessage({...submit,result:"normal_ui_scroll_top"}),/回到.*顶部.*再.*查找一遍/);
 assert.match(progressMessage({...submit, result:"scheduled_h5_ready"}), /提前就绪/);
 assert.match(progressMessage({...submit, result:"scheduled_h5_rechecking"}), /重新验证/);
 assert.match(progressMessage({...submit, result:"scheduled_h5_reused"}), /继续定时预约/);

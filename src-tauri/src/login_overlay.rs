@@ -88,7 +88,8 @@ fn phase_text(phase: &str) -> Option<&'static str> {
         "normal_ui_http_ready" => "登录已验证，正在完成准备",
         "normal_ui_reenter" => "正在重新打开小程序",
         "normal_ui_refreshing" => "页面加载中，正在重新识别",
-        "normal_ui_scrolling" => "正在向下查找场馆预约入口",
+        "normal_ui_scrolling" => "正在向下查找登录或场馆入口",
+        "normal_ui_scroll_top" => "本遍未找到，正在回到顶部重扫",
         "closing_miniprogram" | "normal_ui_closed" => "登录已完成，正在收起窗口",
         _ => return None,
     })

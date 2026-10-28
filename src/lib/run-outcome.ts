@@ -266,6 +266,11 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
     const loginTitle = code === "LOGIN_CONFIRM_REQUIRED" ? ({
       UIA_STADIUM_ENTRY_NOT_FOUND: "首页未找到场馆预约入口",
       UIA_HOME_SCROLL_UNAVAILABLE: "首页无法自动滚动查找入口",
+      UIA_SCROLL_UNAVAILABLE: "登录或授权页无法自动滚动",
+      UIA_LOGIN_CONTROL_NOT_FOUND: "未找到可操作的立即登录",
+      UIA_AUTH_CONTROL_NOT_FOUND: "未找到可操作的协议或授权控件",
+      UIA_SCROLL_LIMIT_REACHED: "滚动查找达到步数上限",
+      UIA_SEARCH_TIMEOUT: "登录或场馆入口查找超时",
       UIA_STADIUM_NAVIGATION_TIMEOUT: "场馆预约页面未打开",
       MINIPROGRAM_NOT_VISIBLE: "厦大体育小程序未显示",
       UIA_TARGET_MISSING: "厦大体育小程序未显示",
