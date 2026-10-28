@@ -5,9 +5,8 @@ use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT, TRUE, WPARAM};
 use windows::Win32::Graphics::Gdi::{GetMonitorInfoW,MonitorFromWindow,MONITORINFO,MONITOR_DEFAULTTONEAREST};
 use windows::Win32::UI::HiDpi::{GetDpiForWindow,GetSystemMetricsForDpi,SetThreadDpiAwarenessContext,DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,DPI_AWARENESS_CONTEXT};
 use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
-use windows::Win32::System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ};
+use windows::Win32::System::Threading::{AttachThreadInput,GetCurrentThreadId,GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ};
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::Win32::UI::Input::KeyboardAndMouse::{keybd_event, KEYEVENTF_KEYUP, VK_MENU};
 
 #[derive(Clone,PartialEq)]
 pub struct OwnerIdentity { pub pid:u32, pub app_identity:String, pub launch_identity:String }
@@ -60,11 +59,11 @@ pub fn discover_wechat_candidates()->Result<Vec<NativeSurface>,String> {
     Ok(surfaces)
 }
 
-pub fn foreground_miniprogram_window()->Result<String,String> {
+pub fn foreground_miniprogram_window(active:&dyn Fn()->bool)->Result<String,String> {
     let surfaces=discover_wechat_candidates()?;
     if surfaces.len()!=1 {return Err("UIA_TARGET_AMBIGUOUS_OR_MISSING".into());}
     let target=&surfaces[0];
-    foreground_surface(target)?;
+    foreground_surface(target,active)?;
     Ok(target.title.clone())
 }
 
@@ -122,29 +121,52 @@ unsafe fn resize_portrait(hwnd:HWND,active:&dyn Fn()->bool)->Result<serde_json::
 }
 
 /// Rebind identity before focusing; a UIA session must never focus a replacement window.
-pub(crate) fn foreground_surface(target:&NativeSurface)->Result<(),String> {
+struct InputAttachment {from:u32,threads:Vec<u32>}
+impl Drop for InputAttachment {fn drop(&mut self) {unsafe {for thread in self.threads.iter().rev() {let _=AttachThreadInput(self.from,*thread,false);}}}}
+unsafe fn activate_target(hwnd:HWND) {
+    if SetForegroundWindow(hwnd).as_bool() {return;}
+    // Share only the foreground/target queues for this activation, then detach.
+    // No desktop keystrokes are injected into whatever the user is typing in.
+    let mut message=MSG::default();let _=PeekMessageW(&mut message,None,0,0,PM_NOREMOVE);
+    let from=GetCurrentThreadId();let mut attached=InputAttachment{from,threads:Vec::new()};
+    for thread in [GetWindowThreadProcessId(GetForegroundWindow(),None),GetWindowThreadProcessId(hwnd,None)] {
+        if thread!=0 && thread!=from && !attached.threads.contains(&thread) && AttachThreadInput(from,thread,true).as_bool() {attached.threads.push(thread);}
+    }
+    let _=BringWindowToTop(hwnd);let _=SetForegroundWindow(hwnd);
+}
+fn focus_settled(since:&mut Option<std::time::Duration>,now:std::time::Duration,ready:bool)->bool {
+    if !ready {*since=None;return false;}
+    now.saturating_sub(*since.get_or_insert(now))>=std::time::Duration::from_millis(160)
+}
+
+pub(crate) fn foreground_surface(target:&NativeSurface,active:&dyn Fn()->bool)->Result<(),String> {
+    if !active() {return Err("已取消".into());}
     let surfaces=discover_wechat_candidates()?;
     if surfaces.len()!=1 || surfaces[0].hwnd_u64!=target.hwnd_u64 || surfaces[0].owner!=target.owner {
         return Err("UIA_WINDOW_CHANGED".into());
     }
     unsafe {
         if IsIconic(target.hwnd()).as_bool() {let _=ShowWindow(target.hwnd(),SW_RESTORE);}
-        let _=BringWindowToTop(target.hwnd());
-        if !SetForegroundWindow(target.hwnd()).as_bool() {
-            keybd_event(VK_MENU.0 as u8,0,Default::default(),0);
-            let _=SetForegroundWindow(target.hwnd());
-            keybd_event(VK_MENU.0 as u8,0,KEYEVENTF_KEYUP,0);
-        }
-        // Newly launched mini-programs can finish activation asynchronously.
-        // Wait briefly for this exact HWND; never redirect input to a replacement.
-        for _ in 0..5 {
-            if GetForegroundWindow()==target.hwnd() {return Ok(());}
-            if !IsWindow(Some(target.hwnd())).as_bool() {return Err("UIA_WINDOW_CHANGED".into());}
+        let started=std::time::Instant::now();let mut stable_since=None;
+        for attempt in 0..40 {
+            if !active() {return Err("已取消".into());}
+            let mut pid=0;GetWindowThreadProcessId(target.hwnd(),Some(&mut pid));
+            if !IsWindow(Some(target.hwnd())).as_bool() || pid!=target.owner.pid {return Err("UIA_WINDOW_CHANGED".into());}
+            let mut rect=RECT::default();GetWindowRect(target.hwnd(),&mut rect).map_err(|_|"UIA_WINDOW_CHANGED")?;
+            let point=windows::Win32::Foundation::POINT{x:rect.left+(rect.right-rect.left)/2,y:rect.top+(rect.bottom-rect.top)/2};
+            let ready=GetForegroundWindow()==target.hwnd() && crate::login_overlay::target_uncovered_at(point,target.hwnd());
+            if focus_settled(&mut stable_since,started.elapsed(),ready) {return Ok(());}
+            if !ready || attempt==0 {
+                // The overlay owns restoration of the original topmost state.
+                let pinned=!GetPropW(target.hwnd(),w!("XmuSportsLoginPin")).0.is_null();
+                SetWindowPos(target.hwnd(),Some(if pinned {HWND_TOPMOST} else {HWND_TOP}),0,0,0,0,
+                    SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|_|"LOGIN_FOCUS_REQUIRED")?;
+                activate_target(target.hwnd());
+            }
             std::thread::sleep(std::time::Duration::from_millis(40));
         }
-        if GetForegroundWindow()!=target.hwnd() {return Err("LOGIN_FOCUS_REQUIRED".into());}
     }
-    Ok(())
+    Err("LOGIN_FOCUS_REQUIRED".into())
 }
 
 pub fn launch_xmu_miniprogram(_app_id:Option<&str>)->Result<String,String> {
@@ -182,6 +204,17 @@ pub fn device_diagnostics()->serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn transient_foreground_and_later_occlusion_do_not_count_as_ready() {
+        use std::time::Duration;
+        let mut since=None;
+        for ms in [0,40,80,120] {assert!(!focus_settled(&mut since,Duration::from_millis(ms),true));}
+        assert!(!focus_settled(&mut since,Duration::from_millis(140),false));
+        assert!(!focus_settled(&mut since,Duration::from_millis(180),true));
+        assert!(!focus_settled(&mut since,Duration::from_millis(339),true));
+        assert!(focus_settled(&mut since,Duration::from_millis(340),true));
+        assert!(!focus_settled(&mut since,Duration::from_millis(400),false));
+    }
     #[test]
     fn portrait_uses_work_area_minimum_width_and_application_height_limits() {
         for (work,min_width) in [(RECT{left:0,top:0,right:1920,bottom:1040},360),

@@ -35,7 +35,7 @@ pub(crate) fn diagnostics()->serde_json::Value {
 }
 
 const WAKE:u32=WM_APP+49;
-enum OverlayCommand { Phase(&'static str), Suspend(Sender<()>), Resume }
+enum OverlayCommand { Phase(&'static str), Prepare(u64,Sender<()>), Suspend(Sender<()>), Resume }
 pub(crate) struct LoginOverlay {
     sender:Option<Sender<OverlayCommand>>, thread:Option<JoinHandle<()>>, thread_id:Arc<AtomicU32>,
 }
@@ -53,6 +53,28 @@ impl LoginOverlay {
             if let Some(sender) = &self.sender { let _ = sender.send(OverlayCommand::Phase(text)); }
             self.wake();
         }
+    }
+    /// Pin and cover the exact visible target even if the maximized WeChat main
+    /// window currently owns foreground focus. Never make focus a prerequisite.
+    pub(crate) fn prepare_target(&self,active:&impl Fn()->bool)->Result<(),String> {
+        if !active() {return Err("已取消".into());}
+        let targets=crate::wechat_window::discover_wechat_candidates()?;
+        if targets.len()!=1 || !targets[0].visible {return Err("UIA_TARGET_AMBIGUOUS_OR_MISSING".into());}
+        self.prepare_window(targets[0].hwnd_u64,active)
+    }
+    fn prepare_window(&self,target:u64,active:&impl Fn()->bool)->Result<(),String> {
+        if !active() {return Err("已取消".into());}
+        let (sender,receiver)=mpsc::channel();
+        self.sender.as_ref().ok_or("UIA_PIN_UNAVAILABLE")?.send(OverlayCommand::Prepare(target,sender)).map_err(|_|"UIA_PIN_UNAVAILABLE")?;
+        self.wake();let started=Instant::now();
+        while started.elapsed()<Duration::from_secs(2) {
+            if !active() {return Err("已取消".into());}
+            match receiver.recv_timeout(Duration::from_millis(50)) {
+                Ok(())=>return if active() {Ok(())} else {Err("已取消".into())},
+                Err(mpsc::RecvTimeoutError::Timeout)=>{},Err(_)=>break,
+            }
+        }
+        Err("UIA_PIN_UNAVAILABLE".into())
     }
     /// Wait for both layers to hide before capturing the actual mini-program.
     /// A dropped guard restores them even when capture fails.
@@ -95,6 +117,7 @@ fn phase_text(phase: &str) -> Option<&'static str> {
         "normal_ui_scrolling" => "正在向下查找登录或场馆入口",
         "normal_ui_scroll_top" => "本遍未找到，正在回到顶部重扫",
         "normal_ui_layout" => "正在调整为窄竖屏窗口",
+        "normal_ui_pinning" => "正在置顶小程序并准备遮罩",
         "closing_miniprogram" | "normal_ui_closed" => "登录已完成，正在收起窗口",
         _ => return None,
     })
@@ -341,7 +364,7 @@ fn run(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>) {
     run_with_discovery(receiver,thread_id,|| {
         let candidates=crate::wechat_window::discover_wechat_candidates().ok()?;
         let target=if candidates.len()==1 {candidates.first()?} else {return None;};
-        if !target.visible || unsafe{GetForegroundWindow()}!=target.hwnd() {return None;}
+        if !target.visible {return None;}
         Some(Target{hwnd_u64:target.hwnd_u64,pid:target.owner.pid})
     });
 }
@@ -356,12 +379,14 @@ fn run_with_discovery(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>
         let mut panel_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:true});
         let mut layers:Option<Layers>=None;
         let mut suspended=false;
+        let mut preparations:Vec<(u64,Sender<()>)>=Vec::new();
         let mut next_discovery=Instant::now();let mut next_safety=Instant::now();
         'running:loop {
             // Drain notifications first; location bursts coalesce into one latest rectangle.
             while PeekMessageW(&mut message,None,0,0,PM_REMOVE).as_bool() {let _=TranslateMessage(&message);DispatchMessageW(&message);}
             loop {match receiver.try_recv() {
                 Ok(OverlayCommand::Phase(phase))=>panel_state.phase=phase,
+                Ok(OverlayCommand::Prepare(target,ack))=> {preparations.push((target,ack));next_discovery=Instant::now();WATCH_DIRTY.with(|dirty|dirty.set(true));},
                 Ok(OverlayCommand::Suspend(ack))=> {
                     suspended=true;
                     if let Some(layers)=layers.as_mut() {layers.hide();}
@@ -429,6 +454,11 @@ fn run_with_discovery(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>
                             if IsWindowVisible(layers.mask).as_bool() && IsWindowVisible(layers.panel).as_bool() {SHOWN.fetch_add(1,Ordering::Relaxed);}
                         } else {layers.hide();}
                     } else {layers.hide();}
+                }
+            }
+            if let Some(layers)=layers.as_ref() {
+                if layers.shown && layers.alive() && layers._pin.ensure() && layer_order(layers.mask,layers.panel,layers.target.hwnd()) {
+                    preparations.retain(|(target,ack)| {if *target==layers.target.hwnd_u64 {let _=ack.send(());false} else {true}});
                 }
             }
             // Native location notifications and phase/stop messages wake this immediately.
@@ -533,6 +563,41 @@ mod tests {
             assert!(is_top(),"an originally topmost owner must remain topmost");
             assert_eq!(GetForegroundWindow(),before,"pinning never steals focus");
             let _=DestroyWindow(other);let _=DestroyWindow(owner);
+        }
+    }
+
+    #[test]
+    fn preparation_pins_without_foreground_focus_and_survives_main_window_raise() {
+        let _serial=NATIVE_FIXTURE.lock().unwrap_or_else(|error|error.into_inner());
+        unsafe {
+            let foreground=GetForegroundWindow();
+            let owner=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Mini-program preparation fixture"),WS_POPUP,
+                -10000,-10000,360,900,None,None,None,None).unwrap();
+            let other=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("WeChat main-window fixture"),WS_POPUP,
+                -10000,-10000,1200,900,None,None,None,None).unwrap();
+            let _=ShowWindow(owner,SW_SHOWNOACTIVATE);let _=ShowWindow(other,SW_SHOWNOACTIVATE);
+            SetWindowLongPtrW(other,GWL_STYLE,GetWindowLongPtrW(other,GWL_STYLE)|WS_MAXIMIZE.0 as isize);
+            assert!(IsZoomed(other).as_bool());
+            assert_ne!(GetForegroundWindow(),owner);
+            let (sender,receiver)=mpsc::channel();let thread_id=Arc::new(AtomicU32::new(0));
+            let id=thread_id.clone();let handle=owner.0 as usize;
+            let thread=std::thread::spawn(move||run_with_discovery(receiver,id,||Some(Target{hwnd_u64:handle as u64,pid:std::process::id()})));
+            let controller=LoginOverlay{sender:Some(sender),thread:Some(thread),thread_id};
+            let pump=|| {let mut msg=MSG::default();while PeekMessageW(&mut msg,None,0,0,PM_REMOVE).as_bool() {let _=TranslateMessage(&msg);DispatchMessageW(&msg);}};
+            std::thread::scope(|scope| {
+                let ready=scope.spawn(||controller.prepare_window(handle as u64,&||true));
+                while !ready.is_finished() {pump();std::thread::sleep(Duration::from_millis(1));}
+                ready.join().unwrap().unwrap();
+            });
+            assert!(above(owner,other));assert_eq!(GetForegroundWindow(),foreground,"pin preparation does not require or take focus");
+            SetWindowPos(other,Some(HWND_TOP),-10000,-10000,1200,900,SWP_NOACTIVATE).unwrap();
+            assert!(above(owner,other),"raising a maximized normal window cannot cover the pinned mini-program");
+            assert_eq!(controller.prepare_window(handle as u64,&||false).unwrap_err(),"已取消");
+            let stopper=std::thread::spawn(move||drop(controller));
+            while !stopper.is_finished() {pump();std::thread::sleep(Duration::from_millis(1));}
+            stopper.join().unwrap();
+            assert_eq!(GetWindowLongPtrW(owner,GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0,0,"original topmost state is restored");
+            DestroyWindow(other).unwrap();DestroyWindow(owner).unwrap();
         }
     }
 

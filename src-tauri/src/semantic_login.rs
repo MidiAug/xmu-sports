@@ -298,7 +298,7 @@ impl Session {
     pub(crate) fn scroll(&self,direction:ScrollDirection,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
         if !active() {return Err("已取消".into());}
         let _dpi=DpiGuard::enter();
-        crate::wechat_window::foreground_surface(&self.surface)?;
+        crate::wechat_window::foreground_surface(&self.surface,active)?;
         crate::wechat_window::portrait_surface(&self.surface,active)?;
         let scan=self.scan()?;
         if scan.report.search_page.is_none() || scan.report.decision==Decision::Handoff
@@ -358,7 +358,7 @@ impl Session {
 
     pub(crate) fn refresh(&mut self,active:&dyn Fn()->bool)->Result<(),String> {
         if !active() {return Err("已取消".into());}
-        crate::wechat_window::foreground_surface(&self.surface)?;
+        crate::wechat_window::foreground_surface(&self.surface,active)?;
         crate::wechat_window::portrait_surface(&self.surface,active)?;
         // Recreate the client on this initialized thread without rebinding the surface.
         unsafe {
@@ -376,7 +376,7 @@ impl Session {
     pub(crate) fn activate(&self, control: Control,active:&dyn Fn()->bool) -> Result<Option<&'static str>,String> {
         if !active() {return Err("已取消".into());}
         let _dpi=DpiGuard::enter();
-        crate::wechat_window::foreground_surface(&self.surface)?;
+        crate::wechat_window::foreground_surface(&self.surface,active)?;
         crate::wechat_window::portrait_surface(&self.surface,active)?;
         let scan=self.scan()?;
         if scan.report.decision!=Decision::Activate(control) { return Ok(None); }

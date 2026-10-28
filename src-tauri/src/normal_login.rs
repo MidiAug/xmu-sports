@@ -13,6 +13,8 @@ pub(crate) fn manual(reason: &str) -> Value {
         "UIA_SEARCH_TIMEOUT"=>"登录或场馆入口查找已达到180秒总时限，本次扫描尚未完成，已停止自动查找。请查看小程序当前页面，手动定位所需控件后重试；未提交预约",
         "UIA_PORTRAIT_UNAVAILABLE"=>"小程序窗口受当前屏幕或应用尺寸限制，未能调整为完整可见的竖屏；横屏可能使表单溢出且无法滚动。请手动缩窄窗口并拉高后重试；未提交预约",
         "UIA_WINDOW_LAYOUT_UNAVAILABLE"=>"未能读取或调整小程序窗口尺寸，可能是窗口无响应或已变化。请确认厦大体育窗口可操作后重试；未提交预约",
+        "LOGIN_FOCUS_REQUIRED"=>"小程序未能稳定保持在前台，可能被最大化的微信主窗或其他窗口遮挡、抢走焦点。已停止自动操作，请切回厦大体育后重试；未提交预约",
+        "UIA_PIN_UNAVAILABLE"=>"未能完成小程序及登录遮罩的置顶准备，尚未开始页面操作。请确认只有一个厦大体育窗口并重新检查；未提交预约",
         "UIA_HOME_SCROLL_UNAVAILABLE"=>"已识别厦大体育首页，但未找到可见的“场馆预约”入口，且当前窗口或页面未能执行自动滚动。请保持小程序可见，手动向下滚动并进入场馆预约后重试；未提交预约",
         "UIA_STADIUM_NAVIGATION_TIMEOUT"=>"已点击“场馆预约”，但未检测到预约页面；可能是页面加载或跳转异常。请查看小程序页面后重试；未提交预约",
         "MINIPROGRAM_NOT_VISIBLE"|"UIA_TARGET_MISSING"=>"未检测到可见的厦大体育小程序窗口，无法继续自动导航。请确认电脑微信已登录并打开厦大体育后重试；未提交预约",
@@ -127,7 +129,7 @@ pub(crate) fn recover_mode(
                 }
             }
             attempts+=1;
-            let result=recover_once(root,run_id,expected,&active,&mut verify,&mut report,&mut observe)?;
+            let result=recover_once(root,run_id,expected,&active,&overlay,&mut verify,&mut report,&mut observe)?;
             observe(json!({"attempt_finished":true,"result":result}));
             Ok(result)
         })?;
@@ -221,7 +223,7 @@ fn reopen_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
 }
 
 fn recover_once(
-    _root:&Path,_run_id:&str,expected:Option<&str>,active:impl Fn()->bool,
+    _root:&Path,_run_id:&str,expected:Option<&str>,active:impl Fn()->bool,overlay:&crate::login_overlay::LoginOverlay,
     mut verify:impl FnMut()->Result<Value,String>,mut progress:impl FnMut(&str),
     mut element_evidence:impl FnMut(Value),
 )->Result<Value,String> {
@@ -241,7 +243,6 @@ fn recover_once(
         while !present() && started.elapsed()<Duration::from_secs(15) {pause(300)?;}
     }
     if !present() {return Ok(manual("MINIPROGRAM_NOT_VISIBLE"));}
-    if let Err(code)=crate::wechat_window::foreground_miniprogram_window() {return Ok(manual(&code));}
     if !active() {return Err("已取消".into());}
     progress("normal_ui_layout");
     match crate::wechat_window::prepare_portrait(&active) {
@@ -249,6 +250,9 @@ fn recover_once(
         Err(code) if code=="已取消"=>return Err(code),Err(code)=>return Ok(manual(&code)),
     }
     pause(300)?;
+    progress("normal_ui_pinning");
+    if let Err(code)=overlay.prepare_target(&active) {return if code=="已取消" {Err(code)} else {Ok(manual(&code))};}
+    if let Err(code)=crate::wechat_window::foreground_miniprogram_window(&active) {return if code=="已取消" {Err(code)} else {Ok(manual(&code))};}
     progress("normal_ui_foreground");
     let mut semantic=match crate::semantic_login::Session::open() {
         Ok(session)=>session,Err(code)=>return Ok(manual(&code)),

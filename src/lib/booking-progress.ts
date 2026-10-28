@@ -12,6 +12,7 @@ const PHASES: Record<string, [string, string]> = {
   normal_ui_scrolling: ["auth", "已识别小程序登录、授权或首页，正在向下滚动查找所需控件或场馆预约入口"],
   normal_ui_scroll_top: ["auth", "本遍未找到所需控件，正在回到页面顶部，随后再向下查找一遍"],
   normal_ui_layout: ["auth", "正在缩窄并拉高小程序窗口，避免横屏布局溢出"],
+  normal_ui_pinning: ["auth", "正在置顶小程序与遮罩，避免被最大化的微信主窗遮挡"],
   uia_select: ["auth", "已勾选并确认登录协议"],
   uia_toggle: ["auth", "已确认登录协议处于勾选状态"],
   uia_invoke: ["auth", "已执行页面按钮操作"],
