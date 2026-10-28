@@ -47,6 +47,7 @@ try {
     return {ok:true,account_fingerprint:"a".repeat(64),orders:structuredClone(window.__rows),fetched_at:window.__fetchedAt ?? new Date(Date.now()).toISOString()};
    }
    if(command==="reauthenticate_availability") {
+    if(window.__recoveryFailure)return {ok:false,code:"LOGIN_CONFIRM_REQUIRED",reason:"UIA_STADIUM_ENTRY_NOT_FOUND",message:"已识别厦大体育首页，但自动滚动查找后仍未找到可操作的“场馆预约”入口。请手动进入场馆预约后重试；未提交预约"};
     if(window.__holdRecovery)return new Promise(resolve=>{window.__finishRecovery=()=>{window.__authFailure=false;resolve({ok:true,authenticated:true,account_checked:true});};});
     window.__authFailure=false;return {ok:true,authenticated:true,account_checked:true};
    }
@@ -263,5 +264,14 @@ try {
  assert.equal(await page.locator(".order-cancel").isDisabled(),true);
  assert.match(await page.locator(".my-order-cancel-reason").innerText(),/1小时/);
  await page.locator(".my-order").screenshot({path:"artifacts/sidebar-orders/cancel-cutoff.png"});
+ await page.evaluate(()=>{window.__authFailure=true;window.__recoveryFailure=true;window.__now+=11000;});
+ await page.getByRole("button",{name:"刷新我的预约",exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('.my-orders-status')?.textContent.includes('已识别厦大体育首页'));
+ assert.doesNotMatch(await page.locator('.my-orders-status').innerText(),/请在微信完成登录确认/);
+ for(const theme of ['light','dark']) {
+  await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+  await page.setViewportSize({width:760,height:700});
+  await page.screenshot({path:`artifacts/sidebar-orders/home-entry-failure-${theme}.png`});
+ }
  console.log("Sidebar orders UI passed: tooltips removed, inline spinner, explicit login recovery, sorting, cancellation, busy resume, errors, escaping, light/dark/narrow layout");
 } finally {await browser.close();}

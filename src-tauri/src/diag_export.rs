@@ -326,7 +326,7 @@ worker_ready.startup_ms：从创建进程到加载 Python 组件就绪；worker_
 独立再次查单记录位于 runs/order-rechecks/<运行>/，只使用原请求 journal 的账号与实际场次；ORDER_RECHECK_UNCONFIRMED 仍待确认，不重发预约。\n\
 worker_metrics.http：固定接口分类的次数、累计/最大耗时、timeout/connection/invalid_json 等错误数；不含参数、Cookie、票据、验证码或服务端正文。\n\
 当前登录链路：复用经学校校验的 H5 → 失效时通过 Windows UIA 操作正常登录界面 → 获取官方生成的新 H5 → HTTP 校验原账号。无需旧内核哈希适配或注入。\n\
-LOGIN_FOCUS_REQUIRED / LOGIN_CONFIRM_REQUIRED：查看正常微信界面是否需要获得焦点或本人身份确认；ACCOUNT_CHANGED / ACCOUNT_MISMATCH：停止，核对原账号。\n\
+LOGIN_FOCUS_REQUIRED / LOGIN_CONFIRM_REQUIRED：结合 reason 与 message 区分窗口未显示、页面无法识别、首页无法滚动、入口未找到、跳转超时和预约凭证无效；首页已显示不代表预约会话有效，不统一要求重复确认登录。ACCOUNT_CHANGED / ACCOUNT_MISMATCH：停止，核对原账号。\n\
 SUBMIT_UNKNOWN / RESULT_UNCONFIRMED：预约结果待确认；查看查单轮次及最终匹配结果。未查到不等于未提交，禁止据此重复发送。\n\
 CAPTCHA_REJECTED：只在服务端明确拒绝验证码时换图重试，首次加重试合计最多 3 次。超时、断网或响应不明先只读查单。\n\
 运行事件：runs/<任务>/<运行>/events.jsonl；manifest.json 含最终状态。只有匹配原账号、日期、完整时段和实际场地的订单才确认成功。\n\

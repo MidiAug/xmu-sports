@@ -3,9 +3,22 @@ use std::path::Path;
 use std::time::{Duration,Instant};
 use serde_json::{json,Value};
 pub(crate) fn manual(reason: &str) -> Value {
+    let message=match reason {
+        "UIA_STADIUM_ENTRY_NOT_FOUND"=>"已识别厦大体育首页，但自动滚动查找后仍未找到可操作的“场馆预约”入口；可能是页面布局、缩放或控件未暴露。请手动进入场馆预约后重试；预约会话尚未核验，未提交预约",
+        "UIA_HOME_SCROLL_UNAVAILABLE"=>"已识别厦大体育首页，但未找到可见的“场馆预约”入口，且当前窗口或页面未能执行自动滚动。请保持小程序可见，手动向下滚动并进入场馆预约后重试；未提交预约",
+        "UIA_STADIUM_NAVIGATION_TIMEOUT"=>"已点击“场馆预约”，但未检测到预约页面；可能是页面加载或跳转异常。请查看小程序页面后重试；未提交预约",
+        "MINIPROGRAM_NOT_VISIBLE"|"UIA_TARGET_MISSING"=>"未检测到可见的厦大体育小程序窗口，无法继续自动导航。请确认电脑微信已登录并打开厦大体育后重试；未提交预约",
+        "H5_ENTRY_STILL_EXPIRED"=>"已进入场馆预约，但学校接口仍返回预约登录凭证失效；小程序首页登录不代表预约会话有效。请在小程序重新进入场馆预约后重试；未提交预约",
+        "H5_ENTRY_UNAVAILABLE"=>"已检测到场馆预约页面，但未能从本机读取有效的预约登录凭证。请等待页面加载完成，重新进入场馆预约后重试；未提交预约",
+        "UIA_LOGIN_UNAVAILABLE"|"UIA_LOGIN_TIMEOUT"=>"无法识别当前小程序页面的可操作入口，尚不能确定是登录、授权还是页面加载问题。请查看小程序当前页面，必要时手动进入场馆预约后重试；未提交预约",
+        "UIA_NAVIGATION_TIMEOUT"=>"已操作登录或授权控件，但页面未继续跳转。请查看小程序是否仍需协议、授权或身份确认后重试；未提交预约",
+        "UIA_INPUT_OUTCOME_UNKNOWN"=>"小程序操作结果未能确认，已停止自动操作，避免重复点击。请查看当前页面后重试；未提交预约",
+        "UIA_TARGET_AMBIGUOUS"=>"检测到多个厦大体育窗口，无法确定操作目标。请只保留一个小程序窗口后重试；未提交预约",
+        _=>"小程序自动导航未完成，预约登录状态尚未核验。请查看当前页面，手动进入场馆预约后重试；未提交预约",
+    };
     json!({"ok":false,"code":"LOGIN_CONFIRM_REQUIRED","state":"needs_login",
         "recovery_mode":"normal_ui_http","reason":reason,
-        "message":"请在电脑微信的厦大体育完成页面要求的登录确认，再进入场馆预约，随后重新检测登录；未提交预约"})
+        "message":message})
 }
 
 pub(crate) fn validate(result: Value, expected: Option<&str>) -> Value {
@@ -43,6 +56,11 @@ fn handoff(expected: Option<&str>, active: &impl Fn()->bool,
             return Ok(result);
         }
         if !retryable(&result) { return Ok(result); }
+        if attempt==2 && result["code"]!="SESSION_EXPIRED" && result["code"]!="API_REJECTED" {
+            let mut failure=manual("H5_ENTRY_UNAVAILABLE");
+            failure["entry_error_code"]=result["code"].clone();
+            return Ok(failure);
+        }
         if attempt<2 {
             for _ in 0..15 {
                 if !active() { return Err("已取消".into()); }
@@ -161,7 +179,7 @@ fn close_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
 
 fn should_reenter(result:&Value)->bool {
     result["ok"]!=true && result["code"]=="LOGIN_CONFIRM_REQUIRED" && matches!(result["reason"].as_str(),
-        Some("H5_ENTRY_STILL_EXPIRED"|"UIA_LOGIN_UNAVAILABLE"|"UIA_NAVIGATION_TIMEOUT"|"UIA_LOGIN_TIMEOUT"))
+        Some("H5_ENTRY_STILL_EXPIRED"|"H5_ENTRY_UNAVAILABLE"|"UIA_LOGIN_UNAVAILABLE"|"UIA_NAVIGATION_TIMEOUT"|"UIA_LOGIN_TIMEOUT"))
 }
 
 fn reopen_miniprogram(active:&impl Fn()->bool)->Result<(),String> {
@@ -228,36 +246,47 @@ trait LoginUi {
     fn observe(&mut self)->Result<crate::semantic_login::Observation,String>;
     fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String>;
     fn refresh(&mut self)->Result<(),String>;
+    fn scroll_home(&mut self,active:&dyn Fn()->bool)->Result<Option<&'static str>,String>;
 }
 impl LoginUi for crate::semantic_login::Session {
     fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {Self::observe(self)}
     fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String> {Self::activate(self,control)}
     fn refresh(&mut self)->Result<(),String> {Self::refresh(self)}
+    fn scroll_home(&mut self,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {Self::scroll_home(self,active)}
 }
 
 #[derive(Default)]
 struct NavigationState {
     pending:Option<(crate::semantic_login::Control,Duration)>,
     empty_since:Option<Duration>,refreshed:bool,
+    home_seen:bool,scrolls:u32,scrolls_sent:u32,last_scroll:Option<Duration>,
 }
 #[derive(Debug,PartialEq)]
-enum NavigationAction { Handoff,Activate(crate::semantic_login::Control),Refresh,Wait,Fail(&'static str) }
+enum NavigationAction { Handoff,Activate(crate::semantic_login::Control),Scroll,Refresh,Wait,Fail(&'static str) }
 impl NavigationState {
     fn next(&mut self,report:&crate::semantic_login::Observation,now:Duration)->NavigationAction {
         use crate::semantic_login::Decision;
+        self.home_seen|=report.home_page;
         if report.has_controls() || report.decision==Decision::Handoff {self.empty_since=None;}
         let stalled=match report.decision {
             Decision::Handoff=>return NavigationAction::Handoff,
             Decision::Activate(control)=> {
                 if let Some((previous,sent))=self.pending {
-                    if previous==control {Some((now.saturating_sub(sent),"UIA_NAVIGATION_TIMEOUT"))}
+                    if previous==control {Some((now.saturating_sub(sent),if control==crate::semantic_login::Control::Stadium {"UIA_STADIUM_NAVIGATION_TIMEOUT"} else {"UIA_NAVIGATION_TIMEOUT"}))}
                     else {self.refreshed=false;return NavigationAction::Activate(control);}
                 } else {self.refreshed=false;return NavigationAction::Activate(control);}
             },
-            Decision::Wait|Decision::Unsupported=>Some((now.saturating_sub(*self.empty_since.get_or_insert(now)),"UIA_LOGIN_UNAVAILABLE")),
+            Decision::Wait|Decision::Unsupported=>Some((now.saturating_sub(*self.empty_since.get_or_insert(now)),
+                if self.pending.is_some_and(|(c,_)|c==crate::semantic_login::Control::Stadium) {"UIA_STADIUM_NAVIGATION_TIMEOUT"}
+                else if self.home_seen {"UIA_STADIUM_ENTRY_NOT_FOUND"} else {"UIA_LOGIN_UNAVAILABLE"})),
         };
         if let Some((duration,code))=stalled {
             if duration>=Duration::from_secs(30) {return NavigationAction::Fail(code);}
+            if report.home_page && report.decision==Decision::Wait && self.pending.is_none_or(|(c,_)|c!=crate::semantic_login::Control::Stadium)
+                && duration>=Duration::from_secs(2) && self.scrolls<6
+                && self.last_scroll.is_none_or(|sent|now.saturating_sub(sent)>=Duration::from_millis(800)) {
+                self.scrolls+=1;self.last_scroll=Some(now);return NavigationAction::Scroll;
+            }
             if duration>=Duration::from_secs(12) && !self.refreshed {self.refreshed=true;return NavigationAction::Refresh;}
         }
         NavigationAction::Wait
@@ -278,6 +307,16 @@ fn navigate(
         evidence(json!(report));
         use crate::semantic_login::Control;
         match action {
+            NavigationAction::Scroll=> {
+                progress("normal_ui_scrolling");
+                if !active() {return Err("已取消".into());}
+                match ui.scroll_home(active) {
+                    Ok(method)=>{if method.is_some() {state.scrolls_sent+=1;} evidence(json!({"scroll_step":state.scrolls,"scroll_method":method}));},
+                    Err(code) if code=="已取消"=>return Err(code),
+                    Err(code)=>return Ok(manual(&code)),
+                }
+                pause(800)?;
+            },
             NavigationAction::Handoff=> {
                 evidence(json!({"diagnostic_capture":true,"reason":"stadium_handoff"}));
                 return handoff(expected,active,verify,progress,"uia");
@@ -299,7 +338,7 @@ fn navigate(
                 }
             },
             NavigationAction::Wait=>pause(500)?,
-            NavigationAction::Fail(code)=>return Ok(manual(code)),
+            NavigationAction::Fail(code)=>return Ok(manual(if code=="UIA_STADIUM_ENTRY_NOT_FOUND" && state.scrolls_sent==0 {"UIA_HOME_SCROLL_UNAVAILABLE"} else {code})),
         }
     }
     Ok(manual("UIA_LOGIN_TIMEOUT"))
@@ -324,6 +363,7 @@ mod tests {
     #[test]
     fn only_known_navigation_stalls_and_rejected_entries_get_reentry() {
         assert!(should_reenter(&manual("H5_ENTRY_STILL_EXPIRED")));
+        assert!(should_reenter(&manual("H5_ENTRY_UNAVAILABLE")));
         assert!(should_reenter(&manual("UIA_LOGIN_UNAVAILABLE")));
         assert!(should_reenter(&manual("UIA_NAVIGATION_TIMEOUT")));
         for result in [manual("NORMAL_UI_TIMEOUT"),manual("UIA_INPUT_OUTCOME_UNKNOWN"),
@@ -354,6 +394,7 @@ mod tests {
             self.activations.push(control);self.phase+=1;Ok(Some("fixture_input"))
         }
         fn refresh(&mut self)->Result<(),String> {self.refreshes+=1;Ok(())}
+        fn scroll_home(&mut self,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("unknown page must not scroll")}
     }
     fn fixture(time:std::rc::Rc<std::cell::Cell<u64>>,ready_after:u64)->FixtureUi {
         FixtureUi{time,phase:0,ready_after,activations:vec![],refreshes:0,unknown_input:false}
@@ -428,10 +469,78 @@ mod tests {
                 self.clicks+=1;Ok(Some("fixture_invoke"))
             }
             fn refresh(&mut self)->Result<(),String> {self.refreshes+=1;Ok(())}
+            fn scroll_home(&mut self,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("authorization must not scroll")}
         }
         let time=std::cell::Cell::new(0);let mut ui=Stuck{clicks:0,refreshes:0};
         let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5 reached"),&mut |_|{},&mut |_|{},
             ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
         assert_eq!(result["reason"],"UIA_NAVIGATION_TIMEOUT");assert_eq!(ui.clicks,1);assert_eq!(ui.refreshes,1);
+    }
+
+    struct HomeUi {scrolls:u32,clicks:u32,reveal_after:u32,stuck:bool,unknown:bool,unavailable:bool}
+    impl LoginUi for HomeUi {
+        fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {
+            use crate::semantic_login::{Observation,Control};
+            if self.clicks>0 && !self.stuck {return Ok(Observation::fixture(true,&[]));}
+            if self.scrolls>=self.reveal_after {return Ok(Observation::fixture(false,&[(Control::Stadium,true,None)]));}
+            let mut report=Observation::fixture(false,&[]);report.home_page=true;Ok(report)
+        }
+        fn activate(&mut self,c:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
+            assert_eq!(c,crate::semantic_login::Control::Stadium);self.clicks+=1;Ok(Some("fixture_click"))
+        }
+        fn refresh(&mut self)->Result<(),String> {Ok(())}
+        fn scroll_home(&mut self,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
+            self.scrolls+=1;
+            if self.unknown {Err("UIA_INPUT_OUTCOME_UNKNOWN".into())} else if self.unavailable {Ok(None)} else {Ok(Some("fixture_scroll"))}
+        }
+    }
+    fn home(reveal_after:u32)->HomeUi {HomeUi{scrolls:0,clicks:0,reveal_after,stuck:false,unknown:false,unavailable:false}}
+    #[test]
+    fn home_scroll_reveals_stadium_and_http_still_checks_original_account() {
+        for reveal_after in [0,1,3,6] {
+            let time=std::cell::Cell::new(0);let mut ui=home(reveal_after);let mut verified=0;
+            let result=navigate(&mut ui,Some("original"),&||true,&mut || {
+                verified+=1;Ok(json!({"ok":true,"authenticated":true,"account_checked":true,"account_fingerprint":"original"}))
+            },&mut |_|{},&mut |_|{},||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
+            assert_eq!(result["ok"],true);assert_eq!(verified,1);assert_eq!(ui.scrolls,reveal_after);assert_eq!(ui.clicks,1);
+        }
+    }
+    #[test]
+    fn missing_stadium_scroll_is_bounded_and_does_not_reopen_home() {
+        let time=std::cell::Cell::new(0);let mut ui=home(u32::MAX);
+        let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5"),&mut |_|{},&mut |_|{},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
+        assert_eq!(ui.scrolls,6);assert_eq!(ui.clicks,0);assert_eq!(result["reason"],"UIA_STADIUM_ENTRY_NOT_FOUND");
+        assert!(!should_reenter(&result));assert!(result["message"].as_str().unwrap().contains("已识别厦大体育首页"));
+        let time=std::cell::Cell::new(0);let mut ui=home(u32::MAX);ui.unavailable=true;
+        let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5"),&mut |_|{},&mut |_|{},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
+        assert_eq!(result["reason"],"UIA_HOME_SCROLL_UNAVAILABLE");
+        assert!(result["message"].as_str().unwrap().contains("未能执行自动滚动"));
+    }
+    #[test]
+    fn stadium_navigation_timeout_does_not_click_or_scroll_again() {
+        let time=std::cell::Cell::new(0);let mut ui=home(0);ui.stuck=true;
+        let result=navigate(&mut ui,None,&||true,&mut ||panic!("no H5"),&mut |_|{},&mut |_|{},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
+        assert_eq!(ui.clicks,1);assert_eq!(ui.scrolls,0);assert_eq!(result["reason"],"UIA_STADIUM_NAVIGATION_TIMEOUT");
+    }
+    #[test]
+    fn scroll_cancellation_and_unknown_outcome_stop_without_http_or_reentry() {
+        let time=std::cell::Cell::new(0);let mut ui=home(3);
+        let result=navigate(&mut ui,None,&||time.get()<2800,&mut ||panic!("cancelled"),&mut |_|{},&mut |_|{},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())});
+        assert_eq!(result.unwrap_err(),"已取消");assert_eq!(ui.scrolls,1);assert_eq!(ui.clicks,0);
+        let time=std::cell::Cell::new(0);let mut ui=home(3);ui.unknown=true;
+        let result=navigate(&mut ui,None,&||true,&mut ||panic!("unknown input"),&mut |_|{},&mut |_|{},
+            ||Duration::from_millis(time.get()),|ms|{time.set(time.get()+ms);Ok(())}).unwrap();
+        assert_eq!(result["reason"],"UIA_INPUT_OUTCOME_UNKNOWN");assert_eq!(ui.scrolls,1);assert!(!should_reenter(&result));
+    }
+    #[test]
+    fn manual_failure_messages_distinguish_navigation_visibility_and_expiry() {
+        for (reason,expected) in [("MINIPROGRAM_NOT_VISIBLE","未检测到可见"),("UIA_LOGIN_UNAVAILABLE","尚不能确定"),
+            ("H5_ENTRY_STILL_EXPIRED","首页登录不代表预约会话有效"),("H5_ENTRY_UNAVAILABLE","未能从本机读取"),("UIA_STADIUM_NAVIGATION_TIMEOUT","已点击")] {
+            assert!(manual(reason)["message"].as_str().unwrap().contains(expected));
+        }
     }
 }

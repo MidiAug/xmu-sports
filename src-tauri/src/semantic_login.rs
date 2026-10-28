@@ -33,6 +33,7 @@ pub(crate) struct ControlEvidence {
 pub(crate) struct Observation {
     pub decision: Decision,
     pub target_app_verified: bool,
+    pub home_page: bool,
     nodes_examined: i32,
     truncated: bool,
     controls: Vec<ControlEvidence>,
@@ -43,7 +44,7 @@ impl Observation { pub(crate) fn has_controls(&self)->bool {!self.controls.is_em
 #[cfg(test)]
 impl Observation {
     pub(crate) fn fixture(h5:bool,controls:&[(Control,bool,Option<bool>)])->Self {
-        Self{decision:choose(h5,controls),target_app_verified:true,nodes_examined:77,truncated:false,
+        Self{decision:choose(h5,controls),target_app_verified:true,home_page:false,nodes_examined:77,truncated:false,
             controls:controls.iter().map(|(control,enabled,selected)|ControlEvidence{control:*control,
                 enabled:*enabled,selected:*selected,invoke:true,toggle:false,select:false,legacy_action:false,
                 element_bounds_available:true}).collect()}
@@ -51,7 +52,7 @@ impl Observation {
 }
 
 struct Candidate { control: Control, element: IUIAutomationElement, evidence: ControlEvidence }
-struct Scan { report: Observation, candidates: Vec<Candidate> }
+struct Scan { report: Observation, candidates: Vec<Candidate>, hidden_stadium: Option<IUIAutomationElement>, document: Option<IUIAutomationElement> }
 
 struct DpiGuard(DPI_AWARENESS_CONTEXT);
 impl DpiGuard {
@@ -164,17 +165,27 @@ impl Session {
             let mut app_verified=false;
             let mut h5=false;
             let mut candidates=Vec::new();
+            let mut home=std::collections::BTreeSet::new();
+            let mut hidden_stadium=None;
+            let mut document=None;
             for i in 0..length.min(MAX_NODES) {
                 let Ok(element)=nodes.GetElement(i) else { continue; };
-                if !Self::visible(&element) { continue; }
+                let visible=Self::visible(&element);
                 let control_type=element.CurrentControlType().ok();
                 if control_type==Some(UIA_DocumentControlTypeId) {
                     let value=Self::value(&element);
-                    app_verified|=value.starts_with(APP_ORIGIN);
-                    h5|=value.starts_with(H5_PREFIX) && self.in_app(&element);
+                    if visible && value.starts_with(APP_ORIGIN) {app_verified=true;document=Some(element.clone());}
+                    h5|=visible && value.starts_with(H5_PREFIX) && self.in_app(&element);
                     continue;
                 }
                 let name=element.CurrentName().map(|v|v.to_string()).unwrap_or_default();
+                let home_label=matches!(name.trim(),"我的课程"|"阳光长跑"|"体质测试"|"教学视频");
+                if (home_label || (!visible && name.trim()=="场馆预约")) && self.in_app(&element) {
+                    // Keep recognizing the same home when its top row scrolls offscreen.
+                    if home_label {home.insert(name.trim().to_owned());}
+                    if !visible && name.trim()=="场馆预约" {hidden_stadium=Some(element.clone());}
+                }
+                if !visible {continue;}
                 let control=match name.trim() {
                     "立即登录"=>Some(Control::Login), "授权登录"=>Some(Control::Authorize),
                     "场馆预约"=>Some(Control::Stadium),
@@ -196,16 +207,79 @@ impl Session {
             }
             let controls=candidates.iter().map(|c|(c.control,c.evidence.enabled,c.evidence.selected)).collect::<Vec<_>>();
             let decision=if app_verified && length<=MAX_NODES {choose(h5,&controls)} else {Decision::Unsupported};
-            let report=Observation{decision,target_app_verified:app_verified,nodes_examined:length.min(MAX_NODES),
+            let home_page=app_verified && length<=MAX_NODES && !h5
+                && !candidates.iter().any(|c|c.control!=Control::Stadium)
+                && (home.len()>=2 || hidden_stadium.is_some());
+            let report=Observation{decision,target_app_verified:app_verified,home_page,nodes_examined:length.min(MAX_NODES),
                 truncated:length>MAX_NODES,controls:candidates.iter().map(|c|ControlEvidence{
                     control:c.control,enabled:c.evidence.enabled,selected:c.evidence.selected,invoke:c.evidence.invoke,
                     toggle:c.evidence.toggle,select:c.evidence.select,legacy_action:c.evidence.legacy_action,
                     element_bounds_available:c.evidence.element_bounds_available}).collect()};
-            Ok(Scan{report,candidates})
+            Ok(Scan{report,candidates,hidden_stadium,document})
         }
     }
 
     pub(crate) fn observe(&self) -> Result<Observation,String> { self.scan().map(|s|s.report) }
+
+    /// One bounded scroll in the verified home page; re-observe before any click.
+    pub(crate) fn scroll_home(&self,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
+        if !active() {return Err("已取消".into());}
+        let _dpi=DpiGuard::enter();
+        crate::wechat_window::foreground_surface(&self.surface)?;
+        let scan=self.scan()?;
+        if !scan.report.home_page || scan.report.decision!=Decision::Wait {return Ok(None);}
+        self.validate_window()?;
+        unsafe {
+            if GetForegroundWindow()!=self.surface.hwnd() {return Ok(None);}
+            if let Some(element)=&scan.hidden_stadium {
+                if let Ok(pattern)=element.GetCurrentPatternAs::<IUIAutomationScrollItemPattern>(UIA_ScrollItemPatternId) {
+                    if !active() {return Err("已取消".into());}
+                    return pattern.ScrollIntoView().map(|_|Some("uia_scroll_into_view")).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN".into());
+                }
+            }
+            let Some(document)=scan.document else {return Ok(None);};
+            let walker=self.api.RawViewWalker().map_err(|_|"UIA_TREE_UNAVAILABLE")?;
+            let mut current=scan.hidden_stadium.unwrap_or(document.clone());
+            for _ in 0..32 {
+                if let Ok(pattern)=current.GetCurrentPatternAs::<IUIAutomationScrollPattern>(UIA_ScrollPatternId) {
+                    if pattern.CurrentVerticallyScrollable().map(|v|v.as_bool()).unwrap_or(false) {
+                        if !active() {return Err("已取消".into());}
+                        return pattern.Scroll(ScrollAmount_NoAmount,ScrollAmount_LargeIncrement)
+                            .map(|_|Some("uia_scroll_pattern")).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN".into());
+                    }
+                }
+                if self.api.CompareElements(&current,&document).map(|v|v.as_bool()).unwrap_or(false) {break;}
+                let Ok(parent)=walker.GetParentElement(&current) else {break;};
+                if !self.in_app(&parent) {break;}
+                current=parent;
+            }
+            let rect=document.CurrentBoundingRectangle().map_err(|_|"UIA_ELEMENT_CHANGED")?;
+            if rect.right<=rect.left || rect.bottom<=rect.top {return Ok(None);}
+            let point=POINT{x:rect.left+(rect.right-rect.left)/2,y:rect.top+(rect.bottom-rect.top)/2};
+            if GetAncestor(WindowFromPoint(point),GA_ROOT)!=self.surface.hwnd() {return Ok(None);}
+            let mut receiver=self.surface.hwnd();
+            for _ in 0..16 {
+                let mut local=point;
+                if !ScreenToClient(receiver,&mut local).as_bool() {return Ok(None);}
+                let child=ChildWindowFromPointEx(receiver,local,CWP_SKIPINVISIBLE|CWP_SKIPDISABLED);
+                if child.0.is_null() || child==receiver {break;}
+                receiver=child;
+            }
+            let mut pid=0;GetWindowThreadProcessId(receiver,Some(&mut pid));
+            if pid!=self.surface.owner.pid || GetAncestor(receiver,GA_ROOT)!=self.surface.hwnd() {return Ok(None);}
+            let fresh=self.scan()?;
+            if !fresh.report.home_page || fresh.report.decision!=Decision::Wait {return Ok(None);}
+            self.validate_window()?;
+            if GetForegroundWindow()!=self.surface.hwnd() || GetAncestor(WindowFromPoint(point),GA_ROOT)!=self.surface.hwnd() {return Ok(None);}
+            if !(-32768..=32767).contains(&point.x) || !(-32768..=32767).contains(&point.y) {return Ok(None);}
+            let position=LPARAM((((point.y as u16 as u32)<<16)|(point.x as u16 as u32)) as isize);
+            // WM_MOUSEWHEEL uses screen coordinates and signed delta in the high word.
+            if !active() {return Err("已取消".into());}
+            PostMessageW(Some(receiver),windows::Win32::UI::WindowsAndMessaging::WM_MOUSEWHEEL,
+                WPARAM(((-360i16 as u16 as u32)<<16) as usize),position).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN")?;
+            Ok(Some("uia_scroll_message"))
+        }
+    }
 
     pub(crate) fn refresh(&mut self)->Result<(),String> {
         crate::wechat_window::foreground_surface(&self.surface)?;

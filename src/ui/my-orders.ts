@@ -125,9 +125,7 @@ export function mountMyOrders(host:HTMLElement) {
       if (!result.ok) {
         if (result.code === "ACCOUNT_CHANGED") { rows=[]; account=""; }
         loginRequired = availabilityAuthNeeded(result) || result.code === "LOGIN_CONFIRM_REQUIRED" || result.code === "ACCOUNT_CHANGED";
-        message = result.code === "LOGIN_CONFIRM_REQUIRED"
-          ? "请在微信完成登录确认，再点右侧按钮刷新"
-          : result.message ?? "微信登录未完成，稍后可重试";
+        message = result.message ?? "小程序导航或登录核验未完成，请查看当前页面后重试";
         return;
       }
       loginRequired = false;

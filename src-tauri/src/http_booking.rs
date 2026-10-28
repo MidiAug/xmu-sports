@@ -292,6 +292,13 @@ fn recheck_after_refresh_failure(
             return Ok(json!({"ok": false, "code": code}));
         }
     }
+    // A stale fallback must not erase the concrete UI navigation failure.
+    if needs_reauthorization(&checked) && refreshed["code"]=="LOGIN_CONFIRM_REQUIRED" {
+        if let Some(account)=checked["account_fingerprint"].as_str() {
+            if expected.is_some_and(|expected|expected!=account) {return Ok(json!({"ok":false,"code":"ACCOUNT_CHANGED"}));}
+        }
+        return Ok(refreshed);
+    }
     Ok(checked)
 }
 
@@ -403,6 +410,17 @@ pub(crate) fn auth_failure(trace: &run_trace::RunTraceHandle, result: &Value) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expired_fallback_preserves_specific_home_navigation_failure() {
+        let failed=crate::normal_login::manual("UIA_STADIUM_ENTRY_NOT_FOUND");
+        let result=recheck_after_refresh_failure(failed.clone(),Some("original"),
+            ||Ok(json!({"ok":false,"code":"SESSION_EXPIRED","account_fingerprint":"original"}))).unwrap();
+        assert_eq!(result,failed);
+        let result=recheck_after_refresh_failure(failed,Some("original"),
+            ||Ok(json!({"ok":false,"code":"SESSION_EXPIRED","account_fingerprint":"other"}))).unwrap();
+        assert_eq!(result["code"],"ACCOUNT_CHANGED");
+    }
 
     fn before_send_auth_failure()->Value {
         json!({"ok":false,"code":"SESSION_EXPIRED","state":"needs_login","account_fingerprint":"a".repeat(64),

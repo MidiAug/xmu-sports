@@ -51,6 +51,13 @@ try {
 } finally { if(oldZone === undefined) delete process.env.TZ; else process.env.TZ=oldZone; }
 const outcomeUrl=compile(read("src/lib/run-outcome.ts"));
 const {outcomeFromEvent}=await import(outcomeUrl);
+for (const [reason,title] of [["UIA_STADIUM_ENTRY_NOT_FOUND","首页未找到场馆预约入口"],
+  ["MINIPROGRAM_NOT_VISIBLE","厦大体育小程序未显示"],["H5_ENTRY_STILL_EXPIRED","预约登录凭证仍已失效"]]) {
+  const message="具体失败原因；未提交预约";
+  const failed=outcomeFromEvent({action:"fail",result:"LOGIN_CONFIRM_REQUIRED",http:{reason,message}});
+  assert.equal(failed.title,title);assert.equal(failed.detail,message);
+  assert.doesNotMatch(failed.title+failed.detail,/手动确认登录|立即登录、确认协议/);
+}
 const missingRuntime=outcomeFromEvent({action:"fail",result:"RUNTIME_FILE_MISSING"});
 const unsupportedRuntime=outcomeFromEvent({action:"fail",result:"RUNTIME_UNSUPPORTED"});
 assert.match(missingRuntime.title,/未找到.*文件/);

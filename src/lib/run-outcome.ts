@@ -19,7 +19,7 @@ const CODE_ZH: Record<string, { kind: OutcomeKind; title: string; detail: string
   http_order_rechecked: {kind:"success",title:"查单已确认原预约",detail:"原账号与实际提交场次匹配，未重复下单"},
   ORDER_RECHECK_UNCONFIRMED: {kind:"info",title:"原预约仍待确认",detail:"只读查单未完成或未找到匹配记录，未重复下单"},
   http_auth_ready: {kind: "success", title: "体育登录已就绪", detail: "登录检查通过，未提交预约"},
-  LOGIN_CONFIRM_REQUIRED: {kind: "error", title: "请打开小程序手动确认登录", detail: "在电脑微信打开厦大体育，立即登录、确认协议并授权，再进入场馆预约后重试"},
+  LOGIN_CONFIRM_REQUIRED: {kind: "error", title: "小程序导航或登录核验未完成", detail: "请查看小程序当前页面，手动进入场馆预约后重试；尚未提交预约"},
   NO_ENTRY: {kind: "error", title: "请先确认体育登录", detail: "打开电脑微信中的厦大体育，完成授权并进入场馆预约"},
   ACCOUNT_CHANGED: {kind: "error", title: "登录账号发生变化", detail: "请确认电脑微信账号，再重新执行任务"},
   HTTP_AUTH_UNVERIFIED: {kind: "error", title: "无法确认体育登录账号", detail: "已停止本次预约，请重新检查体育登录并导出诊断日志"},
@@ -263,6 +263,18 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
   if (action === "fail" || action.endsWith("_failed")) {
     const code = result && result !== "failed" ? result : action;
     const m = mapCode(code);
+    const loginTitle = code === "LOGIN_CONFIRM_REQUIRED" ? ({
+      UIA_STADIUM_ENTRY_NOT_FOUND: "首页未找到场馆预约入口",
+      UIA_HOME_SCROLL_UNAVAILABLE: "首页无法自动滚动查找入口",
+      UIA_STADIUM_NAVIGATION_TIMEOUT: "场馆预约页面未打开",
+      MINIPROGRAM_NOT_VISIBLE: "厦大体育小程序未显示",
+      UIA_TARGET_MISSING: "厦大体育小程序未显示",
+      H5_ENTRY_STILL_EXPIRED: "预约登录凭证仍已失效",
+      H5_ENTRY_UNAVAILABLE: "预约登录凭证未能读取",
+      UIA_LOGIN_UNAVAILABLE: "无法识别小程序当前页面",
+      UIA_NAVIGATION_TIMEOUT: "登录或授权页面未跳转",
+      UIA_INPUT_OUTCOME_UNKNOWN: "小程序操作结果未确认",
+    } as Record<string,string>)[ev.http?.reason ?? ""] : undefined;
     if (["SUBMIT_UNKNOWN", "RESULT_UNCONFIRMED", "ORDER_RECHECK_UNCONFIRMED"].includes(code)) {
       return { kind: "info", code, title: m.title, detail: ev.http?.message || m.detail,
         pageId: ev.page_id ?? null, ts: ev.ts ?? null };
@@ -270,8 +282,8 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
     return {
       kind: "error",
       code,
-      title: m.kind === "error" ? m.title : `失败：${code}`,
-      detail: ev.http?.message ? `${ev.http.message}${["LOGIN_CONFIRM_REQUIRED", "SESSION_EXPIRED"].includes(code) ? "；" + m.detail : ""}` : m.detail,
+      title: loginTitle || (m.kind === "error" ? m.title : `失败：${code}`),
+      detail: ev.http?.message || m.detail,
       pageId: ev.page_id ?? null,
       ts: ev.ts ?? null,
     };

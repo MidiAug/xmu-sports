@@ -88,6 +88,7 @@ fn phase_text(phase: &str) -> Option<&'static str> {
         "normal_ui_http_ready" => "登录已验证，正在完成准备",
         "normal_ui_reenter" => "正在重新打开小程序",
         "normal_ui_refreshing" => "页面加载中，正在重新识别",
+        "normal_ui_scrolling" => "正在向下查找场馆预约入口",
         "closing_miniprogram" | "normal_ui_closed" => "登录已完成，正在收起窗口",
         _ => return None,
     })
@@ -505,8 +506,11 @@ mod tests {
                 let sent=Instant::now();
                 SetWindowPos(owner,None,x,y,520,815,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSIZE).unwrap();
                 loop {
-                    pump();let mut rect=RECT::default();GetWindowRect(mask,&mut rect).unwrap();
-                    if rect.left==x && rect.top==y {break;}
+                    pump();let mut rect=RECT::default();let mut panel_rect=RECT::default();
+                    GetWindowRect(mask,&mut rect).unwrap();GetWindowRect(panel,&mut panel_rect).unwrap();
+                    // EndDeferWindowPos updates two HWNDs on another thread;
+                    // observing the first does not acknowledge the whole batch.
+                    if rect.left==x && rect.top==y && panel_rect.left==x+100 && panel_rect.top==y+351 {break;}
                     assert!(sent.elapsed()<Duration::from_millis(500),"overlay failed to track a native window move");
                     std::thread::sleep(Duration::from_millis(1));
                 }

@@ -34,7 +34,7 @@ try {
         window.__authCalls.push(args);
         if(window.__holdLogin) await new Promise(resolve=>window.__finishLogin=resolve);
         else await new Promise(resolve=>setTimeout(resolve,150));
-        if(window.__authFailure) return {ok:false,code:"LOGIN_CONFIRM_REQUIRED",message:"请完成微信确认"};
+        if(window.__authFailure) return {ok:false,code:"LOGIN_CONFIRM_REQUIRED",reason:"UIA_STADIUM_ENTRY_NOT_FOUND",message:"已识别厦大体育首页，但自动滚动查找后仍未找到可操作的“场馆预约”入口；可能是页面布局、缩放或控件未暴露。请手动进入场馆预约后重试；预约会话尚未核验，未提交预约"};
         window.__authExpired=false;
         return {ok:true,authenticated:true,account_checked:true,account_fingerprint:"fixture-account"};
       }
@@ -240,6 +240,9 @@ try {
   await page.clock.runFor(300);
   await panel.getByRole('button',{name:'重新登录',exact:true}).waitFor();
   assert.equal(await page.evaluate(()=>window.__authCalls.length),1);
+  assert.match(await panel.innerText(),/已识别厦大体育首页.*自动滚动/);
+  assert.doesNotMatch(await panel.innerText(),/请在微信完成登录确认/);
+  await page.screenshot({path:resolve(artifacts,'home-entry-failure.png'),fullPage:true});
   assert.match(await slot.locator('.shell-select-value').innerText(),/已满/);
   const expiredRequests=await page.evaluate(()=>window.__queries.length);
   await page.locator('.nav-tabs [data-tab="history"]').click();await page.clock.runFor(31000);

@@ -48,7 +48,7 @@ export type BookingTask = {
 };
 
 export type RunEvent = {
-  http?: { phase?: string; message?: string; verified?: boolean; court?: string; date?: string; time?: string; order_id?: number | string;
+  http?: { phase?: string; message?: string; reason?: string; verified?: boolean; court?: string; date?: string; time?: string; order_id?: number | string;
     submitted_target?: { sport?: string; venue?: string; date?: string; time?: string; end?: string; court?: string | null };
     elapsed_ms?: number; remaining_seconds?: number; candidate_index?: number;
     check_attempt?: number; check_total?: number; retry_after_seconds?: number;
