@@ -7,7 +7,7 @@ use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPRO
 use windows::Win32::UI::Accessibility::*;
 use windows::Win32::Foundation::{POINT,WPARAM,LPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
-use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, ChildWindowFromPointEx, GetWindowThreadProcessId, WindowFromPoint, GetForegroundWindow, CWP_SKIPINVISIBLE, CWP_SKIPDISABLED, PostMessageW, WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP, GA_ROOT};
+use windows::Win32::UI::WindowsAndMessaging::{GetAncestor, ChildWindowFromPointEx, GetWindowThreadProcessId, GetForegroundWindow, CWP_SKIPINVISIBLE, CWP_SKIPDISABLED, PostMessageW, WM_MOUSEMOVE, WM_LBUTTONDOWN, WM_LBUTTONUP, GA_ROOT};
 use windows::Win32::UI::HiDpi::{SetThreadDpiAwarenessContext,DPI_AWARENESS_CONTEXT,DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 
 const APP_ORIGIN: &str = "https://servicewechat.com/wx81a2b2fa90759cb7/";
@@ -299,6 +299,7 @@ impl Session {
         if !active() {return Err("已取消".into());}
         let _dpi=DpiGuard::enter();
         crate::wechat_window::foreground_surface(&self.surface)?;
+        crate::wechat_window::portrait_surface(&self.surface,active)?;
         let scan=self.scan()?;
         if scan.report.search_page.is_none() || scan.report.decision==Decision::Handoff
             || (direction==ScrollDirection::Down && matches!(scan.report.decision,Decision::Activate(_))) {return Ok(None);}
@@ -329,7 +330,7 @@ impl Session {
             rect.right=rect.right.min(bounds.right);rect.bottom=rect.bottom.min(bounds.bottom);
             if rect.right<=rect.left || rect.bottom<=rect.top {return Ok(None);}
             let point=POINT{x:rect.left+(rect.right-rect.left)/2,y:rect.top+(rect.bottom-rect.top)/2};
-            if GetAncestor(WindowFromPoint(point),GA_ROOT)!=self.surface.hwnd() {return Ok(None);}
+            if !crate::login_overlay::target_uncovered_at(point,self.surface.hwnd()) {return Ok(None);}
             let mut receiver=self.surface.hwnd();
             for _ in 0..16 {
                 let mut local=point;
@@ -344,7 +345,7 @@ impl Session {
             if fresh.report.search_page!=search_page || fresh.report.decision==Decision::Handoff
                 || (direction==ScrollDirection::Down && matches!(fresh.report.decision,Decision::Activate(_))) {return Ok(None);}
             self.validate_window()?;
-            if GetForegroundWindow()!=self.surface.hwnd() || GetAncestor(WindowFromPoint(point),GA_ROOT)!=self.surface.hwnd() {return Ok(None);}
+            if GetForegroundWindow()!=self.surface.hwnd() || !crate::login_overlay::target_uncovered_at(point,self.surface.hwnd()) {return Ok(None);}
             if !(-32768..=32767).contains(&point.x) || !(-32768..=32767).contains(&point.y) {return Ok(None);}
             let position=LPARAM((((point.y as u16 as u32)<<16)|(point.x as u16 as u32)) as isize);
             // WM_MOUSEWHEEL uses screen coordinates and signed delta in the high word.
@@ -355,8 +356,10 @@ impl Session {
         }
     }
 
-    pub(crate) fn refresh(&mut self)->Result<(),String> {
+    pub(crate) fn refresh(&mut self,active:&dyn Fn()->bool)->Result<(),String> {
+        if !active() {return Err("已取消".into());}
         crate::wechat_window::foreground_surface(&self.surface)?;
+        crate::wechat_window::portrait_surface(&self.surface,active)?;
         // Recreate the client on this initialized thread without rebinding the surface.
         unsafe {
             let api:IUIAutomation=CoCreateInstance(&CUIAutomation8,None,CLSCTX_INPROC_SERVER).map_err(|_|"UIA_UNAVAILABLE")?;
@@ -370,9 +373,11 @@ impl Session {
     /// Re-resolve and recheck before one input. Coordinates, when necessary,
     /// come only from the live named UIA element, never OCR or a fixed layout.
     /// None means no input was attempted and another adapter may be used.
-    pub(crate) fn activate(&self, control: Control) -> Result<Option<&'static str>,String> {
+    pub(crate) fn activate(&self, control: Control,active:&dyn Fn()->bool) -> Result<Option<&'static str>,String> {
+        if !active() {return Err("已取消".into());}
         let _dpi=DpiGuard::enter();
         crate::wechat_window::foreground_surface(&self.surface)?;
+        crate::wechat_window::portrait_surface(&self.surface,active)?;
         let scan=self.scan()?;
         if scan.report.decision!=Decision::Activate(control) { return Ok(None); }
         let matching=scan.candidates.iter().filter(|c|c.control==control && c.evidence.enabled).collect::<Vec<_>>();
@@ -386,19 +391,23 @@ impl Session {
             if control==Control::Agreement {
                 if Self::selected(element)!=Some(false) { return Ok(None); }
                 if candidate.evidence.select {
+                    if !active() {return Err("已取消".into());}
                     return element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId)
                         .and_then(|p|p.Select()).map(|_|Some("uia_select")).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN".into());
                 }
                 if candidate.evidence.toggle {
+                    if !active() {return Err("已取消".into());}
                     return element.GetCurrentPatternAs::<IUIAutomationTogglePattern>(UIA_TogglePatternId)
                         .and_then(|p|p.Toggle()).map(|_|Some("uia_toggle")).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN".into());
                 }
             }
             if candidate.evidence.invoke {
+                if !active() {return Err("已取消".into());}
                 return element.GetCurrentPatternAs::<IUIAutomationInvokePattern>(UIA_InvokePatternId)
                     .and_then(|p|p.Invoke()).map(|_|Some("uia_invoke")).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN".into());
             }
             if candidate.evidence.legacy_action {
+                if !active() {return Err("已取消".into());}
                 return element.GetCurrentPatternAs::<IUIAutomationLegacyIAccessiblePattern>(UIA_LegacyIAccessiblePatternId)
                     .and_then(|p|p.DoDefaultAction()).map(|_|Some("uia_default_action")).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN".into());
             }
@@ -428,11 +437,12 @@ impl Session {
             let mut client=point;
             if !ScreenToClient(receiver,&mut client).as_bool() || !(0..=32767).contains(&client.x) || !(0..=32767).contains(&client.y) {return Ok(None);}
             let position=LPARAM(((client.y as u32)<<16 | client.x as u32) as isize);
-            if GetForegroundWindow()!=self.surface.hwnd() || GetAncestor(WindowFromPoint(point),GA_ROOT)!=self.surface.hwnd() {
+            if GetForegroundWindow()!=self.surface.hwnd() || !crate::login_overlay::target_uncovered_at(point,self.surface.hwnd()) {
                 return Ok(None);
             }
             // Target only the current verified window. Never move the user's
             // pointer or inject desktop mouse input, even if navigation fails.
+            if !active() {return Err("已取消".into());}
             PostMessageW(Some(receiver),WM_MOUSEMOVE,WPARAM(0),position).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN")?;
             PostMessageW(Some(receiver),WM_LBUTTONDOWN,WPARAM(1),position).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN")?;
             PostMessageW(Some(receiver),WM_LBUTTONUP,WPARAM(0),position).map_err(|_|"UIA_INPUT_OUTCOME_UNKNOWN")?;

@@ -11,6 +11,7 @@ const PHASES: Record<string, [string, string]> = {
   normal_ui_refreshing: ["auth", "页面暂未提供可操作入口，保存现场后重新识别并继续等待"],
   normal_ui_scrolling: ["auth", "已识别小程序登录、授权或首页，正在向下滚动查找所需控件或场馆预约入口"],
   normal_ui_scroll_top: ["auth", "本遍未找到所需控件，正在回到页面顶部，随后再向下查找一遍"],
+  normal_ui_layout: ["auth", "正在缩窄并拉高小程序窗口，避免横屏布局溢出"],
   uia_select: ["auth", "已勾选并确认登录协议"],
   uia_toggle: ["auth", "已确认登录协议处于勾选状态"],
   uia_invoke: ["auth", "已执行页面按钮操作"],

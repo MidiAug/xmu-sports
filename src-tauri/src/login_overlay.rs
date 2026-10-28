@@ -1,6 +1,6 @@
 //! Non-activating, click-through status attached only to the verified login window.
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::atomic::{AtomicU32,AtomicUsize,Ordering};
+use std::sync::atomic::{AtomicBool,AtomicU32,AtomicUsize,Ordering};
 use std::sync::Arc;
 use std::cell::Cell;
 use std::thread::JoinHandle;
@@ -9,7 +9,7 @@ use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Accessibility::{SetWinEventHook,UnhookWinEvent,HWINEVENTHOOK};
 use windows::core::w;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::Foundation::{COLORREF, HANDLE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HANDLE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -24,11 +24,14 @@ static LAYOUT_UPDATES:AtomicUsize=AtomicUsize::new(0);
 static DISCOVERY_SCANS:AtomicUsize=AtomicUsize::new(0);
 static LOCATION_EVENTS:AtomicUsize=AtomicUsize::new(0);
 static BATCH_FAILURES:AtomicUsize=AtomicUsize::new(0);
+static Z_ORDER_REPAIRS:AtomicUsize=AtomicUsize::new(0);
+static LAYER_ORDER_VALID:AtomicBool=AtomicBool::new(false);
 pub(crate) fn diagnostics()->serde_json::Value {
     serde_json::json!({"target_samples":TARGET_SAMPLES.load(Ordering::Relaxed),"focused_samples":FOCUSED_SAMPLES.load(Ordering::Relaxed),
         "windows_created":CREATED.load(Ordering::Relaxed),"visible_samples":SHOWN.load(Ordering::Relaxed),"mask_paints":MASK_PAINTS.load(Ordering::Relaxed),
         "panel_paints":PANEL_PAINTS.load(Ordering::Relaxed),"layout_updates":LAYOUT_UPDATES.load(Ordering::Relaxed),"discovery_scans":DISCOVERY_SCANS.load(Ordering::Relaxed),
-        "location_events":LOCATION_EVENTS.load(Ordering::Relaxed),"batch_failures":BATCH_FAILURES.load(Ordering::Relaxed)})
+        "location_events":LOCATION_EVENTS.load(Ordering::Relaxed),"batch_failures":BATCH_FAILURES.load(Ordering::Relaxed),
+        "z_order_repairs":Z_ORDER_REPAIRS.load(Ordering::Relaxed),"layer_order_valid":LAYER_ORDER_VALID.load(Ordering::Relaxed)})
 }
 
 const WAKE:u32=WM_APP+49;
@@ -38,7 +41,8 @@ pub(crate) struct LoginOverlay {
 }
 impl LoginOverlay {
     pub(crate) fn start() -> Self {
-        for counter in [&TARGET_SAMPLES,&FOCUSED_SAMPLES,&CREATED,&SHOWN,&MASK_PAINTS,&PANEL_PAINTS,&LAYOUT_UPDATES,&DISCOVERY_SCANS,&LOCATION_EVENTS,&BATCH_FAILURES] {counter.store(0,Ordering::Relaxed);}
+        for counter in [&TARGET_SAMPLES,&FOCUSED_SAMPLES,&CREATED,&SHOWN,&MASK_PAINTS,&PANEL_PAINTS,&LAYOUT_UPDATES,&DISCOVERY_SCANS,&LOCATION_EVENTS,&BATCH_FAILURES,&Z_ORDER_REPAIRS] {counter.store(0,Ordering::Relaxed);}
+        LAYER_ORDER_VALID.store(false,Ordering::Relaxed);
         let (sender, receiver) = mpsc::channel();
         let thread_id=Arc::new(AtomicU32::new(0));let id=thread_id.clone();
         let thread=std::thread::Builder::new().name("login-status-overlay".into()).spawn(move||run(receiver,id)).ok();
@@ -90,6 +94,7 @@ fn phase_text(phase: &str) -> Option<&'static str> {
         "normal_ui_refreshing" => "页面加载中，正在重新识别",
         "normal_ui_scrolling" => "正在向下查找登录或场馆入口",
         "normal_ui_scroll_top" => "本遍未找到，正在回到顶部重扫",
+        "normal_ui_layout" => "正在调整为窄竖屏窗口",
         "closing_miniprogram" | "normal_ui_closed" => "登录已完成，正在收起窗口",
         _ => return None,
     })
@@ -158,7 +163,7 @@ unsafe fn create(owner: HWND, state: &mut PaintState) -> Option<HWND> {
     let definition = WNDCLASSW { hInstance: instance.into(), lpfnWndProc: Some(proc), lpszClassName: class, ..Default::default() };
     // Registration is process-wide; a previously registered identical class is fine.
     RegisterClassW(&definition);
-    let hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT,
+    let hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST,
                               class, w!("XMU Sports 登录提示"), WS_POPUP, 0, 0, 1, 1, Some(owner), None, Some(instance.into()),
                               Some(state as *mut PaintState as *const _)).ok()?;
     if SetLayeredWindowAttributes(hwnd, COLORREF(0), if state.panel {255} else {195}, LWA_ALPHA).is_err() { let _=DestroyWindow(hwnd); return None; }
@@ -221,6 +226,7 @@ impl EventWatch {
         WATCH_DIRTY.with(|dirty|dirty.set(true));
         let mut hooks=Vec::new();let mut locations=false;
         for (first,last) in [(EVENT_OBJECT_LOCATIONCHANGE,EVENT_OBJECT_LOCATIONCHANGE),
+            (EVENT_OBJECT_REORDER,EVENT_OBJECT_REORDER),(EVENT_SYSTEM_FOREGROUND,EVENT_SYSTEM_FOREGROUND),
             (EVENT_OBJECT_SHOW,EVENT_OBJECT_HIDE),(EVENT_OBJECT_DESTROY,EVENT_OBJECT_DESTROY),
             (EVENT_SYSTEM_MINIMIZESTART,EVENT_SYSTEM_MINIMIZEEND)] {
             let hook=SetWinEventHook(first,last,None,Some(on_window_event),target.pid,0,WINEVENT_OUTOFCONTEXT);
@@ -247,6 +253,67 @@ impl Layers {
     }
     unsafe fn hide(&mut self) {
         if self.shown {let _=ShowWindow(self.panel,SW_HIDE);let _=ShowWindow(self.mask,SW_HIDE);self.shown=false;}
+        LAYER_ORDER_VALID.store(false,Ordering::Relaxed);
+    }
+}
+
+unsafe fn above(upper:HWND,lower:HWND)->bool {
+    let mut current=lower;
+    for _ in 0..4096 {
+        current=GetWindow(current,GW_HWNDPREV).unwrap_or_default();
+        if current.0.is_null() {return false;}
+        if current==upper {return true;}
+    }
+    false
+}
+unsafe fn layer_order(mask:HWND,panel:HWND,owner:HWND)->bool {
+    let top=|hwnd|GetWindowLongPtrW(hwnd,GWL_EXSTYLE) as u32 & WS_EX_TOPMOST.0!=0;
+    top(mask) && top(panel) && top(owner) && above(panel,mask) && above(mask,owner)
+}
+unsafe fn ensure_layer_order(mask:HWND,panel:HWND,owner:HWND)->bool {
+    if !layer_order(mask,panel,owner) {
+        Z_ORDER_REPAIRS.fetch_add(1,Ordering::Relaxed);
+        let flags=SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER;
+        let _=SetWindowPos(panel,Some(HWND_TOPMOST),0,0,0,0,flags);
+        let _=SetWindowPos(mask,Some(panel),0,0,0,0,flags);
+    }
+    let valid=layer_order(mask,panel,owner);LAYER_ORDER_VALID.store(valid,Ordering::Relaxed);valid
+}
+
+unsafe fn our_layer(hwnd:HWND,target:HWND)->bool {
+    let mut pid=0;GetWindowThreadProcessId(hwnd,Some(&mut pid));
+    if pid!=std::process::id() {return false;}
+    let mut class=[0u16;128];let length=GetClassNameW(hwnd,&mut class);
+    let owner=GetWindow(hwnd,GW_OWNER).unwrap_or_default();
+    match String::from_utf16_lossy(&class[..length.max(0) as usize]).as_str() {
+        "XmuSportsLoginStatus"=>owner==target,
+        "XmuSportsLoginPanel"=> {
+            let mut parent_class=[0u16;128];let n=GetClassNameW(owner,&mut parent_class);
+            GetWindow(owner,GW_OWNER).unwrap_or_default()==target
+                && String::from_utf16_lossy(&parent_class[..n.max(0) as usize])=="XmuSportsLoginStatus"
+        },
+        _=>false,
+    }
+}
+unsafe fn target_below_layers(mut top:HWND,point:POINT,target:HWND)->bool {
+    for _ in 0..4096 {
+        if top.0.is_null() {return false;}
+        if IsWindowVisible(top).as_bool() && !IsIconic(top).as_bool() && !our_layer(top,target) {
+            let mut bounds=RECT::default();
+            if GetWindowRect(top,&mut bounds).is_ok() && point.x>=bounds.left && point.x<bounds.right && point.y>=bounds.top && point.y<bounds.bottom {
+                return top==target;
+            }
+        }
+        top=GetWindow(top,GW_HWNDNEXT).unwrap_or_default();
+    }
+    false
+}
+/// WindowFromPoint may return our transparent mask. Ignore only our exact owned
+/// layers, then verify that no foreign window sits between them and the target.
+pub(crate) fn target_uncovered_at(point:POINT,target:HWND)->bool {
+    unsafe {
+        let top=GetAncestor(WindowFromPoint(point),GA_ROOT);
+        top==target || (our_layer(top,target) && target_below_layers(top,point,target))
     }
 }
 impl Drop for Layers {
@@ -358,6 +425,7 @@ fn run_with_discovery(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>
                                 let _=ShowWindow(layers.mask,SW_SHOWNOACTIVATE);let _=ShowWindow(layers.panel,SW_SHOWNOACTIVATE);
                                 layers.shown=true;
                             }
+                            let _=ensure_layer_order(layers.mask,layers.panel,layers.target.hwnd());
                             if IsWindowVisible(layers.mask).as_bool() && IsWindowVisible(layers.panel).as_bool() {SHOWN.fetch_add(1,Ordering::Relaxed);}
                         } else {layers.hide();}
                     } else {layers.hide();}
@@ -370,6 +438,7 @@ fn run_with_discovery(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>
             if waited.0==u32::MAX {std::thread::sleep(Duration::from_millis(16));}
         }
         drop(layers); // Unsubscribe on this thread, destroy our windows and restore the pin.
+        LAYER_ORDER_VALID.store(false,Ordering::Relaxed);
         thread_id.store(0,Ordering::Release);
     }
 }
@@ -464,6 +533,47 @@ mod tests {
             assert!(is_top(),"an originally topmost owner must remain topmost");
             assert_eq!(GetForegroundWindow(),before,"pinning never steals focus");
             let _=DestroyWindow(other);let _=DestroyWindow(owner);
+        }
+    }
+
+    #[test]
+    fn layers_repair_topmost_order_and_cover_landscape_and_portrait_without_focus() {
+        let _serial=NATIVE_FIXTURE.lock().unwrap_or_else(|error|error.into_inner());
+        unsafe {
+            let foreground=GetForegroundWindow();
+            let owner=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Isolated layer-order fixture"),WS_POPUP,
+                -10000,-10000,1100,400,None,None,None,None).unwrap();
+            let _=ShowWindow(owner,SW_SHOWNOACTIVATE);
+            let pin=Pin::new(owner).unwrap();
+            let mut mask_state=PaintState{phase:"正在调整为窄竖屏窗口",scale:1.0,panel:false};
+            let mut panel_state=PaintState{phase:"正在调整为窄竖屏窗口",scale:1.0,panel:true};
+            let mask=create(owner,&mut mask_state).unwrap();let panel=create(mask,&mut panel_state).unwrap();
+            let flags=SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER;
+            for (width,height) in [(1100,400),(360,1000)] {
+                let rect=RECT{left:-10000,top:-10000,right:-10000+width,bottom:-10000+height};
+                SetWindowPos(owner,None,rect.left,rect.top,width,height,SWP_NOZORDER|SWP_NOACTIVATE).unwrap();
+                move_layers(mask,panel,rect,320,112,true);
+                let _=ShowWindow(mask,SW_SHOWNOACTIVATE);let _=ShowWindow(panel,SW_SHOWNOACTIVATE);
+                // Reproduce owner promotion after an overlay was already created.
+                SetWindowPos(mask,Some(HWND_NOTOPMOST),0,0,0,0,flags).unwrap();
+                assert!(pin.ensure());SetWindowPos(owner,Some(HWND_TOPMOST),0,0,0,0,flags).unwrap();
+                assert!(ensure_layer_order(mask,panel,owner));assert!(layer_order(mask,panel,owner));
+                let mut bounds=RECT::default();GetWindowRect(mask,&mut bounds).unwrap();
+                assert_eq!((bounds.left,bounds.top,bounds.right,bounds.bottom),(rect.left,rect.top,rect.right,rect.bottom));
+                let mut client=RECT::default();GetClientRect(mask,&mut client).unwrap();assert_eq!((client.right,client.bottom),(width,height));
+                assert_eq!(GetForegroundWindow(),foreground);
+                let repairs=Z_ORDER_REPAIRS.load(Ordering::Relaxed);
+                assert!(ensure_layer_order(mask,panel,owner));assert_eq!(Z_ORDER_REPAIRS.load(Ordering::Relaxed),repairs,"correct order does not trigger repeated raises");
+                let point=POINT{x:rect.left+width/2,y:rect.top+height/2};
+                assert!(target_below_layers(panel,point,owner),"our own mask must not prevent targeted input");
+                let foreign=CreateWindowExW(WS_EX_TOOLWINDOW,w!("STATIC"),w!("Isolated foreign occluder"),WS_POPUP,
+                    rect.left,rect.top,width,height,None,None,None,None).unwrap();
+                let _=ShowWindow(foreign,SW_SHOWNOACTIVATE);
+                SetWindowPos(foreign,Some(mask),0,0,0,0,flags).unwrap();
+                assert!(!target_below_layers(panel,point,owner),"a foreign window below the mask still blocks input");
+                DestroyWindow(foreign).unwrap();
+            }
+            DestroyWindow(panel).unwrap();DestroyWindow(mask).unwrap();drop(pin);DestroyWindow(owner).unwrap();
         }
     }
 

@@ -271,6 +271,8 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
       UIA_AUTH_CONTROL_NOT_FOUND: "未找到可操作的协议或授权控件",
       UIA_SCROLL_LIMIT_REACHED: "滚动查找达到步数上限",
       UIA_SEARCH_TIMEOUT: "登录或场馆入口查找超时",
+      UIA_PORTRAIT_UNAVAILABLE: "小程序无法调整为竖屏",
+      UIA_WINDOW_LAYOUT_UNAVAILABLE: "小程序窗口尺寸调整失败",
       UIA_STADIUM_NAVIGATION_TIMEOUT: "场馆预约页面未打开",
       MINIPROGRAM_NOT_VISIBLE: "厦大体育小程序未显示",
       UIA_TARGET_MISSING: "厦大体育小程序未显示",

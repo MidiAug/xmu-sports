@@ -11,6 +11,8 @@ pub(crate) fn manual(reason: &str) -> Value {
         "UIA_SCROLL_UNAVAILABLE"=>"已识别登录或授权页面，但当前窗口或页面未能执行自动滚动。请保持小程序可见，手动滚动找到登录、协议或授权控件后重试；未提交预约",
         "UIA_SCROLL_LIMIT_REACHED"=>"查找登录或场馆入口时已达到单方向48步上限，尚未确认页面首尾，已停止自动查找。请手动定位所需控件后重试；未提交预约",
         "UIA_SEARCH_TIMEOUT"=>"登录或场馆入口查找已达到180秒总时限，本次扫描尚未完成，已停止自动查找。请查看小程序当前页面，手动定位所需控件后重试；未提交预约",
+        "UIA_PORTRAIT_UNAVAILABLE"=>"小程序窗口受当前屏幕或应用尺寸限制，未能调整为完整可见的竖屏；横屏可能使表单溢出且无法滚动。请手动缩窄窗口并拉高后重试；未提交预约",
+        "UIA_WINDOW_LAYOUT_UNAVAILABLE"=>"未能读取或调整小程序窗口尺寸，可能是窗口无响应或已变化。请确认厦大体育窗口可操作后重试；未提交预约",
         "UIA_HOME_SCROLL_UNAVAILABLE"=>"已识别厦大体育首页，但未找到可见的“场馆预约”入口，且当前窗口或页面未能执行自动滚动。请保持小程序可见，手动向下滚动并进入场馆预约后重试；未提交预约",
         "UIA_STADIUM_NAVIGATION_TIMEOUT"=>"已点击“场馆预约”，但未检测到预约页面；可能是页面加载或跳转异常。请查看小程序页面后重试；未提交预约",
         "MINIPROGRAM_NOT_VISIBLE"|"UIA_TARGET_MISSING"=>"未检测到可见的厦大体育小程序窗口，无法继续自动导航。请确认电脑微信已登录并打开厦大体育后重试；未提交预约",
@@ -240,6 +242,13 @@ fn recover_once(
     }
     if !present() {return Ok(manual("MINIPROGRAM_NOT_VISIBLE"));}
     if let Err(code)=crate::wechat_window::foreground_miniprogram_window() {return Ok(manual(&code));}
+    if !active() {return Err("已取消".into());}
+    progress("normal_ui_layout");
+    match crate::wechat_window::prepare_portrait(&active) {
+        Ok(layout)=>element_evidence(json!({"window_layout":layout})),
+        Err(code) if code=="已取消"=>return Err(code),Err(code)=>return Ok(manual(&code)),
+    }
+    pause(300)?;
     progress("normal_ui_foreground");
     let mut semantic=match crate::semantic_login::Session::open() {
         Ok(session)=>session,Err(code)=>return Ok(manual(&code)),
@@ -250,14 +259,14 @@ fn recover_once(
 
 trait LoginUi {
     fn observe(&mut self)->Result<crate::semantic_login::Observation,String>;
-    fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String>;
-    fn refresh(&mut self)->Result<(),String>;
+    fn activate(&mut self,control:crate::semantic_login::Control,active:&dyn Fn()->bool)->Result<Option<&'static str>,String>;
+    fn refresh(&mut self,active:&dyn Fn()->bool)->Result<(),String>;
     fn scroll(&mut self,direction:ScrollDirection,active:&dyn Fn()->bool)->Result<Option<&'static str>,String>;
 }
 impl LoginUi for crate::semantic_login::Session {
     fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {Self::observe(self)}
-    fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String> {Self::activate(self,control)}
-    fn refresh(&mut self)->Result<(),String> {Self::refresh(self)}
+    fn activate(&mut self,control:crate::semantic_login::Control,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {Self::activate(self,control,active)}
+    fn refresh(&mut self,active:&dyn Fn()->bool)->Result<(),String> {Self::refresh(self,active)}
     fn scroll(&mut self,direction:ScrollDirection,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {Self::scroll(self,direction,active)}
 }
 
@@ -385,16 +394,16 @@ fn navigate(
                 evidence(json!({"diagnostic_capture":true,"reason":"UIA_PAGE_STALLED","elapsed_ms":elapsed().as_millis()}));
                 if !active() {return Err("已取消".into());}
                 progress("normal_ui_refreshing");
-                if let Err(code)=ui.refresh() {return Ok(manual(&code));}
+                if let Err(code)=ui.refresh(active) {return if code=="已取消" {Err(code)} else {Ok(manual(&code))};}
                 pause(500)?;
             },
             NavigationAction::Activate(control)=> {
                 progress("semantic_login_control");
                 progress(match control {Control::Login=>"native_login_opening",Control::Agreement=>"native_agreement",Control::Authorize=>"native_authorizing",Control::Stadium=>"entering_stadium"});
                 if !active() {return Err("已取消".into());}
-                match ui.activate(control) {
+                match ui.activate(control,active) {
                     Ok(Some(method))=>{progress(method);state.pending=Some((control,elapsed()));state.search=SearchState::default();pause(600)?;},
-                    Ok(None)=>pause(300)?,Err(code)=>return Ok(manual(&code)),
+                    Ok(None)=>pause(300)?,Err(code) if code=="已取消"=>return Err(code),Err(code)=>return Ok(manual(&code)),
                 }
             },
             NavigationAction::Wait=>pause(500)?,
@@ -454,11 +463,11 @@ mod tests {
                 _=>Observation::fixture(true,&[]),
             })
         }
-        fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
+        fn activate(&mut self,control:crate::semantic_login::Control,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
             if self.unknown_input {return Err("UIA_INPUT_OUTCOME_UNKNOWN".into());}
             self.activations.push(control);self.phase+=1;Ok(Some("fixture_input"))
         }
-        fn refresh(&mut self)->Result<(),String> {self.refreshes+=1;Ok(())}
+        fn refresh(&mut self,_:&dyn Fn()->bool)->Result<(),String> {self.refreshes+=1;Ok(())}
         fn scroll(&mut self,_:ScrollDirection,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("unknown page must not scroll")}
     }
     fn fixture(time:std::rc::Rc<std::cell::Cell<u64>>,ready_after:u64)->FixtureUi {
@@ -530,10 +539,10 @@ mod tests {
             fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {
                 Ok(crate::semantic_login::Observation::fixture(false,&[(crate::semantic_login::Control::Authorize,true,None),(crate::semantic_login::Control::Agreement,true,Some(true))]))
             }
-            fn activate(&mut self,_:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
+            fn activate(&mut self,_:crate::semantic_login::Control,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
                 self.clicks+=1;Ok(Some("fixture_invoke"))
             }
-            fn refresh(&mut self)->Result<(),String> {self.refreshes+=1;Ok(())}
+            fn refresh(&mut self,_:&dyn Fn()->bool)->Result<(),String> {self.refreshes+=1;Ok(())}
             fn scroll(&mut self,_:ScrollDirection,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("pending authorization must not scroll")}
         }
         let time=std::cell::Cell::new(0);let mut ui=Stuck{clicks:0,refreshes:0};
@@ -551,10 +560,10 @@ mod tests {
             let mut report=Observation::fixture(false,&[]);report.home_page=true;report.search_page=Some(SearchPage::Home);
             report.viewport_mark=Some(self.scrolls.min(6) as u64);Ok(report)
         }
-        fn activate(&mut self,c:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
+        fn activate(&mut self,c:crate::semantic_login::Control,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
             assert_eq!(c,crate::semantic_login::Control::Stadium);self.clicks+=1;Ok(Some("fixture_click"))
         }
-        fn refresh(&mut self)->Result<(),String> {Ok(())}
+        fn refresh(&mut self,_:&dyn Fn()->bool)->Result<(),String> {Ok(())}
         fn scroll(&mut self,_:ScrollDirection,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
             self.scrolls+=1;
             if self.unknown {Err("UIA_INPUT_OUTCOME_UNKNOWN".into())} else if self.unavailable {Ok(None)} else {Ok(Some("fixture_scroll"))}
@@ -646,7 +655,7 @@ mod tests {
                 "height":self.height(),"target":desired,"target_y":y,"target_visible":visible,"checked":self.checked}));
             Ok(report)
         }
-        fn activate(&mut self,control:crate::semantic_login::Control)->Result<Option<&'static str>,String> {
+        fn activate(&mut self,control:crate::semantic_login::Control,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
             let (desired,y)=self.desired();assert_eq!(control,desired);assert!(self.visible(y));
             self.trace.push(json!({"event":"activate","page":self.page_kind(),"offset":self.offset,"control":control}));self.clicks.push(control);
             if control==crate::semantic_login::Control::Agreement {assert!(!self.checked);self.checked=true;}
@@ -654,7 +663,7 @@ mod tests {
                 self.page+=1;self.offset=0;}
             Ok(Some("fixture_click"))
         }
-        fn refresh(&mut self)->Result<(),String> {Ok(())}
+        fn refresh(&mut self,_:&dyn Fn()->bool)->Result<(),String> {Ok(())}
         fn scroll(&mut self,direction:ScrollDirection,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {
             assert!(active());let before=self.offset;
             self.offset=(self.offset+if direction==ScrollDirection::Down {160} else {-160}).clamp(0,self.height()-320);

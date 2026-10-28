@@ -54,6 +54,7 @@ const {outcomeFromEvent}=await import(outcomeUrl);
 for (const [reason,title] of [["UIA_STADIUM_ENTRY_NOT_FOUND","首页未找到场馆预约入口"],
   ["UIA_LOGIN_CONTROL_NOT_FOUND","未找到可操作的立即登录"],["UIA_AUTH_CONTROL_NOT_FOUND","未找到可操作的协议或授权控件"],
   ["UIA_SCROLL_LIMIT_REACHED","滚动查找达到步数上限"],["UIA_SEARCH_TIMEOUT","登录或场馆入口查找超时"],
+  ["UIA_PORTRAIT_UNAVAILABLE","小程序无法调整为竖屏"],["UIA_WINDOW_LAYOUT_UNAVAILABLE","小程序窗口尺寸调整失败"],
   ["MINIPROGRAM_NOT_VISIBLE","厦大体育小程序未显示"],["H5_ENTRY_STILL_EXPIRED","预约登录凭证仍已失效"]]) {
   const message="具体失败原因；未提交预约";
   const failed=outcomeFromEvent({action:"fail",result:"LOGIN_CONFIRM_REQUIRED",http:{reason,message}});

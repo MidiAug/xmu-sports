@@ -1,7 +1,9 @@
 //! Small Win32 window/protocol adapter. Login screenshots live in login_evidence.
 use std::path::Path;
 use windows::core::{w, PCWSTR, BOOL};
-use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT, TRUE};
+use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT, TRUE, WPARAM};
+use windows::Win32::Graphics::Gdi::{GetMonitorInfoW,MonitorFromWindow,MONITORINFO,MONITOR_DEFAULTTONEAREST};
+use windows::Win32::UI::HiDpi::{GetDpiForWindow,GetSystemMetricsForDpi,SetThreadDpiAwarenessContext,DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,DPI_AWARENESS_CONTEXT};
 use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
 use windows::Win32::System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ};
 use windows::Win32::UI::WindowsAndMessaging::*;
@@ -66,6 +68,59 @@ pub fn foreground_miniprogram_window()->Result<String,String> {
     Ok(target.title.clone())
 }
 
+struct WindowDpi(DPI_AWARENESS_CONTEXT);
+impl Drop for WindowDpi {fn drop(&mut self) {if !self.0.0.is_null() {unsafe {let _=SetThreadDpiAwarenessContext(self.0);}}}}
+
+fn portrait_bounds(work:RECT,current:RECT,min_width:i32,min_height:i32,max_height:i32)->Result<RECT,String> {
+    let width=min_width;let height=(work.bottom-work.top).min(if max_height>0 {max_height} else {i32::MAX});
+    if width<=0 || height<min_height || width>=height || width>work.right-work.left {return Err("UIA_PORTRAIT_UNAVAILABLE".into());}
+    let left=current.left.clamp(work.left,work.right-width);
+    Ok(RECT{left,top:work.top,right:left+width,bottom:work.top+height})
+}
+
+pub(crate) fn prepare_portrait(active:&dyn Fn()->bool)->Result<serde_json::Value,String> {
+    let targets=discover_wechat_candidates()?;
+    if targets.len()!=1 {return Err("UIA_TARGET_AMBIGUOUS_OR_MISSING".into());}
+    portrait_surface(&targets[0],active)
+}
+
+/// Normalize only this verified mini-program, in physical pixels on its own monitor.
+pub(crate) fn portrait_surface(target:&NativeSurface,active:&dyn Fn()->bool)->Result<serde_json::Value,String> {
+    if !active() {return Err("已取消".into());}
+    let current=discover_wechat_candidates()?;
+    if current.len()!=1 || current[0].hwnd_u64!=target.hwnd_u64 || current[0].owner!=target.owner {return Err("UIA_WINDOW_CHANGED".into());}
+    unsafe {resize_portrait(target.hwnd(),active)}
+}
+
+unsafe fn resize_portrait(hwnd:HWND,active:&dyn Fn()->bool)->Result<serde_json::Value,String> {
+    let _dpi=WindowDpi(SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2));
+    let mut monitor=MONITORINFO{cbSize:std::mem::size_of::<MONITORINFO>() as u32,..Default::default()};
+    if !GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&mut monitor).as_bool() {return Err("UIA_WINDOW_LAYOUT_UNAVAILABLE".into());}
+    if !active() {return Err("已取消".into());}
+    if IsIconic(hwnd).as_bool() || IsZoomed(hwnd).as_bool() {let _=ShowWindow(hwnd,SW_RESTORE);}
+    let mut before=RECT::default();GetWindowRect(hwnd,&mut before).map_err(|_|"UIA_WINDOW_LAYOUT_UNAVAILABLE")?;
+    let dpi=GetDpiForWindow(hwnd).max(96);let scaled=|n:i32|((n as i64*dpi as i64+48)/96) as i32;
+    let mut limits=MINMAXINFO::default();let mut reply=0usize;
+    if SendMessageTimeoutW(hwnd,WM_GETMINMAXINFO,WPARAM(0),LPARAM((&mut limits as *mut MINMAXINFO) as isize),
+        SMTO_ABORTIFHUNG|SMTO_BLOCK,500,Some(&mut reply)).0==0 {return Err("UIA_WINDOW_LAYOUT_UNAVAILABLE".into());}
+    // DefWindowProc's generic minimum is not a usable mini-program viewport.
+    let generic_min=GetSystemMetricsForDpi(SM_CXMINTRACK,dpi);
+    let fallback=limits.ptMinTrackSize.x<=generic_min || limits.ptMinTrackSize.x<scaled(240);
+    let min_width=if fallback {scaled(360)} else {limits.ptMinTrackSize.x};
+    let desired=portrait_bounds(monitor.rcWork,before,min_width,limits.ptMinTrackSize.y,limits.ptMaxTrackSize.y)?;
+    if !active() {return Err("已取消".into());}
+    let changed=(before.left,before.top,before.right,before.bottom)!=(desired.left,desired.top,desired.right,desired.bottom);
+    if changed {SetWindowPos(hwnd,None,desired.left,desired.top,desired.right-desired.left,desired.bottom-desired.top,
+        SWP_NOACTIVATE|SWP_NOZORDER|SWP_NOOWNERZORDER).map_err(|_|"UIA_WINDOW_LAYOUT_UNAVAILABLE")?;}
+    let mut actual=RECT::default();GetWindowRect(hwnd,&mut actual).map_err(|_|"UIA_WINDOW_LAYOUT_UNAVAILABLE")?;
+    if actual.right-actual.left>=actual.bottom-actual.top || actual.left<monitor.rcWork.left || actual.right>monitor.rcWork.right
+        || actual.top<monitor.rcWork.top || actual.bottom>monitor.rcWork.bottom {return Err("UIA_PORTRAIT_UNAVAILABLE".into());}
+    Ok(serde_json::json!({"changed":changed,"dpi":dpi,"minimum_width":limits.ptMinTrackSize.x,"fallback_width":fallback,
+        "before":{"width":before.right-before.left,"height":before.bottom-before.top},
+        "after":{"width":actual.right-actual.left,"height":actual.bottom-actual.top},
+        "work_area":{"width":monitor.rcWork.right-monitor.rcWork.left,"height":monitor.rcWork.bottom-monitor.rcWork.top}}))
+}
+
 /// Rebind identity before focusing; a UIA session must never focus a replacement window.
 pub(crate) fn foreground_surface(target:&NativeSurface)->Result<(),String> {
     let surfaces=discover_wechat_candidates()?;
@@ -109,10 +164,12 @@ pub fn background_status()->serde_json::Value {
     if targets.len()!=1 {return serde_json::json!({"target_count":targets.len()});}
     let target=targets[0].hwnd();
     unsafe {
+        let _dpi=WindowDpi(SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2));
         let mut rect=RECT::default();let _=GetWindowRect(target,&mut rect);
         let point=windows::Win32::Foundation::POINT{x:rect.left+(rect.right-rect.left)/2,y:rect.top+(rect.bottom-rect.top)/2};
-        serde_json::json!({"target_count":1,"minimized":IsIconic(target).as_bool(),
-            "foreground":GetForegroundWindow()==target,"covered_at_center":GetAncestor(WindowFromPoint(point),GA_ROOT)!=target})
+        serde_json::json!({"target_count":1,"minimized":IsIconic(target).as_bool(),"maximized":IsZoomed(target).as_bool(),
+            "width":rect.right-rect.left,"height":rect.bottom-rect.top,"dpi":GetDpiForWindow(target),
+            "foreground":GetForegroundWindow()==target,"covered_at_center":!crate::login_overlay::target_uncovered_at(point,target)})
     }
 }
 
@@ -120,4 +177,53 @@ pub fn device_diagnostics()->serde_json::Value {
     serde_json::json!({"os":std::env::consts::OS,"architecture":std::env::consts::ARCH,
         "edition":"http-only","login":"windows_uia","visual_components":false,"kernel_hook":false,
         "environment":crate::login_evidence::environment()})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn portrait_uses_work_area_minimum_width_and_application_height_limits() {
+        for (work,min_width) in [(RECT{left:0,top:0,right:1920,bottom:1040},360),
+            (RECT{left:-2560,top:-100,right:0,bottom:1340},540),
+            (RECT{left:0,top:-2160,right:3840,bottom:-80},720)] {
+            let current=RECT{left:work.right-100,top:work.top+200,right:work.right+900,bottom:work.top+600};
+            let result=portrait_bounds(work,current,min_width,200,0).unwrap();
+            assert_eq!(result.right-result.left,min_width);assert_eq!(result.top,work.top);assert_eq!(result.bottom,work.bottom);
+            assert!(result.left>=work.left && result.right<=work.right);
+        }
+        let work=RECT{left:0,top:0,right:1920,bottom:1040};
+        assert_eq!(portrait_bounds(work,work,360,200,800).unwrap().bottom,800);
+        assert_eq!(portrait_bounds(work,work,1100,200,0).unwrap_err(),"UIA_PORTRAIT_UNAVAILABLE");
+        assert!(portrait_bounds(work,work,360,1200,0).is_err());
+    }
+    unsafe extern "system" fn constrained(hwnd:HWND,msg:u32,wp:WPARAM,lp:LPARAM)->windows::Win32::Foundation::LRESULT {
+        if msg==WM_GETMINMAXINFO {
+            let limits=&mut *(lp.0 as *mut MINMAXINFO);let dpi=GetDpiForWindow(hwnd).max(96) as i32;
+            limits.ptMinTrackSize.x=300*dpi/96;limits.ptMinTrackSize.y=200*dpi/96;limits.ptMaxTrackSize.y=900*dpi/96;
+            return windows::Win32::Foundation::LRESULT(0);
+        }
+        DefWindowProcW(hwnd,msg,wp,lp)
+    }
+    #[test]
+    fn native_portrait_honors_minimum_and_does_not_activate_or_resize_after_cancel() {
+        unsafe {
+            let _dpi=WindowDpi(SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2));
+            let class=w!("XmuPortraitConstraintsFixture");
+            RegisterClassW(&WNDCLASSW{lpfnWndProc:Some(constrained),lpszClassName:class,..Default::default()});
+            let hwnd=CreateWindowExW(WS_EX_TOOLWINDOW,class,w!("Isolated portrait fixture"),WS_POPUP,
+                -10000,-10000,1200,400,None,None,None,None).unwrap();
+            let foreground=GetForegroundWindow();
+            let report=resize_portrait(hwnd,&||true).unwrap();
+            assert_eq!(report["fallback_width"],false);
+            assert_eq!(report["after"]["width"],300*GetDpiForWindow(hwnd).max(96)/96);
+            assert!(report["after"]["height"].as_i64().unwrap()>report["after"]["width"].as_i64().unwrap());
+            assert_eq!(GetForegroundWindow(),foreground);assert!(!IsWindowVisible(hwnd).as_bool());
+            let mut before=RECT::default();GetWindowRect(hwnd,&mut before).unwrap();
+            assert_eq!(resize_portrait(hwnd,&||false).unwrap_err(),"已取消");
+            let mut after=RECT::default();GetWindowRect(hwnd,&mut after).unwrap();
+            assert_eq!((before.left,before.top,before.right,before.bottom),(after.left,after.top,after.right,after.bottom));
+            DestroyWindow(hwnd).unwrap();
+        }
+    }
 }

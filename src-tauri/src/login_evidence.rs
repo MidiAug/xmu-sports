@@ -67,7 +67,7 @@ impl LoginEvidence {
     pub(crate) fn record(&mut self,phase:&str,details:Value) {
         if let Some(file)=self.events.as_mut() {
             let event=json!({"wall_time":chrono::Local::now().to_rfc3339(),"monotonic_ms":self.start.elapsed().as_millis(),
-                "phase":phase,"window":crate::wechat_window::background_status(),"details":details,
+                "phase":phase,"window":crate::wechat_window::background_status(),"overlay":crate::login_overlay::diagnostics(),"details":details,
                 "environment":if phase=="normal_ui_foreground" {environment()} else {Value::Null}});
             if writeln!(file,"{event}").and_then(|_|file.flush()).is_err() {
                 self.events=None;
