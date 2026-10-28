@@ -79,6 +79,9 @@
 .about-update-button, #about_repository, .about-download-route .shell-select { width:var(--about-control-width); min-width:var(--about-control-width); flex:none; }
 .about-update-button { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .about-update-button[data-phase="downloading"] { opacity: 1; background: linear-gradient(to right, color-mix(in srgb, var(--color-accent) 12%, var(--color-panel)) var(--update-progress), var(--color-panel) var(--update-progress)); }
+.update-download-cancel { display:none; }
+.about-update-button[data-phase="downloading"]:is(:hover,:focus-visible) .update-download-progress { display:none; }
+.about-update-button[data-phase="downloading"]:is(:hover,:focus-visible) .update-download-cancel { display:inline; }
 .about-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .about-row > div:first-child { min-width: 0; }
 .about-row h3 { margin: 0; font-size: 14px; font-weight: 550; }

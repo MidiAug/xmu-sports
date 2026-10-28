@@ -104,7 +104,7 @@ try {
   await advance(30_000);
   assert.equal(app.view().phase,'downloaded');
   assert.deepEqual(calls,['check_app_update','download_app_update']);
-  assert.deepEqual(downloadArgs,{mirror:'official',automatic:true});
+  assert.deepEqual({...downloadArgs,downloadId:undefined},{mirror:'official',automatic:true,downloadId:undefined});
   assert.ok(!calls.includes('install_app_update'),'installation is always explicit');stop();
 
   reset();storage.delete('xmu.appUpdate.autoDownload.v1');response='available';downloadMode='paused';app=await load();stop=app.start();
@@ -116,6 +116,14 @@ try {
   await advance(30_000);assert.equal(app.view().failedAt,'download');
   const failures=calls.length;await advance(HOUR-1);assert.equal(calls.length,failures);
   downloadMode='ok';await advance(1);assert.equal(app.view().phase,'downloaded');stop();
+  reset();storage.delete('xmu.appUpdate.autoDownload.v1');response='available';storage.set('xmu.appUpdate.cancelledVersion.v1','0.2.0');
+  app=await load();stop=app.start();await advance(30_000);await advance(DAY);
+  window.dispatchEvent(new Event('focus'));window.dispatchEvent(new Event('online'));await advance(DAY);
+  assert.ok(calls.every(command=>command==='check_app_update'),'explicit cancellation survives restart and wakeups');
+  assert.equal(app.view().cancelled,true);await app.api.downloadAppUpdate();assert.equal(app.view().phase,'downloaded');stop();
+  reset();storage.delete('xmu.appUpdate.autoDownload.v1');response='available';storage.set('xmu.appUpdate.cancelledVersion.v1','0.1.99');
+  app=await load();stop=app.start();await advance(30_000);
+  assert.equal(app.view().phase,'downloaded','a new version is not blocked by a previous version cancellation');stop();
   console.log('Automatic updates passed: checks, opt-out, idle download, pause/resume, hourly failure backoff, no automatic install, restart and cleanup');
 } finally {
   Date.now = original.now; globalThis.setTimeout = original.setTimeout; globalThis.clearTimeout = original.clearTimeout;

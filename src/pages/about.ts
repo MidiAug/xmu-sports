@@ -1,7 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-shell";
 import { mountPage } from "../lib/page-lifecycle";
-import { watchAppUpdate, performAppUpdate, updateDownloadRoutes, updateDownloadRoute, setUpdateDownloadRoute } from "../lib/app-update";
+import { watchAppUpdate, performAppUpdate, cancelAppUpdateDownload, updateDownloadRoutes, updateDownloadRoute, setUpdateDownloadRoute } from "../lib/app-update";
 import { renderReleaseNotes } from "../lib/release-notes";
 import { mountShellSelect } from "../ui/select";
 
@@ -41,30 +41,40 @@ export async function renderAbout(panel: Element, back: () => void) {
   query<HTMLButtonElement>("#update_route .shell-select-trigger").setAttribute("aria-label","更新下载线路");
   const launch = async (url: string) => { try { await open(url); } catch { message(`无法打开浏览器，请访问：${url}`); } };
   query<HTMLButtonElement>("#about_repository").onclick = () => { void launch(REPOSITORY); };
-  query<HTMLButtonElement>("#update_action").onclick = () => { void performAppUpdate(); };
+  query<HTMLButtonElement>("#update_action").onclick = () => {
+    if(query("#update_action").dataset.phase==="downloading") void cancelAppUpdateDownload();
+    else void performAppUpdate();
+  };
   scope.onDispose(watchAppUpdate(state => {
     if (!scope.current()) return;
     const { phase, release } = state;
-    const busy = ["checking", "downloading", "installing"].includes(phase);
+    const busy = ["checking", "downloading", "cancelling", "installing"].includes(phase);
     routeSelect.setDisabled(busy);
     const action = query<HTMLButtonElement>("#update_action");
-    action.disabled = busy;
+    action.disabled = ["checking","cancelling","installing"].includes(phase);
     action.dataset.phase = phase;
     action.style.setProperty("--update-progress", `${state.progress}%`);
     let label = "检查更新";
     if (phase === "checking") label = "检查中…";
     else if (phase === "downloading") label = `下载 ${state.progress}%`;
+    else if (phase === "cancelling") label = "正在取消…";
     else if (phase === "installing") label = "正在启动…";
     else if (phase === "downloaded") label = "退出并安装";
     else if (phase === "error") label = state.failedAt === "install" ? "重试安装" : state.failedAt === "download" ? "重新下载" : "重新检查";
-    else if (release?.status === "available") label = "下载更新";
-    action.textContent = label;
+    else if (release?.status === "available") label = state.cancelled ? "重新下载" : "下载更新";
+    if(phase==="downloading") {
+      action.innerHTML='<span class="update-download-progress"></span><span class="update-download-cancel" aria-hidden="true">取消下载</span>';
+      action.querySelector(".update-download-progress")!.textContent=label;
+      action.setAttribute("aria-label",`取消下载（${state.progress}%）`);
+    } else {action.textContent=label;action.removeAttribute("aria-label");}
     let status = updateHint;
     if (phase === "checking") status = "正在连接 GitHub…";
-    else if (phase === "downloading") status = "正在下载安装包…";
+    else if (phase === "downloading") status = state.error ?? "正在下载安装包…";
+    else if (phase === "cancelling") status = "正在取消下载并清理临时文件…";
     else if (phase === "downloaded") status = "校验通过，安装时将退出应用";
     else if (phase === "installing") status = "正在校验并启动安装器…";
     else if (phase === "ready" && state.paused) status = "预约或登录进行中，空闲后自动下载";
+    else if (phase === "ready" && state.cancelled) status = "下载已取消，可重新下载";
     else if (phase === "error") status = state.error ?? "更新失败，请重试";
     else if (release?.status === "available") status = `发现新版本 ${release.version}　${(release.size / 1024 / 1024).toFixed(1)} MB`;
     else if (release?.status === "current") status = "当前已是最新版本";

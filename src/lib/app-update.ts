@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 export type ReleaseInfo = { status: "available" | "current" | "unpublished"; version: string; notes: string; size: number };
-type UpdateView = { phase: "idle" | "checking" | "ready" | "downloading" | "downloaded" | "installing" | "error"; release?: ReleaseInfo; error?: string; failedAt?: "check" | "download" | "install"; progress: number; path?: string; paused?:boolean };
+type UpdateView = { phase: "idle" | "checking" | "ready" | "downloading" | "cancelling" | "downloaded" | "installing" | "error"; release?: ReleaseInfo; error?: string; failedAt?: "check" | "download" | "install"; progress: number; path?: string; paused?:boolean; cancelled?:boolean };
 // Shared across settings subpages; navigation neither repeats nor cancels a request.
 let view: UpdateView = { phase: "idle", progress: 0 };
 const HOUR = 60 * 60 * 1000;
@@ -11,6 +11,16 @@ type CheckRecord = { nextCheckAt: number; release?: ReleaseInfo };
 let record: CheckRecord = { nextCheckAt: 0 };
 let recordKey: string | undefined;
 let hostCandidateReady = false;
+const cancelledVersionKey="xmu.appUpdate.cancelledVersion.v1";
+let cancelledVersion="";
+try { cancelledVersion=localStorage.getItem(cancelledVersionKey) ?? ""; } catch { /* Memory fallback. */ }
+let downloadId:string|undefined;
+let cancelRequested=false;
+let downloadStarted=false;
+function suppressDownload(version:string) {
+  cancelledVersion=version;
+  try {localStorage.setItem(cancelledVersionKey,version);} catch { /* Keep the user's choice in memory. */ }
+}
 const autoDownloadKey="xmu.appUpdate.autoDownload.v1";
 export function autoDownloadUpdate():boolean {
   try { return localStorage.getItem(autoDownloadKey)!=="false"; } catch { return true; }
@@ -31,7 +41,7 @@ export function updateDownloadRoute():string {
   } catch { return "official"; }
 }
 export function setUpdateDownloadRoute(value:string):boolean {
-  if (!updateDownloadRoutes.some(route=>route.value===value) || ["downloading","installing"].includes(view.phase)) return false;
+  if (!updateDownloadRoutes.some(route=>route.value===value) || ["checking","downloading","cancelling","installing"].includes(view.phase)) return false;
   try { localStorage.setItem(routeKey,value); return true; } catch { return false; }
 }
 function saveRecord(next: CheckRecord) {
@@ -53,7 +63,7 @@ function restoreRecord(version: string) {
       && typeof release.notes === "string" && release.notes.length <= 64000
       && Number.isFinite(release.size) && release.size >= 0 && release.size <= 512 * 1024 * 1024) {
       record.release = release;
-      if (view.phase === "idle") publish({ phase: "ready", release });
+      if (view.phase === "idle") publish({ phase: "ready", release, cancelled:cancelledVersion===release.version });
     }
   } catch { /* Corrupt or unavailable storage must not stop startup. */ }
 }
@@ -61,7 +71,7 @@ const subscribers = new Set<(view: UpdateView) => void>();
 function publish(patch: Partial<UpdateView>) { view = { ...view, ...patch }; for (const fn of subscribers) fn(view); }
 export function watchAppUpdate(fn: (view: UpdateView) => void): () => void { subscribers.add(fn); fn(view); return () => { subscribers.delete(fn); }; }
 export async function checkAppUpdate() {
-  if (["checking", "downloading", "installing"].includes(view.phase)) return;
+  if (["checking", "downloading", "cancelling", "installing"].includes(view.phase)) return;
   publish({ phase: "checking", error: undefined, path: undefined, paused:false });
   hostCandidateReady = false;
   // Also covers a process exit during a request, before a result can be saved.
@@ -70,7 +80,7 @@ export async function checkAppUpdate() {
     const release = await invoke<ReleaseInfo>("check_app_update");
     hostCandidateReady = release.status === "available";
     saveRecord({ nextCheckAt: Date.now() + DAY, release });
-    publish({ phase: "ready", release });
+    publish({ phase: "ready", release, cancelled:cancelledVersion===release.version });
   }
   catch (e) {
     saveRecord({ nextCheckAt: Date.now() + HOUR });
@@ -78,24 +88,42 @@ export async function checkAppUpdate() {
   }
 }
 export async function downloadAppUpdate(automatic=false) {
-  if (["checking", "downloading", "installing"].includes(view.phase) || view.release?.status !== "available") return;
+  if (["checking", "downloading", "cancelling", "installing"].includes(view.phase) || view.release?.status !== "available") return;
+  if (automatic && cancelledVersion===view.release.version) return;
   if (!hostCandidateReady) {
     await checkAppUpdate();
     if (!hostCandidateReady) return;
   }
-  publish({ phase: "downloading", progress: 0, error: undefined, paused:false });
+  const id=crypto.randomUUID();downloadId=id;cancelRequested=false;downloadStarted=false;
+  if(!automatic && cancelledVersion===view.release.version) suppressDownload("");
+  publish({ phase: "downloading", progress: 0, error: undefined, path:undefined, paused:false, cancelled:false });
   let unlisten: (() => void) | undefined;
   try {
-    unlisten = await listen<{ received: number; total: number }>("app-update-progress", ({ payload }) => {
-      if (payload.total > 0) publish({ progress: Math.min(100, Math.round(payload.received * 100 / payload.total)) });
+    unlisten = await listen<{ received: number; total: number; download_id:string }>("app-update-progress", ({ payload }) => {
+      if (downloadId===id && view.phase==="downloading" && payload.download_id===id && payload.total > 0) publish({ progress: Math.min(100, Math.round(payload.received * 100 / payload.total)) });
     });
-    const path = await invoke<string>("download_app_update", { mirror: updateDownloadRoute(), automatic });
+    if(cancelRequested) {publish({phase:"ready",progress:0,cancelled:true});return;}
+    downloadStarted=true;
+    const path = await invoke<string>("download_app_update", { mirror: updateDownloadRoute(), automatic, downloadId:id });
     publish({ phase: "downloaded", progress: 100, path });
   } catch (e) {
-    if(automatic && String(e).includes("UPDATE_PAUSED")) publish({phase:"ready",progress:0,error:undefined,paused:true});
+    if(cancelRequested || String(e).includes("UPDATE_CANCELLED")) publish({phase:"ready",progress:0,error:undefined,path:undefined,cancelled:true});
+    else if(automatic && String(e).includes("UPDATE_PAUSED")) publish({phase:"ready",progress:0,error:undefined,paused:true});
     else publish({ phase: "error", failedAt: "download", error: String(e) });
   }
-  finally { unlisten?.(); }
+  finally { unlisten?.();if(downloadId===id) {downloadId=undefined;downloadStarted=false;} }
+}
+export async function cancelAppUpdateDownload() {
+  if(view.phase!=="downloading" || !downloadId) return;
+  const id=downloadId;cancelRequested=true;suppressDownload(view.release?.version ?? "");
+  publish({phase:"cancelling",error:undefined});
+  if(!downloadStarted) return; // The listener setup will finish without starting a request.
+  try {await invoke("cancel_app_update_download",{downloadId:id});}
+  catch(e) {
+    if(downloadId===id && ["cancelling"].includes(view.phase)) {
+      cancelRequested=false;publish({phase:"downloading",error:`取消请求失败，请再次点击取消：${String(e)}`});
+    }
+  }
 }
 export async function installAppUpdate() {
   if (view.phase !== "downloaded" && !(view.phase === "error" && view.failedAt === "install")) return;
@@ -118,9 +146,10 @@ export function startAutoAppUpdate(options: { version: string; enabled: boolean;
   const notBefore = Date.now() + 30_000;
   let downloadRetryAt=0;
   const wantsDownload=()=>autoDownloadUpdate() && view.release?.status==="available"
+    && cancelledVersion!==view.release.version
     && (view.phase==="ready" || view.phase==="error" && view.failedAt==="download");
   const protectedState = () => view.release?.status === "available"
-    || ["checking", "downloading", "downloaded", "installing"].includes(view.phase)
+    || ["checking", "downloading", "cancelling", "downloaded", "installing"].includes(view.phase)
     || (view.phase === "error" && view.failedAt !== "check");
   const schedule = (minimum = 0) => {
     if (stopped) return;

@@ -16,7 +16,8 @@ try {
       if(cmd==="list_recent_events") return [];
       if(cmd.includes("version")) return "0.1.26";
       if(cmd==="check_app_update") {window.__checks++;if(window.__holdCheck) await new Promise(r=>window.__finishCheck=r);if(window.__updateError) throw window.__updateError;return window.__updateResult;}
-      if(cmd==="download_app_update") {window.__downloadMirror=args?.mirror;window.__downloads++;await new Promise(r=>window.__finishDownload=r);if(window.__downloadError) throw window.__downloadError;return "C:\\Downloads\\fixture-setup.exe";}
+      if(cmd==="download_app_update") {window.__downloadId=args.downloadId;window.__downloadMirror=args?.mirror;window.__downloads++;await new Promise((r,reject)=>{window.__finishDownload=r;window.__cancelDownload=()=>reject('UPDATE_CANCELLED');});if(window.__downloadError) throw window.__downloadError;return "C:\\Downloads\\fixture-setup.exe";}
+      if(cmd==="cancel_app_update_download") {window.__cancelId=args.downloadId;window.__cancels=(window.__cancels??0)+1;return true;}
       if(cmd==="install_app_update") {window.__installs=(window.__installs??0)+1;await new Promise(r=>window.__finishInstall=r);throw '请先结束预约、取消定时任务或完成登录，再安装更新';}
       if(cmd==="force_quit_app") {window.__quits=(window.__quits??0)+1;return;}
       if(cmd.includes("listen")) {if(args?.event==="app-update-progress") window.__progressCallback=args.handler;if(args?.event==="shell-update-exit")window.__exitCallback=args.handler;return 1;}
@@ -66,12 +67,35 @@ try {
   await action.click();await page.waitForFunction(()=>typeof window.__finishDownload==='function');
   assert.equal(await page.evaluate(()=>window.__downloadMirror),'gh-proxy');
   assert.equal(await route.locator('.shell-select-trigger').isDisabled(),true);
-  assert.equal(await action.isDisabled(),true);await singleButton();
+  assert.equal(await action.isEnabled(),true);await singleButton();
   assert.equal(await page.evaluate(()=>window.__action===document.querySelector('#update_action')),true);
   await page.locator('.about-back').click();await page.locator('.settings-about-entry').click();
   assert.equal(await page.evaluate(()=>window.__downloads),1);
-  await page.evaluate(()=>window.__callbacks[window.__progressCallback]({payload:{received:50,total:100}}));
-  await page.getByRole('button',{name:'下载 50%',exact:true}).waitFor();
+  await page.evaluate(()=>window.__callbacks[window.__progressCallback]({payload:{received:50,total:100,download_id:window.__downloadId}}));
+  await page.getByRole('button',{name:'取消下载（50%）',exact:true}).waitFor();
+  await page.mouse.move(2,2);
+  assert.equal(await action.locator('.update-download-progress').isVisible(),true);
+  assert.equal(await action.locator('.update-download-cancel').isVisible(),false);
+  for(const theme of ['light','dark']) {
+    await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+    await page.setViewportSize(theme==='light'?{width:960,height:800}:{width:480,height:750});
+    await action.hover();assert.equal(await action.locator('.update-download-cancel').isVisible(),true);
+    await page.screenshot({path:`artifacts/about-updates/cancel-hover-${theme}.png`});
+  }
+  await page.setViewportSize({width:960,height:800});
+  await page.keyboard.press('Tab');await action.focus();
+  assert.equal(await action.evaluate(el=>el.matches(':focus-visible')),true);
+  await page.screenshot({path:'artifacts/about-updates/cancel-keyboard.png'});
+  await page.keyboard.press('Space');
+  await page.getByRole('button',{name:'正在取消…',exact:true}).waitFor();assert.equal(await action.isDisabled(),true);
+  assert.equal(await route.locator('.shell-select-trigger').isDisabled(),true);
+  assert.equal(await page.evaluate(()=>window.__cancelId===window.__downloadId),true);
+  await page.evaluate(()=>window.__cancelDownload());
+  await page.getByRole('button',{name:'重新下载',exact:true}).waitFor();assert.match(await page.locator('#update_status').innerText(),/下载已取消/);
+  assert.equal(await route.locator('.shell-select-trigger').isEnabled(),true);
+  await page.locator('.about-back').click();await page.locator('.settings-about-entry').click();
+  assert.match(await action.innerText(),/重新下载/,'cancelled state survives navigation');
+  await action.click();await page.waitForFunction(()=>window.__downloads===2);
   await page.evaluate(()=>window.__finishDownload());
   await page.getByRole('button',{name:'退出并安装',exact:true}).waitFor();await singleButton();
   const installedBox=await action.boundingBox();assert.equal(box.x,installedBox.x);assert.equal(box.width,installedBox.width);
