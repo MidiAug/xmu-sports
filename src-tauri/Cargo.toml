@@ -13,7 +13,7 @@ members = [
 
 [package]
 name = "xmu-sports"
-version = "0.1.32"
+version = "0.1.33"
 description = "XMU sports venue booking (Tauri)"
 authors = ["xmu-sports"]
 edition = "2021"
