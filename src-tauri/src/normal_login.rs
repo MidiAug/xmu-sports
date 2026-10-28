@@ -13,6 +13,7 @@ pub(crate) fn manual(reason: &str) -> Value {
         "UIA_SEARCH_TIMEOUT"=>"登录或场馆入口查找已达到180秒总时限，本次扫描尚未完成，已停止自动查找。请查看小程序当前页面，手动定位所需控件后重试；未提交预约",
         "UIA_PORTRAIT_UNAVAILABLE"=>"小程序窗口受当前屏幕或应用尺寸限制，未能调整为完整可见的竖屏；横屏可能使表单溢出且无法滚动。请手动缩窄窗口并拉高后重试；未提交预约",
         "UIA_WINDOW_LAYOUT_UNAVAILABLE"=>"未能读取或调整小程序窗口尺寸，可能是窗口无响应或已变化。请确认厦大体育窗口可操作后重试；未提交预约",
+        "UIA_WINDOW_LAYOUT_UNSTABLE"=>"小程序启动后窗口尺寸持续回弹，未能稳定保持竖屏，已停止页面操作。请等待小程序加载完成后重试；未提交预约",
         "LOGIN_FOCUS_REQUIRED"=>"小程序未能稳定保持在前台，可能被最大化的微信主窗或其他窗口遮挡、抢走焦点。已停止自动操作，请切回厦大体育后重试；未提交预约",
         "UIA_PIN_UNAVAILABLE"=>"未能完成小程序及登录遮罩的置顶准备，尚未开始页面操作。请确认只有一个厦大体育窗口并重新检查；未提交预约",
         "UIA_HOME_SCROLL_UNAVAILABLE"=>"已识别厦大体育首页，但未找到可见的“场馆预约”入口，且当前窗口或页面未能执行自动滚动。请保持小程序可见，手动向下滚动并进入场馆预约后重试；未提交预约",
@@ -262,12 +263,16 @@ fn recover_once(
 }
 
 trait LoginUi {
+    fn prepare_observation(&mut self,_active:&dyn Fn()->bool)->Result<Option<Value>,String> {Ok(None)}
     fn observe(&mut self)->Result<crate::semantic_login::Observation,String>;
     fn activate(&mut self,control:crate::semantic_login::Control,active:&dyn Fn()->bool)->Result<Option<&'static str>,String>;
     fn refresh(&mut self,active:&dyn Fn()->bool)->Result<(),String>;
     fn scroll(&mut self,direction:ScrollDirection,active:&dyn Fn()->bool)->Result<Option<&'static str>,String>;
 }
 impl LoginUi for crate::semantic_login::Session {
+    fn prepare_observation(&mut self,active:&dyn Fn()->bool)->Result<Option<Value>,String> {
+        self.ensure_portrait(active).map(|layout|if layout["changed"]==true {Some(layout)} else {None})
+    }
     fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {Self::observe(self)}
     fn activate(&mut self,control:crate::semantic_login::Control,active:&dyn Fn()->bool)->Result<Option<&'static str>,String> {Self::activate(self,control,active)}
     fn refresh(&mut self,active:&dyn Fn()->bool)->Result<(),String> {Self::refresh(self,active)}
@@ -365,6 +370,10 @@ fn navigate(
     let mut state=NavigationState::default();
     while elapsed()<Duration::from_secs(180) {
         if !active() {return Err("已取消".into());}
+        match ui.prepare_observation(active) {
+            Ok(Some(layout))=>{evidence(json!({"window_layout":layout,"layout_reason":"before_observation"}));pause(300)?;},
+            Ok(None)=>{},Err(code) if code=="已取消"=>return Err(code),Err(code)=>return Ok(manual(&code)),
+        }
         let report=match ui.observe() {Ok(report)=>report,Err(code)=>return Ok(manual(&code))};
         if !active() {return Err("已取消".into());}
         let action=state.next(&report,elapsed());
@@ -425,6 +434,23 @@ fn navigate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn layout_failure_or_cancellation_stops_before_reading_or_acting_on_page() {
+        struct Unstable(&'static str);
+        impl LoginUi for Unstable {
+            fn prepare_observation(&mut self,_:&dyn Fn()->bool)->Result<Option<Value>,String> {Err(self.0.into())}
+            fn observe(&mut self)->Result<crate::semantic_login::Observation,String> {panic!("layout not ready")}
+            fn activate(&mut self,_:crate::semantic_login::Control,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("no input")}
+            fn refresh(&mut self,_:&dyn Fn()->bool)->Result<(),String> {panic!("no refresh")}
+            fn scroll(&mut self,_:ScrollDirection,_:&dyn Fn()->bool)->Result<Option<&'static str>,String> {panic!("no scroll")}
+        }
+        for reason in ["已取消","UIA_WINDOW_LAYOUT_UNAVAILABLE"] {
+            let result=navigate(&mut Unstable(reason),None,&||true,&mut ||panic!("no HTTP"),&mut |_|{},&mut |_|{},
+                ||Duration::ZERO,|_|panic!("no wait"));
+            if reason=="已取消" {assert_eq!(result.unwrap_err(),reason);}
+            else {assert_eq!(result.unwrap()["reason"],reason);}
+        }
+    }
     #[test]
     fn account_and_server_verification_are_required() {
         assert_eq!(validate(json!({"ok":true}),None)["code"],"HTTP_AUTH_UNVERIFIED");

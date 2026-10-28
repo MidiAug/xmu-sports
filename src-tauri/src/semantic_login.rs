@@ -80,6 +80,11 @@ impl Drop for DpiGuard {
     fn drop(&mut self) { if !self.0.0.is_null() { unsafe{let _=SetThreadDpiAwarenessContext(self.0);} } }
 }
 
+fn agreement_name(name:&str,group_label:bool)->bool {
+    let name=name.trim();
+    name.starts_with("阅读并同意") || (group_label && (name.is_empty() || name.chars().all(|c|matches!(c as u32,0xe000..=0xf8ff|0xf0000..=0xffffd|0x100000..=0x10fffd))))
+}
+
 fn choose(h5: bool, controls: &[(Control, bool, Option<bool>)]) -> Decision {
     if h5 { return Decision::Handoff; }
     let has = |control| controls.iter().any(|(c, _, _)| *c == control);
@@ -172,6 +177,27 @@ impl Session {
         None
     }
 
+    /// A checked WeChat radio is named by an icon glyph. Bind it only to the
+    /// adjacent agreement label in the same small group, never to arbitrary radios.
+    unsafe fn agreement_group(&self,element:&IUIAutomationElement)->bool {
+        let Ok(walker)=self.api.RawViewWalker() else {return false;};
+        let Ok(parent)=walker.GetParentElement(element) else {return false;};
+        if !self.in_app(&parent) {return false;}
+        let mut child=walker.GetFirstChildElement(&parent).ok();let mut label=false;let mut selectors=0;
+        for _ in 0..12 {
+            let Some(current)=child else {return label && selectors==1;};
+            label|=current.CurrentName().map(|n|n.to_string().trim()=="阅读并同意以下协议").unwrap_or(false);
+            let kind=current.CurrentControlType().ok();
+            if kind==Some(UIA_RadioButtonControlTypeId) || kind==Some(UIA_CheckBoxControlTypeId) {selectors+=1;}
+            child=walker.GetNextSiblingElement(&current).ok();
+        }
+        false
+    }
+
+    pub(crate) fn ensure_portrait(&self,active:&dyn Fn()->bool)->Result<serde_json::Value,String> {
+        crate::wechat_window::portrait_surface(&self.surface,active)
+    }
+
     fn scan(&self) -> Result<Scan,String> {
         self.validate_window()?;
         unsafe {
@@ -232,8 +258,8 @@ impl Session {
                 let control=match name.trim() {
                     "立即登录"=>Some(Control::Login), "授权登录"=>Some(Control::Authorize),
                     "场馆预约"=>Some(Control::Stadium),
-                    text if (text.starts_with("阅读并同意") || text.is_empty()) &&
-                        (control_type==Some(UIA_RadioButtonControlTypeId) || control_type==Some(UIA_CheckBoxControlTypeId))=>Some(Control::Agreement),
+                    text if (control_type==Some(UIA_RadioButtonControlTypeId) || control_type==Some(UIA_CheckBoxControlTypeId)) &&
+                        agreement_name(text,self.agreement_group(&element))=>Some(Control::Agreement),
                     _=>None,
                 };
                 let Some(control)=control else { continue; };
@@ -534,6 +560,16 @@ pub(crate) fn probe_minimized()->Result<serde_json::Value,String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn checked_icon_radio_retains_agreement_identity_only_in_its_labelled_group() {
+        assert!(agreement_name("",true));
+        assert!(agreement_name("\u{ea08}",true));
+        assert!(!agreement_name("\u{ea08}",false));
+        assert!(!agreement_name("",false));
+        assert!(!agreement_name("其他选项",true));
+        let controls=vec![(Control::Agreement,true,Some(true)),(Control::Authorize,true,None)];
+        assert_eq!(choose(false,&controls),Decision::Activate(Control::Authorize));
+    }
     #[test]
     fn authorization_requires_known_agreement_state_and_does_not_uncheck() {
         let controls=|state|vec![(Control::Authorize,true,None),(Control::Agreement,true,state)];

@@ -273,6 +273,7 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
       UIA_SEARCH_TIMEOUT: "登录或场馆入口查找超时",
       UIA_PORTRAIT_UNAVAILABLE: "小程序无法调整为竖屏",
       UIA_WINDOW_LAYOUT_UNAVAILABLE: "小程序窗口尺寸调整失败",
+      UIA_WINDOW_LAYOUT_UNSTABLE: "小程序窗口尺寸持续回弹",
       LOGIN_FOCUS_REQUIRED: "小程序未能保持在前台",
       UIA_PIN_UNAVAILABLE: "小程序置顶准备失败",
       UIA_STADIUM_NAVIGATION_TIMEOUT: "场馆预约页面未打开",

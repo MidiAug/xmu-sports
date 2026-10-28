@@ -80,7 +80,32 @@ fn portrait_bounds(work:RECT,current:RECT,min_width:i32,min_height:i32,max_heigh
 pub(crate) fn prepare_portrait(active:&dyn Fn()->bool)->Result<serde_json::Value,String> {
     let targets=discover_wechat_candidates()?;
     if targets.len()!=1 {return Err("UIA_TARGET_AMBIGUOUS_OR_MISSING".into());}
-    portrait_surface(&targets[0],active)
+    let started=std::time::Instant::now();let mut stability=LayoutStability::default();let mut samples=Vec::new();
+    for _ in 0..40 {
+        let mut layout=portrait_surface(&targets[0],active)?;
+        let before=(layout["before"]["width"].as_i64().unwrap_or(0),layout["before"]["height"].as_i64().unwrap_or(0));
+        let after=(layout["after"]["width"].as_i64().unwrap_or(0),layout["after"]["height"].as_i64().unwrap_or(0));
+        if samples.is_empty() || before!=after {samples.push(layout.clone());}
+        if stability.ready(started.elapsed(),before,after) {
+            layout["startup_samples"]=serde_json::json!(samples);return Ok(layout);
+        }
+        for _ in 0..5 {
+            if !active() {return Err("已取消".into());}
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+    Err("UIA_WINDOW_LAYOUT_UNSTABLE".into())
+}
+
+#[derive(Default)]
+struct LayoutStability {last:Option<(i64,i64)>,since:Option<std::time::Duration>}
+impl LayoutStability {
+    fn ready(&mut self,now:std::time::Duration,before:(i64,i64),after:(i64,i64))->bool {
+        if self.last!=Some(after) || before!=after {self.since=Some(now);}
+        self.last=Some(after);
+        now>=std::time::Duration::from_millis(1200) &&
+            now.saturating_sub(*self.since.get_or_insert(now))>=std::time::Duration::from_millis(400)
+    }
 }
 
 /// Normalize only this verified mini-program, in physical pixels on its own monitor.
@@ -204,6 +229,17 @@ pub fn device_diagnostics()->serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_landscape_rebound_resets_portrait_settling() {
+        use std::time::Duration;
+        let mut state=LayoutStability::default();
+        assert!(!state.ready(Duration::ZERO,(1450,414),(360,1032)));
+        assert!(!state.ready(Duration::from_millis(300),(1450,414),(528,1032)));
+        assert!(!state.ready(Duration::from_millis(700),(528,1032),(528,1032)));
+        assert!(state.ready(Duration::from_millis(1200),(528,1032),(528,1032)));
+        assert!(!state.ready(Duration::from_millis(1300),(1450,414),(528,1032)));
+        assert!(state.ready(Duration::from_millis(1700),(528,1032),(528,1032)));
+    }
     #[test]
     fn transient_foreground_and_later_occlusion_do_not_count_as_ready() {
         use std::time::Duration;
