@@ -75,19 +75,19 @@ impl LoginEvidence {
             }
         }
     }
-    pub(crate) fn snapshot(&mut self,reason:&str,overlay:&crate::login_overlay::LoginOverlay,active:&impl Fn()->bool) {
+    pub(crate) fn snapshot(&mut self,reason:&str,_overlay:&crate::login_overlay::LoginOverlay,active:&impl Fn()->bool) {
         if !active() || self.captures>=6 || self.events.is_none() {return;}
         self.captures+=1;
         let filename=format!("login-{:02}.bmp",self.captures);
         let result=(|| {
-            let _hidden=overlay.suspend()?;
-            // Wait for the compositor to remove our layers before reading pixels.
+            // Preserve the visible status throughout capture and page transitions.
+            // Evidence intentionally includes our mask/card instead of flashing them off.
             unsafe {let _=windows::Win32::Graphics::Dwm::DwmFlush();}
             if !active() {return Err("CANCELLED".into());}
             capture_unique(&self.dir.join("evidence").join(&filename))
         })();
         self.record("window_capture",match result {
-            Ok(quality)=>json!({"reason":reason,"file":format!("evidence/{filename}"),"quality":quality}),
+            Ok(quality)=>json!({"reason":reason,"file":format!("evidence/{filename}"),"quality":quality,"overlay_preserved":true}),
             Err(code)=>json!({"reason":reason,"capture_error":code}),
         });
     }
@@ -144,7 +144,7 @@ fn capture_client(hwnd:windows::Win32::Foundation::HWND)->Result<Vec<u8>,String>
             if !ClientToScreen(hwnd,&mut origin).as_bool() {return Err("CAPTURE_BOUNDS_FAILED".into());}
             // Refuse occluded/minimized/offscreen windows. Never store a desktop frame.
             let unobscured=||GetForegroundWindow()==hwnd && !IsIconic(hwnd).as_bool() && [1,2,3].iter().all(|x|
-                [1,2,3].iter().all(|y|GetAncestor(WindowFromPoint(POINT{x:origin.x+width*x/4,y:origin.y+height*y/4}),GA_ROOT)==hwnd));
+                [1,2,3].iter().all(|y|crate::login_overlay::target_uncovered_at(POINT{x:origin.x+width*x/4,y:origin.y+height*y/4},hwnd)));
             if !unobscured() {return Err("CAPTURE_TARGET_OCCLUDED".into());}
             // WeChat's accelerated surface can return a uniform bitmap from its
             // window DC. Read only this verified, unobscured client rectangle

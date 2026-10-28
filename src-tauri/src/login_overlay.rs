@@ -35,7 +35,7 @@ pub(crate) fn diagnostics()->serde_json::Value {
 }
 
 const WAKE:u32=WM_APP+49;
-enum OverlayCommand { Phase(&'static str), Prepare(u64,Sender<()>), Suspend(Sender<()>), Resume }
+enum OverlayCommand { Phase(&'static str), Prepare(u64,Sender<()>) }
 pub(crate) struct LoginOverlay {
     sender:Option<Sender<OverlayCommand>>, thread:Option<JoinHandle<()>>, thread_id:Arc<AtomicU32>,
 }
@@ -76,25 +76,9 @@ impl LoginOverlay {
         }
         Err("UIA_PIN_UNAVAILABLE".into())
     }
-    /// Wait for both layers to hide before capturing the actual mini-program.
-    /// A dropped guard restores them even when capture fails.
-    pub(crate) fn suspend(&self)->Result<OverlaySuspension<'_>,String> {
-        let guard=OverlaySuspension(self);
-        let (tx,rx)=mpsc::channel();
-        self.sender.as_ref().ok_or("OVERLAY_UNAVAILABLE")?.send(OverlayCommand::Suspend(tx)).map_err(|_|"OVERLAY_UNAVAILABLE")?;
-        self.wake();
-        rx.recv_timeout(Duration::from_secs(1)).map_err(|_|"OVERLAY_HIDE_TIMEOUT")?;
-        Ok(guard)
-    }
     fn wake(&self) {
         let id=self.thread_id.load(Ordering::Acquire);
         if id!=0 {unsafe{let _=PostThreadMessageW(id,WAKE,WPARAM(0),LPARAM(0));}}
-    }
-}
-pub(crate) struct OverlaySuspension<'a>(&'a LoginOverlay);
-impl Drop for OverlaySuspension<'_> {
-    fn drop(&mut self) {
-        if let Some(sender)=&self.0.sender {let _=sender.send(OverlayCommand::Resume);self.0.wake();}
     }
 }
 impl Drop for LoginOverlay {
@@ -378,7 +362,6 @@ fn run_with_discovery(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>
         let mut mask_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:false});
         let mut panel_state=Box::new(PaintState{phase:"正在准备登录",scale:1.0,panel:true});
         let mut layers:Option<Layers>=None;
-        let mut suspended=false;
         let mut preparations:Vec<(u64,Sender<()>)>=Vec::new();
         let mut next_discovery=Instant::now();let mut next_safety=Instant::now();
         'running:loop {
@@ -387,12 +370,6 @@ fn run_with_discovery(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>
             loop {match receiver.try_recv() {
                 Ok(OverlayCommand::Phase(phase))=>panel_state.phase=phase,
                 Ok(OverlayCommand::Prepare(target,ack))=> {preparations.push((target,ack));next_discovery=Instant::now();WATCH_DIRTY.with(|dirty|dirty.set(true));},
-                Ok(OverlayCommand::Suspend(ack))=> {
-                    suspended=true;
-                    if let Some(layers)=layers.as_mut() {layers.hide();}
-                    let _=ack.send(());
-                },
-                Ok(OverlayCommand::Resume)=> {suspended=false;WATCH_DIRTY.with(|dirty|dirty.set(true));},
                 Err(mpsc::TryRecvError::Empty)=>break,
                 Err(mpsc::TryRecvError::Disconnected)=>break 'running,
             }}
@@ -420,7 +397,7 @@ fn run_with_discovery(receiver:Receiver<OverlayCommand>,thread_id:Arc<AtomicU32>
                     TARGET_SAMPLES.fetch_add(1,Ordering::Relaxed);
                     if GetForegroundWindow()==layers.target.hwnd() {FOCUSED_SAMPLES.fetch_add(1,Ordering::Relaxed);}
                     let mut rect=RECT::default();
-                    if !suspended && IsWindowVisible(layers.target.hwnd()).as_bool() && !IsIconic(layers.target.hwnd()).as_bool() && GetWindowRect(layers.target.hwnd(),&mut rect).is_ok() {
+                    if IsWindowVisible(layers.target.hwnd()).as_bool() && !IsIconic(layers.target.hwnd()).as_bool() && GetWindowRect(layers.target.hwnd(),&mut rect).is_ok() {
                         let scale=GetDpiForWindow(layers.target.hwnd()).max(96) as f32/96.0;
                         mask_state.scale=scale;panel_state.scale=scale;
                         let s=|n:i32|(n as f32*scale).round() as i32;
@@ -711,25 +688,24 @@ mod tests {
             let output=std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../artifacts/sidebar-orders");
             std::fs::create_dir_all(&output).unwrap();std::fs::write(output.join("drag-benchmark.json"),report.to_string()).unwrap();
             println!("drag benchmark: {report}");
-            // Capturing hides both layers across safety ticks and restores them on guard drop.
+            // Page/phase transitions update in place: no hide/recreate interval.
             let mask_value=mask.0 as usize;let panel_value=panel.0 as usize;
             std::thread::scope(|scope| {
                 let checker=scope.spawn(|| {
-                    let hidden=controller.suspend().expect("overlay must acknowledge capture suspension");
-                    for _ in 0..3 {
-                        assert!(!IsWindowVisible(HWND(mask_value as *mut _)).as_bool());
-                        assert!(!IsWindowVisible(HWND(panel_value as *mut _)).as_bool());
-                        std::thread::sleep(Duration::from_millis(100));
+                    for phase in ["native_login_opening","native_agreement","native_authorizing","normal_ui_http_verifying"] {
+                        controller.phase(phase);
+                        for _ in 0..50 {
+                            assert!(IsWindowVisible(HWND(mask_value as *mut _)).as_bool());
+                            assert!(IsWindowVisible(HWND(panel_value as *mut _)).as_bool());
+                            std::thread::sleep(Duration::from_millis(2));
+                        }
                     }
-                    drop(hidden);
                 });
                 while !checker.is_finished() {pump();std::thread::sleep(Duration::from_millis(1));}
                 checker.join().unwrap();
             });
-            let resumed=Instant::now();
-            while !IsWindowVisible(panel).as_bool() {
-                pump();assert!(resumed.elapsed()<Duration::from_secs(2));std::thread::sleep(Duration::from_millis(1));
-            }
+            assert_eq!(CREATED.load(Ordering::Relaxed),1,"phase transitions reuse the same two windows");
+            assert!(IsWindowVisible(mask).as_bool() && IsWindowVisible(panel).as_bool());
             (mask.0 as usize,panel.0 as usize)
             }));
             // The owner must pump cross-thread window messages while the guard restores it.
