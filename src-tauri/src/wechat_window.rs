@@ -173,7 +173,7 @@ pub(crate) fn foreground_surface(target:&NativeSurface,active:&dyn Fn()->bool)->
     unsafe {
         if IsIconic(target.hwnd()).as_bool() {let _=ShowWindow(target.hwnd(),SW_RESTORE);}
         let started=std::time::Instant::now();let mut stable_since=None;
-        for attempt in 0..40 {
+        for _ in 0..40 {
             if !active() {return Err("已取消".into());}
             let mut pid=0;GetWindowThreadProcessId(target.hwnd(),Some(&mut pid));
             if !IsWindow(Some(target.hwnd())).as_bool() || pid!=target.owner.pid {return Err("UIA_WINDOW_CHANGED".into());}
@@ -181,12 +181,13 @@ pub(crate) fn foreground_surface(target:&NativeSurface,active:&dyn Fn()->bool)->
             let point=windows::Win32::Foundation::POINT{x:rect.left+(rect.right-rect.left)/2,y:rect.top+(rect.bottom-rect.top)/2};
             let ready=GetForegroundWindow()==target.hwnd() && crate::login_overlay::target_uncovered_at(point,target.hwnd());
             if focus_settled(&mut stable_since,started.elapsed(),ready) {return Ok(());}
-            if !ready || attempt==0 {
+            if !ready {
                 // The overlay owns restoration of the original topmost state.
                 let pinned=!GetPropW(target.hwnd(),w!("XmuSportsLoginPin")).0.is_null();
                 SetWindowPos(target.hwnd(),Some(if pinned {HWND_TOPMOST} else {HWND_TOP}),0,0,0,0,
                     SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOOWNERZORDER).map_err(|_|"LOGIN_FOCUS_REQUIRED")?;
                 activate_target(target.hwnd());
+                crate::login_overlay::restore_layer_order(target.hwnd());
             }
             std::thread::sleep(std::time::Duration::from_millis(40));
         }

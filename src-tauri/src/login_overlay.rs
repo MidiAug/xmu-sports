@@ -174,6 +174,10 @@ unsafe fn create(owner: HWND, state: &mut PaintState) -> Option<HWND> {
                               class, w!("XMU Sports 登录提示"), WS_POPUP, 0, 0, 1, 1, Some(owner), None, Some(instance.into()),
                               Some(state as *mut PaintState as *const _)).ok()?;
     if SetLayeredWindowAttributes(hwnd, COLORREF(0), if state.panel {255} else {195}, LWA_ALPHA).is_err() { let _=DestroyWindow(hwnd); return None; }
+    // Keep visible on the monitor while DWM omits this window from capture.
+    if let Err(error)=SetWindowDisplayAffinity(hwnd,WDA_EXCLUDEFROMCAPTURE) {
+        log::warn!("login overlay capture exclusion unavailable: {error}");
+    }
     Some(hwnd)
 }
 
@@ -301,6 +305,35 @@ unsafe fn our_layer(hwnd:HWND,target:HWND)->bool {
         },
         _=>false,
     }
+}
+fn owned_layers(target:HWND)->Vec<HWND> {
+    unsafe {
+        let mut layers=Vec::new();let mut current=GetTopWindow(None).unwrap_or_default();
+        for _ in 0..4096 {
+            if current.0.is_null() {break;}
+            if our_layer(current,target) {layers.push(current);}
+            current=GetWindow(current,GW_HWNDNEXT).unwrap_or_default();
+        }
+        layers
+    }
+}
+/// Foreground activation can lift the target above its owned status layers.
+/// Repair immediately on the caller, rather than waiting for the 250ms safety tick.
+pub(crate) fn restore_layer_order(target:HWND) {
+    unsafe {
+        let layers=owned_layers(target);
+        let mask=layers.iter().find(|h|GetWindow(**h,GW_OWNER).unwrap_or_default()==target);
+        if let Some(mask)=mask {
+            if let Some(panel)=layers.iter().find(|h|GetWindow(**h,GW_OWNER).unwrap_or_default()==*mask) {
+                let _=ensure_layer_order(*mask,*panel,target);
+            }
+        }
+    }
+}
+pub(crate) fn capture_exclusion_ready(target:HWND)->bool {
+    owned_layers(target).iter().all(|hwnd|unsafe {
+        let mut affinity=0;GetWindowDisplayAffinity(*hwnd,&mut affinity).is_ok() && affinity==WDA_EXCLUDEFROMCAPTURE.0
+    })
 }
 unsafe fn target_below_layers(mut top:HWND,point:POINT,target:HWND)->bool {
     for _ in 0..4096 {
@@ -456,6 +489,45 @@ mod tests {
     // Native fixtures share desktop Z-order and diagnostic counters.
     static NATIVE_FIXTURE:std::sync::Mutex<()>=std::sync::Mutex::new(());
     #[test]
+    fn visible_overlay_is_omitted_from_compositor_capture_without_hiding() {
+        let _serial=NATIVE_FIXTURE.lock().unwrap_or_else(|error|error.into_inner());
+        unsafe {
+            let foreground=GetForegroundWindow();
+            let owner=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST,w!("STATIC"),w!("Capture exclusion fixture"),
+                WS_POPUP|WINDOW_STYLE(6),40,40,180,160,None,None,None,None).unwrap(); // SS_WHITERECT
+            let mut state=PaintState{phase:"捕获排除测试",scale:1.0,panel:false};
+            let mask=create(owner,&mut state).unwrap();
+            SetWindowPos(mask,Some(HWND_TOPMOST),40,40,180,160,SWP_NOACTIVATE).unwrap();
+            let _=ShowWindow(owner,SW_SHOWNOACTIVATE);let _=ShowWindow(mask,SW_SHOWNOACTIVATE);
+            let _=UpdateWindow(owner);let _=UpdateWindow(mask);
+            let source=GetDC(None);let memory=CreateCompatibleDC(Some(source));
+            let bitmap=CreateCompatibleBitmap(source,1,1);let previous=SelectObject(memory,bitmap.into());
+            let sample=|| {
+                let _=windows::Win32::Graphics::Dwm::DwmFlush();
+                BitBlt(memory,0,0,1,1,Some(source),100,100,SRCCOPY).unwrap();
+                GetPixel(memory,0,0).0
+            };
+            let checked=std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                assert!(capture_exclusion_ready(owner));
+                let excluded=sample();
+                SetWindowDisplayAffinity(mask,WDA_NONE).unwrap();
+                assert!(!capture_exclusion_ready(owner));
+                let included=sample();
+                SetWindowDisplayAffinity(mask,WDA_EXCLUDEFROMCAPTURE).unwrap();
+                let excluded_again=sample();
+                assert_eq!(excluded,0x00ffffff,"capture sees the white target underneath");
+                assert_ne!(included,excluded,"control capture must see the visible dark mask");
+                assert_eq!(excluded_again,excluded);
+                assert!(IsWindowVisible(mask).as_bool(),"capture never hides the overlay");
+                assert_eq!(GetForegroundWindow(),foreground,"fixture does not take focus");
+                println!("capture exclusion: excluded={excluded:x}, included={included:x}, excluded_again={excluded_again:x}");
+            }));
+            SelectObject(memory,previous);let _=DeleteObject(bitmap.into());let _=DeleteDC(memory);ReleaseDC(None,source);
+            DestroyWindow(mask).unwrap();DestroyWindow(owner).unwrap();
+            if let Err(error)=checked {std::panic::resume_unwind(error);}
+        }
+    }
+    #[test]
     fn only_real_login_stages_change_the_message() {
         assert_eq!(phase_text("native_authorizing"),Some("正在等待微信授权"));
         assert_eq!(phase_text("normal_ui_http_verifying"),Some("正在核验登录状态"));
@@ -599,7 +671,7 @@ mod tests {
                 // Reproduce owner promotion after an overlay was already created.
                 SetWindowPos(mask,Some(HWND_NOTOPMOST),0,0,0,0,flags).unwrap();
                 assert!(pin.ensure());SetWindowPos(owner,Some(HWND_TOPMOST),0,0,0,0,flags).unwrap();
-                assert!(ensure_layer_order(mask,panel,owner));assert!(layer_order(mask,panel,owner));
+                restore_layer_order(owner);assert!(layer_order(mask,panel,owner),"activation repairs both layers synchronously");
                 let mut bounds=RECT::default();GetWindowRect(mask,&mut bounds).unwrap();
                 assert_eq!((bounds.left,bounds.top,bounds.right,bounds.bottom),(rect.left,rect.top,rect.right,rect.bottom));
                 let mut client=RECT::default();GetClientRect(mask,&mut client).unwrap();assert_eq!((client.right,client.bottom),(width,height));

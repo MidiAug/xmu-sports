@@ -81,13 +81,13 @@ impl LoginEvidence {
         let filename=format!("login-{:02}.bmp",self.captures);
         let result=(|| {
             // Preserve the visible status throughout capture and page transitions.
-            // Evidence intentionally includes our mask/card instead of flashing them off.
+            // Display affinity omits our mask/card without hiding them on screen.
             unsafe {let _=windows::Win32::Graphics::Dwm::DwmFlush();}
             if !active() {return Err("CANCELLED".into());}
             capture_unique(&self.dir.join("evidence").join(&filename))
         })();
         self.record("window_capture",match result {
-            Ok(quality)=>json!({"reason":reason,"file":format!("evidence/{filename}"),"quality":quality,"overlay_preserved":true}),
+            Ok(quality)=>json!({"reason":reason,"file":format!("evidence/{filename}"),"quality":quality,"overlay_preserved":true,"overlay_excluded":true}),
             Err(code)=>json!({"reason":reason,"capture_error":code}),
         });
     }
@@ -146,6 +146,7 @@ fn capture_client(hwnd:windows::Win32::Foundation::HWND)->Result<Vec<u8>,String>
             let unobscured=||GetForegroundWindow()==hwnd && !IsIconic(hwnd).as_bool() && [1,2,3].iter().all(|x|
                 [1,2,3].iter().all(|y|crate::login_overlay::target_uncovered_at(POINT{x:origin.x+width*x/4,y:origin.y+height*y/4},hwnd)));
             if !unobscured() {return Err("CAPTURE_TARGET_OCCLUDED".into());}
+            if !crate::login_overlay::capture_exclusion_ready(hwnd) {return Err("CAPTURE_OVERLAY_EXCLUSION_UNAVAILABLE".into());}
             // WeChat's accelerated surface can return a uniform bitmap from its
             // window DC. Read only this verified, unobscured client rectangle
             // from the compositor; never allocate/copy a full desktop image.
