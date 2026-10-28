@@ -489,6 +489,7 @@ mod tests {
     // Native fixtures share desktop Z-order and diagnostic counters.
     static NATIVE_FIXTURE:std::sync::Mutex<()>=std::sync::Mutex::new(());
     #[test]
+    #[ignore = "requires an interactive DWM desktop; run explicitly on Windows"]
     fn visible_overlay_is_omitted_from_compositor_capture_without_hiding() {
         let _serial=NATIVE_FIXTURE.lock().unwrap_or_else(|error|error.into_inner());
         unsafe {
