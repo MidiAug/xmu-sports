@@ -5,6 +5,7 @@
 .plans-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 0 12px; border-bottom: 1px solid var(--color-line); }
 .plan-secondary, .plan-title span, .plan-result span, .plan-footnote { color: var(--color-muted); font-size: 12px; line-height: 1.65; margin: 4px 0 0; }
 .plan-list { display: grid; gap: 12px; }
+.plan-list[hidden] { display: none; }
 .plans-page > .msg:empty { display: none; }
 .plan-startup-hint:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--color-muted); font-size: 12px; }
 .plan-fields .shell-select, .plan-fields .shell-select-trigger { width: 100%; min-width: 0; max-width: none; }

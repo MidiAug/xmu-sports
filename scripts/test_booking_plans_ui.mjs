@@ -15,6 +15,7 @@ const rules=[plan(gym,"123e4567-e89b-42d3-a456-426614174000"),plan(other,"123e45
 const gymSlot=gym.venues[0].time_slots.find(s=>s.start==="16:30" && s.end==="18:00");
 if(gymSlot)Object.assign(rules[0],gymSlot);
 const browser=await chromium.launch({headless:true,channel:"msedge"});
+mkdirSync("artifacts/booking-plans",{recursive:true});
 try {
   const context=await browser.newContext({viewport:{width:970,height:815}});
   await context.addInitScript(({rules})=>{
@@ -49,7 +50,27 @@ try {
   assert.match(await page.locator("#plans_health").innerText(),/微信未检测到运行.*会话/);
   assert.match(await page.locator(".plan-card").first().innerText(),/每天/);
   await page.locator("#plans_pause").click();await page.getByText("自动计划已暂停",{exact:true}).waitFor();
+  assert.match(await page.locator('.plan-card').first().innerText(),/恢复后按计划/);
+  await page.locator('#plan_add').click();
+  assert.equal(await page.locator('#plan_editor [type="submit"]').innerText(),'保存计划');
+  assert.match(await page.locator('#plan_editor').innerText(),/保存后仍需点击“恢复计划”/);
+  assert.equal(await page.locator('#plan_list').isVisible(),false);
+  await page.screenshot({path:'artifacts/booking-plans/paused-editor-light.png'});
+  await page.locator('#plans_pause').click();
+  await page.getByText('自动计划已开启',{exact:true}).waitFor();
+  assert.equal(await page.locator('#plan_editor [type="submit"]').innerText(),'保存并启用');
+  assert.equal(await page.locator('#plan_paused_hint').isVisible(),false);
+  assert.equal(await page.locator('#plan_add').isDisabled(),true);
+  await page.locator('#plans_pause').click();
+  await page.getByText('自动计划已暂停',{exact:true}).waitFor();
+  await page.locator('#plan_cancel').click();
   await page.locator("#plans_pause").click();await page.getByText("自动计划已开启",{exact:true}).waitFor();
+  const more=page.locator('.plan-more').first();
+  await more.locator('summary').click();await page.keyboard.press('Escape');
+  assert.equal(await more.getAttribute('open'),null);
+  assert.equal(await more.locator('summary').evaluate(el=>el===document.activeElement),true);
+  await more.locator('summary').click();await page.locator('.page-heading h2').click();
+  assert.equal(await more.getAttribute('open'),null);
   await page.locator("[data-skip]").first().click();
   await page.waitForFunction(()=>window.__calls.some(c=>c.command==="skip_booking_plan"));
   const before=await page.locator(".plan-card").first().getAttribute("data-plan");
@@ -57,6 +78,13 @@ try {
   await page.locator("[data-up]").nth(1).click();
   await page.waitForFunction(id=>document.querySelector(".plan-card").dataset.plan!==id,before);
   assert.equal(await page.locator(".plan-card").first().getAttribute("data-plan"),rules[1].id);
+  await page.locator('.plan-more').first().locator('summary').click();
+  await page.locator('[data-copy]').first().click();
+  assert.equal(await page.locator('#plan_editor h3').innerText(),'复制计划');
+  assert.equal(await page.locator('#plan_editor [type="submit"]').innerText(),'保存为停用计划');
+  assert.match(await page.locator('#plan_editor').innerText(),/副本保存后默认停用/);
+  await page.screenshot({path:'artifacts/booking-plans/copy-editor-light.png'});
+  await page.locator('#plan_cancel').click();
   await page.locator(`[data-edit="${rules[0].id}"]`).click();
   await page.getByRole("button",{name:"周末",exact:true}).click();
   assert.equal(await page.locator('[data-day][aria-pressed="true"]').count(),2);
@@ -69,6 +97,13 @@ try {
   // The same real editor submits the selected weekdays to the host boundary.
   await page.locator(`[data-edit="${rules[0].id}"]`).click();
   await page.getByRole("button",{name:"工作日",exact:true}).click();
+  await page.evaluate(()=>window.__saveError=true);
+  await page.locator('#plan_editor [type="submit"]').click();
+  await page.waitForFunction(()=>document.querySelector('#plan_form_msg').textContent.includes('模拟保存失败'));
+  assert.equal(await page.locator('#plan_add').isDisabled(),true);
+  assert.equal(await page.locator('#plan_list').isVisible(),false);
+  assert.equal(await page.locator('[data-day][aria-pressed="true"]').count(),5);
+  await page.evaluate(()=>window.__saveError=false);
   await page.locator('#plan_editor [type="submit"]').click();
   await page.waitForFunction(()=>window.__plans.rules.some(r=>r.weekdays.length===5));
   await page.locator('#plan_editor').waitFor({state:"hidden"});
@@ -84,6 +119,7 @@ try {
   await page.locator('[data-day="1"]').focus();await page.keyboard.press("Space");
   assert.equal(await page.locator('[data-day="1"]').getAttribute("aria-pressed"),"false");
   await page.screenshot({path:"artifacts/booking-plans/editor-dark-narrow.png"});
+  assert.equal(await page.getByRole('button',{name:'周一',exact:true}).count(),1);
   await page.locator('#plan_cancel').click();
   await page.locator('#plan_add').click();
   await page.locator('#plan_sport .shell-select-trigger').click();
@@ -100,6 +136,14 @@ try {
   await page.waitForFunction(()=>document.querySelector('#plan_form_msg').textContent.includes('已有计划'));
   assert.equal(await page.evaluate(()=>window.__plans.rules.length),3);
   await page.locator('#plan_cancel').click();
+  await page.locator('#plans_pause').click();
+  await page.getByText('自动计划已暂停',{exact:true}).waitFor();
+  await page.locator('.plan-more').first().locator('summary').click();
+  await page.locator('[data-copy]').first().click();
+  await page.locator('#plan_editor [type="submit"]').click();
+  await page.locator('#plan_editor').waitFor({state:'hidden'});
+  assert.equal(await page.evaluate(()=>window.__plans.paused),true);
+  assert.equal(await page.evaluate(()=>window.__plans.rules.at(-1).enabled),false);
   await page.locator('[data-tab="settings"]').click();await page.locator('#startup_enabled:not(:disabled)').waitFor();
   await page.locator('#startup_enabled').check();assert.equal(await page.evaluate(()=>window.__startup.enabled),true);
   await page.locator('#startup_hidden').uncheck();

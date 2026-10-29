@@ -19,6 +19,7 @@ export async function renderBookingPlans(panel: Element) {
   const scope = mountPage(panel);
   let view: View;
   let editing = false, saving = false;
+  let updateEditorStatus: (() => void) | undefined;
   panel.innerHTML = `<div class="page-stack plans-page">
     <div class="page-heading"><div><h2>长期计划</h2><p>设好运动日，前一天 07:00 自动预约</p></div><button type="button" class="btn primary" id="plan_add">新增计划</button></div>
     <div class="plans-summary"><div><strong id="plans_state">正在读取计划</strong><p id="plans_health" class="plan-secondary"></p></div><button type="button" class="btn ghost" id="plans_pause" hidden></button></div>
@@ -34,6 +35,17 @@ export async function renderBookingPlans(panel: Element) {
   const add = panel.querySelector<HTMLButtonElement>("#plan_add")!;
   const pause = panel.querySelector<HTMLButtonElement>("#plans_pause")!;
   const fail = (e: unknown) => { if (scope.current()) { message.textContent = String(e); message.className = "msg err"; } };
+  const closeMore = (event: MouseEvent | KeyboardEvent) => {
+    if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+    list.querySelectorAll<HTMLDetailsElement>(".plan-more[open]").forEach(menu => {
+      if (event instanceof MouseEvent && event.target instanceof Node && menu.contains(event.target)) return;
+      menu.open = false;
+      if (event instanceof KeyboardEvent) menu.querySelector("summary")?.focus();
+    });
+  };
+  document.addEventListener("click", closeMore);
+  document.addEventListener("keydown", closeMore);
+  scope.onDispose(() => { document.removeEventListener("click", closeMore); document.removeEventListener("keydown", closeMore); });
 
   const load = async () => {
     try {
@@ -44,6 +56,7 @@ export async function renderBookingPlans(panel: Element) {
       panel.querySelector("#plans_health")!.textContent = `微信${view.wechat_running ? "正在运行" : "未检测到运行"} · 预约会话将在执行前单独核验`;
       pause.hidden = !view.plans.rules.length;
       pause.textContent = view.plans.paused ? "恢复计划" : "全部暂停";
+      updateEditorStatus?.();
       if (!editing) paintList();
       paintResults();
     } catch (e) { fail(e); }
@@ -58,7 +71,7 @@ export async function renderBookingPlans(panel: Element) {
       message.textContent = "";
       await load();
     } catch (e) { fail(e); throw e; }
-    finally { saving = false; add.disabled = pause.disabled = false; }
+    finally { saving = false; add.disabled = editing; pause.disabled = false; }
   };
 
   const move = async (id: string, to: number) => {
@@ -71,7 +84,7 @@ export async function renderBookingPlans(panel: Element) {
 
   function paintList() {
     if (!view.plans.rules.length) {
-      list.innerHTML = `<div class="empty"><p class="empty-title">把每周运动安排好</p><p class="empty-desc">例如：翔安健身房 16:30–18:00，每天。之后无需每天改日期。</p><button type="button" class="btn ghost" id="plan_example">添加每天的运动</button></div>`;
+      list.innerHTML = `<div class="empty"><p class="empty-title">把每周运动安排好</p><p class="empty-desc">选择运动、场馆和时段，按每天、工作日或指定星期重复预约。</p><button type="button" class="btn ghost" id="plan_example">添加第一条计划</button></div>`;
       list.querySelector<HTMLButtonElement>("#plan_example")!.onclick = () => openEditor();
       return;
     }
@@ -83,7 +96,7 @@ export async function renderBookingPlans(panel: Element) {
         <div class="plan-card-top"><span class="plan-priority" aria-label="优先级 ${index + 1}">${index + 1}</span><div class="plan-title"><strong>${escape(sport?.label ?? r.sport)}</strong><span>${escape(venue?.label ?? r.venue)}</span></div>
         <label class="plan-enable"><input type="checkbox" data-enable="${r.id}" ${r.enabled ? "checked" : ""}><span>启用</span></label></div>
         <div class="plan-schedule"><strong>${r.start}–${r.end}</strong><span>${weekdaysLabel(r.weekdays)}</span></div>
-        <p class="plan-secondary">${next ? `${next.date} 去运动 · ${at(next.fire_at)} 开抢` : "本计划已停用"}</p>
+        <p class="plan-secondary">${next ? `${next.date} 去运动 · ${view.plans.paused ? "恢复后按计划 " : ""}${at(next.fire_at)} 开抢` : "本计划已停用"}</p>
         <div class="plan-actions"><button type="button" class="btn ghost" data-edit="${r.id}">编辑</button><button type="button" class="btn ghost" data-skip="${r.id}" ${!r.enabled ? "disabled" : ""}>跳过下一次</button>
         <details class="plan-more"><summary>更多</summary><div><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-copy="${r.id}">复制</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
@@ -92,7 +105,7 @@ export async function renderBookingPlans(panel: Element) {
       void save(view.plans.rules.map(r => r.id === box.dataset.enable ? { ...r, enabled: box.checked } : r)).catch(() => { box.checked = !box.checked; });
     });
     list.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach(b => b.onclick = () => openEditor(view.plans.rules.find(r => r.id === b.dataset.edit)));
-    list.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach(b => b.onclick = () => openEditor({ ...view.plans.rules.find(r => r.id === b.dataset.copy)!, id: crypto.randomUUID(), enabled: false }));
+    list.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach(b => b.onclick = () => openEditor({ ...view.plans.rules.find(r => r.id === b.dataset.copy)!, id: crypto.randomUUID(), enabled: false }, true));
     list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach(b => b.onclick = async () => {
       if (await askConfirm({ title: "删除这条计划？", lead: "已成功预约的订单会保留，之后不再自动安排。", confirmLabel: "删除计划" })) {
         void save(view.plans.rules.filter(r => r.id !== b.dataset.delete)).catch(() => {});
@@ -129,17 +142,22 @@ export async function renderBookingPlans(panel: Element) {
     });
   }
 
-  function openEditor(existing?: BookingPlan) {
+  function openEditor(existing?: BookingPlan, copying = false) {
     if (saving || !view) return;
-    editing = true; editor.hidden = false; add.disabled = true; list.inert = true;
+    editing = true; editor.hidden = false; add.disabled = true; list.hidden = true;
     const enabledSports = sports.filter(isSportEnabled);
     let sport = enabledSports.find(s => s.id === existing?.sport) ?? enabledSports[0];
     let venue = sport.venues.find(v => v.id === existing?.venue) ?? sport.venues[0];
     let selected = new Set(existing?.weekdays ?? [1, 2, 3, 4, 5, 6, 7]);
     let slot = existing ? `${existing.start}|${existing.end}` : `${venue.time_slots[0].start}|${venue.time_slots[0].end}`;
-    editor.innerHTML = `<form class="plan-editor"><h3>${existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
-      <fieldset><legend>去运动的星期</legend><div class="plan-presets"><button type="button" data-days="1,2,3,4,5,6,7">每天</button><button type="button" data-days="1,2,3,4,5">工作日</button><button type="button" data-days="6,7">周末</button></div><div class="plan-weekdays">${days.map((d, i) => `<button type="button" data-day="${i + 1}" aria-pressed="${selected.has(i + 1)}">${d}</button>`).join("")}</div></fieldset>
-      <p class="plan-preview" id="plan_preview"></p><p class="msg" id="plan_form_msg" role="status"></p><div class="plan-actions"><button type="submit" class="btn primary">${existing ? "保存" : "保存并启用"}</button><button type="button" class="btn ghost" id="plan_cancel">取消</button></div></form>`;
+    editor.innerHTML = `<form class="plan-editor"><h3>${copying ? "复制计划" : existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
+      <fieldset><legend>去运动的星期</legend><div class="plan-presets"><button type="button" data-days="1,2,3,4,5,6,7">每天</button><button type="button" data-days="1,2,3,4,5">工作日</button><button type="button" data-days="6,7">周末</button></div><div class="plan-weekdays">${days.map((d, i) => `<button type="button" data-day="${i + 1}" aria-label="周${d}" aria-pressed="${selected.has(i + 1)}">${d}</button>`).join("")}</div></fieldset>
+      <p class="plan-preview" id="plan_preview"></p>${copying ? `<p class="plan-preview">副本保存后默认停用，请调整星期后再启用。</p>` : ""}<p class="plan-preview" id="plan_paused_hint" hidden>自动计划已暂停，保存后仍需点击“恢复计划”。</p><p class="msg" id="plan_form_msg" role="status"></p><div class="plan-actions"><button type="submit" class="btn primary"></button><button type="button" class="btn ghost" id="plan_cancel">取消</button></div></form>`;
+    updateEditorStatus = () => {
+      editor.querySelector<HTMLElement>("#plan_paused_hint")!.hidden = !view.plans.paused;
+      editor.querySelector<HTMLButtonElement>('[type="submit"]')!.textContent = copying ? "保存为停用计划" : existing || view.plans.paused ? "保存计划" : "保存并启用";
+    };
+    updateEditorStatus();
     const preview = () => {
       editor.querySelectorAll<HTMLButtonElement>("[data-day]").forEach(b => b.setAttribute("aria-pressed", String(selected.has(Number(b.dataset.day)))));
       editor.querySelectorAll<HTMLButtonElement>("[data-days]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.days!.split(",").map(Number).every(d => selected.has(d)) && b.dataset.days!.split(",").length === selected.size)));
@@ -153,7 +171,7 @@ export async function renderBookingPlans(panel: Element) {
     editor.querySelectorAll<HTMLButtonElement>("[data-day]").forEach(b => b.onclick = () => { const day = Number(b.dataset.day); if (selected.has(day)) selected.delete(day); else selected.add(day); preview(); });
     editor.querySelectorAll<HTMLButtonElement>("[data-days]").forEach(b => b.onclick = () => { selected = new Set(b.dataset.days!.split(",").map(Number)); preview(); });
     editor.querySelectorAll<HTMLElement>(".plan-fields > label").forEach(label => label.querySelector(".shell-select-trigger")?.setAttribute("aria-label",label.firstChild?.textContent ?? "选择选项"));
-    const close = () => { editing = false; editor.hidden = true; editor.innerHTML = ""; add.disabled = false; list.inert = false; paintList(); add.focus(); };
+    const close = () => { editing = false; updateEditorStatus = undefined; editor.hidden = true; editor.innerHTML = ""; add.disabled = false; list.hidden = false; paintList(); add.focus(); };
     editor.querySelector<HTMLButtonElement>("#plan_cancel")!.onclick = close;
     editor.querySelector<HTMLFormElement>("form")!.onsubmit = async event => {
       event.preventDefault();
