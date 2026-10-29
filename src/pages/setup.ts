@@ -539,7 +539,7 @@ export async function renderSetup(panel: Element) {
     refreshVenues(v);
     scheduleSave();
     scheduleAvailability();
-  });
+  }, { columns: selectable.length > 4, matchTrigger: selectable.length <= 4 });
   venueSelect.setOptions(venueOptions(defaultSport), defaultVenue.ocr_label);
   slotSelect.setOptions(slotOptions(defaultVenue), defaultSlotKey);
   refreshCourts(defaultVenue);

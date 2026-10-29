@@ -19,7 +19,7 @@ mkdirSync("artifacts/booking-plans",{recursive:true});
 try {
   const context=await browser.newContext({viewport:{width:970,height:815}});
   await context.addInitScript(({rules})=>{
-    localStorage.setItem("xmu.booking.mode","plans");
+    localStorage.setItem("xmu.booking.mode",localStorage.getItem('fixture.favorites') ? 'single' : 'plans');
     localStorage.setItem('xmu-sports.availability.v1',JSON.stringify({version:1,account:'a'.repeat(64),snapshots:[],forced:[],needsLogin:false}));
     window.__calls=[];window.__callbacks={};window.__plans={rules,paused:false,attempts:[]};window.__startup={supported:true,enabled:false,hidden:true};
     window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
@@ -33,7 +33,7 @@ try {
         if(command==="skip_booking_plan")return "2026-10-30";
         if(command==="get_startup")return window.__startup;
         if(command==="set_startup"){window.__startup.enabled=args.enabled;return window.__startup;}
-        if(command==="get_shell_prefs")return {favorite_sport_ids:[],venue_slot_prefs:{},autostart_hidden:true};
+        if(command==="get_shell_prefs")return {favorite_sport_ids:JSON.parse(localStorage.getItem('fixture.favorites') ?? '[]'),venue_slot_prefs:{},autostart_hidden:true};
         if(command==="save_shell_prefs"){if(window.__holdPrefs)await new Promise(resolve=>window.__finishPrefs=resolve);return;}
         if(command==="get_live_status")return {task:null,armed:false,running:false,recent_events:[]};
         if(command==="read_task_raw")return null;
@@ -204,5 +204,23 @@ try {
   const calls=await page.evaluate(()=>window.__calls);
   assert.equal(calls.some(c=>["start_http_run","arm_hang","launch_xmu_miniprogram"].includes(c.command)),false);
   assert.deepEqual(errors,[]);
+  await page.setViewportSize({width:970,height:815});
+  const enabled=sports.filter(s=>s.enabled!==false && s.venues.length);
+  for(const count of [3,4,5,8]) {
+    await page.evaluate(ids=>{localStorage.setItem('fixture.favorites',JSON.stringify(ids));localStorage.setItem('xmu.booking.mode','single');},enabled.slice(0,count).map(s=>s.id));
+    await page.reload();
+    const host=page.locator('#sport_host');
+    await host.locator('.shell-select-trigger').waitFor();
+    await page.clock.runFor(1000);
+    await host.locator('.shell-select-trigger').click();
+    const trigger=await host.locator('.shell-select-trigger').boundingBox();
+    const menu=await host.locator('.shell-select-menu').boundingBox();
+    const columns=await host.locator('.shell-select-menu').evaluate(el=>getComputedStyle(el).getPropertyValue('--select-columns').trim());
+    if(count<=4){assert.ok(Math.abs(menu.width-trigger.width)<=1);assert.equal(columns,'1');}
+    else {assert.ok(menu.width>trigger.width+20);assert.equal(columns,'2');}
+    await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,count<=4?'light':'dark');
+    await page.screenshot({path:`artifacts/booking-plans/sport-menu-${count}.png`});
+    await page.keyboard.press('Escape');
+  }
   console.log("Booking plans UI passed: recurrence editor, weekdays, pause, skip, priority, keyboard, light/dark/narrow, startup IPC; no booking commands");
 } finally {await browser.close();}
