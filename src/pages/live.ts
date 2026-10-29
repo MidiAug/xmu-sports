@@ -222,7 +222,7 @@ function taskBriefHtml(t: BookingTask | null, opts?: { withSetupCta?: boolean })
       : "";
     return `<div class="live-brief empty-brief">
       <p class="live-brief-title">尚未配置任务</p>
-      <p class="live-brief-sub">请在「预约」页选择目标并开始预约，这里显示执行进度</p>
+      <p class="live-brief-sub">在「单次预约」选择目标，或添加长期计划，这里显示执行进度</p>
       ${cta}
     </div>`;
   }
@@ -302,7 +302,7 @@ function paintLiveBody(
   } else {
     mainBlock = `
       <div class="settings-group">
-        <p class="settings-group-title">当前任务</p>
+        <p class="settings-group-title">单次预约草稿</p>
         <div class="settings-group-body well-flush">
           ${taskBriefHtml(t, { withSetupCta: true })}
         </div>
@@ -311,19 +311,27 @@ function paintLiveBody(
 
   patchHtml(panel, `
     <div class="page-stack live-page">
-      <div class="page-heading"><div><h2>运行状态</h2><p>查看执行进度与预约结果</p></div><button type="button" class="btn ghost" data-tab="setup">${busy ? "查看配置" : "修改预约"}</button></div>
+      <div class="page-heading"><div><h2>运行状态</h2><p>当前进度、执行队列与预约结果</p></div><button type="button" class="btn ghost" id="live_configuration" data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看计划" : busy ? "查看配置" : "修改单次预约"}</button></div>
       <section id="live_plan_queue" class="live-plan-queue"></section>
       ${outcomeBlock}
       ${envRowHtml(wxText, wxRunning)}
       ${executionBlock}
       ${!running ? recoveryHtml(ev) : ""}
       <div id="pending_order_checks"></div>
-      ${mainBlock}
+      <div id="live_single_context" ${!busy && (!t || t.plan_id) ? "hidden" : ""}>${mainBlock}</div>
     </div>
     ${stopping ? '<p class="task-busy-note" role="status">正在停止，请等待已发送请求的结果确认。</p>' : ""}
   `);
   const queueHost=panel.querySelector<HTMLElement>("#live_plan_queue");
-  if (queueHost) void mountPlanQueue(queueHost,()=>!opts?.scope || opts.scope.current());
+  if (queueHost) void mountPlanQueue(queueHost,()=>!opts?.scope || opts.scope.current()).then(hasPlans => {
+    if (!queueHost.isConnected || (opts?.scope && !opts.scope.current())) return;
+    const context = panel.querySelector<HTMLElement>("#live_single_context");
+    if (context && !busy && !t) context.hidden = hasPlans;
+    if (hasPlans && !t) {
+      const link = panel.querySelector<HTMLButtonElement>("#live_configuration")!;
+      link.dataset.tab = "plans"; link.textContent = "管理计划";
+    }
+  });
   const pendingHost=panel.querySelector<HTMLElement>("#pending_order_checks");
   if (pendingHost) void mountOrderRecheck(pendingHost,busy,()=>!opts?.scope || opts.scope.current());
   if (stopping) {

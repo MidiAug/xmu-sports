@@ -5,27 +5,22 @@ import { mountPage } from "../lib/page-lifecycle";
 import { mountShellSelect } from "../ui/select";
 import { askConfirm } from "../ui/confirm-ask";
 import { outcomeFromEvent } from "../lib/run-outcome";
-import type { BookingTask } from "../types";
-import { formatMonthDayWeekday } from "../lib/format-human";
+import { formatEventTimeHuman, formatMonthDayWeekday } from "../lib/format-human";
+import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, type BookingPlan, type BookingPlansView } from "../lib/booking-plans";
 
-export type BookingPlan = { id: string; sport: string; venue: string; start: string; end: string; weekdays: number[]; enabled: boolean; account: string; first_date: string };
-type Attempt = { task: BookingTask; sport: string; account: string; status: string; message: string };
-type View = { plans: { rules: BookingPlan[]; paused: boolean; attempts: Attempt[] }; next: { id: string; date: string; fire_at: string }[]; wechat_running: boolean };
-const days = ["一", "二", "三", "四", "五", "六", "日"];
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-export const weekdaysLabel = (values: number[]) => values.length === 7 ? "每天" : "每周" + values.map(d => days[d - 1]).join("、");
-const at = (iso: string) => `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
-
-export async function renderBookingPlans(panel: Element) {
+export async function renderBookingPlans(panel: Element, options?: { focusPlanId?: string }) {
   const scope = mountPage(panel);
-  let view: View;
+  let view: BookingPlansView;
   let editing = false, saving = false;
   let updateEditorStatus: (() => void) | undefined;
   panel.innerHTML = `<div class="page-stack plans-page">
-    <div class="page-heading"><div><h2>长期计划</h2><p>设好运动日，前一天 07:00 自动预约</p></div><button type="button" class="btn primary" id="plan_add">新增计划</button></div>
-    <div class="plans-summary"><div><strong id="plans_state">正在读取计划</strong><p id="plans_health" class="plan-secondary"></p></div><button type="button" class="btn ghost" id="plans_pause" hidden></button></div>
-    <div id="plans_startup" class="plan-startup-hint" hidden><span>开启开机自启，登录电脑后继续执行计划</span><button type="button" class="btn ghost" id="plans_enable_startup">开启自启</button></div>
+    <div class="page-heading"><div><h2>长期计划</h2><p>安排每周运动，前一天 07:00 自动预约</p></div><button type="button" class="btn primary" id="plan_add" disabled>新增计划</button></div>
+    <section id="plan_attention" class="plan-attention" aria-label="需要处理" hidden></section>
+    <section class="plans-summary" aria-label="自动预约状态"><div class="plan-state"><div class="plan-state-heading"><span class="plan-state-dot" aria-hidden="true"></span><strong id="plans_state">正在读取计划</strong><span id="plans_count"></span></div><p id="plans_health" class="plan-secondary"></p></div><div class="plan-next"><span id="plans_next_label">下次开抢</span><strong id="plans_next">正在读取</strong><p id="plans_exercise"></p></div><button type="button" class="btn ghost" id="plans_pause" hidden></button></section>
+    <div id="plans_startup" class="plan-startup-hint" hidden><span>登录电脑后继续自动预约</span><button type="button" class="btn text" id="plans_enable_startup">开启自启</button></div>
     <p class="msg" id="plans_msg" role="status"></p>
+    <button type="button" class="btn ghost" id="plans_retry" hidden>重新读取计划</button>
     <div id="plan_editor" hidden></div><div class="plan-list" id="plan_list"></div>
     <section id="plan_results" aria-label="最近执行"></section>
     <p class="plan-footnote">自动预约需要电脑保持唤醒、联网。关闭到托盘可继续运行；退出或关机期间不执行，重新打开后继续。</p>
@@ -50,17 +45,29 @@ export async function renderBookingPlans(panel: Element) {
 
   const load = async () => {
     try {
-      const next = await invoke<View>("get_booking_plans");
+      const next = await invoke<BookingPlansView>("get_booking_plans");
       if (!scope.current()) return;
       view = next;
+      panel.querySelector<HTMLElement>("#plans_retry")!.hidden = true;
+      if (message.classList.contains("err")) { message.textContent = ""; message.className = "msg"; }
+      const enabled = view.plans.rules.filter(r => r.enabled).length;
+      const pending = view.plans.attempts.filter(a => a.status === "unconfirmed");
+      const round = nextPlanRound(view);
       panel.querySelector("#plans_state")!.textContent = view.plans.paused ? "自动计划已暂停" : view.plans.rules.some(r => r.enabled) ? "自动计划已开启" : "还没有启用的计划";
-      panel.querySelector("#plans_health")!.textContent = `微信${view.wechat_running ? "正在运行" : "未检测到运行"} · 预约会话将在执行前单独核验`;
+      panel.querySelector(".plans-summary")!.setAttribute("data-state", pending.length ? "attention" : view.plans.paused || !enabled ? "paused" : "enabled");
+      panel.querySelector("#plans_count")!.textContent = enabled ? `${enabled} 项启用` : "";
+      panel.querySelector("#plans_health")!.textContent = `微信${view.wechat_running ? "正在运行" : "未检测到运行"}，会话将在执行前核验`;
+      panel.querySelector("#plans_next_label")!.textContent = view.plans.paused ? "恢复后按计划开抢" : round?.items.some(i => i.status === "running") ? "当前轮次" : "下次开抢";
+      panel.querySelector("#plans_next")!.textContent = round ? formatEventTimeHuman(round.fireAt) : "等待启用计划";
+      panel.querySelector("#plans_exercise")!.textContent = round ? `预约 ${formatMonthDayWeekday(round.date)} 的运动` : "添加运动、场馆和时段即可开始";
       pause.hidden = !view.plans.rules.length;
       pause.textContent = view.plans.paused ? "恢复计划" : "全部暂停";
+      pause.disabled = saving || (view.plans.paused && pending.length > 0);
+      add.disabled = editing || saving;
       updateEditorStatus?.();
       if (!editing) paintList();
       paintResults();
-    } catch (e) { fail(e); }
+    } catch (e) { fail(e); if (scope.current()) panel.querySelector<HTMLElement>("#plans_retry")!.hidden = false; }
   };
 
   const save = async (rules: BookingPlan[], paused = view.plans.paused) => {
@@ -72,7 +79,7 @@ export async function renderBookingPlans(panel: Element) {
       message.textContent = "";
       await load();
     } catch (e) { fail(e); throw e; }
-    finally { saving = false; add.disabled = editing; pause.disabled = false; }
+    finally { saving = false; add.disabled = editing; pause.disabled = view.plans.paused && view.plans.attempts.some(a => a.status === "unconfirmed"); }
   };
 
   const move = async (id: string, to: number) => {
@@ -89,17 +96,17 @@ export async function renderBookingPlans(panel: Element) {
       list.querySelector<HTMLButtonElement>("#plan_example")!.onclick = () => openEditor();
       return;
     }
-    list.innerHTML = `<p class="plan-secondary">同轮按列表顺序依次预约，可拖动或使用上下移动按钮调整优先级。</p>` + view.plans.rules.map((r, index) => {
+    list.innerHTML = `<div class="plan-list-heading"><h3>每周安排 <span>${view.plans.rules.length}</span></h3><span>按序预约，可在更多中调整</span></div>` + view.plans.rules.map((r, index) => {
       const sport = sports.find(s => s.id === r.sport)!;
       const venue = sport?.venues.find(v => v.id === r.venue);
       const next = view.next.find(n => n.id === r.id);
-      return `<article class="plan-card" draggable="true" data-plan="${r.id}">
+      return `<article class="plan-card" draggable="true" data-plan="${r.id}" data-enabled="${r.enabled}">
         <div class="plan-card-top"><span class="plan-priority" aria-label="优先级 ${index + 1}">${index + 1}</span><div class="plan-title"><strong>${escape(sport?.label ?? r.sport)}</strong><span>${escape(venue?.label ?? r.venue)}</span></div>
-        <label class="plan-enable"><input type="checkbox" data-enable="${r.id}" ${r.enabled ? "checked" : ""}><span>启用</span></label></div>
+        <label class="switch plan-enable"><input type="checkbox" aria-label="启用${escape(sport?.label ?? r.sport)}计划" data-enable="${r.id}" ${r.enabled ? "checked" : ""}></label></div>
         <div class="plan-schedule"><strong>${r.start}–${r.end}</strong><span>${weekdaysLabel(r.weekdays)}</span></div>
-        <p class="plan-secondary">${next ? `${next.date} 去运动 · ${view.plans.paused ? "恢复后按计划 " : ""}${at(next.fire_at)} 开抢` : "本计划已停用"}</p>
-        <div class="plan-actions"><button type="button" class="btn ghost" data-edit="${r.id}">编辑</button><button type="button" class="btn ghost" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button>
-        <details class="plan-more"><summary>更多</summary><div><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-copy="${r.id}">复制</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
+        <div class="plan-dates">${next ? `<span>下次运动 <strong>${formatMonthDayWeekday(next.date)}</strong></span><span>${view.plans.paused ? "恢复后按计划 " : ""}${escape(formatEventTimeHuman(next.fire_at))} 开抢</span>` : `<span>本计划已停用</span>`}</div>
+        <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}">编辑计划</button>
+        <details class="plan-more"><summary>更多</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-copy="${r.id}">复制</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
     }).join("");
     list.querySelectorAll<HTMLInputElement>("[data-enable]").forEach(box => box.onchange = () => {
@@ -129,11 +136,15 @@ export async function renderBookingPlans(panel: Element) {
   }
 
   function paintResults() {
-    const attempts = [...view.plans.attempts.filter(a=>a.status==="unconfirmed"), ...view.plans.attempts.filter(a=>a.status!=="unconfirmed").slice(-12).reverse()];
+    const pending = view.plans.attempts.filter(a => a.status === "unconfirmed");
+    const attention = panel.querySelector<HTMLElement>("#plan_attention")!;
+    attention.hidden = !pending.length;
+    attention.innerHTML = pending.length ? `<div class="plan-attention-heading"><h3>${pending.length} 项预约结果待确认</h3><span>需要处理</span></div><p>请先在我的预约或小程序核对结果，再恢复自动计划。</p>` + pending.map(a => `<div class="plan-attention-item"><div><strong>${escape(a.task.sport)} ${formatMonthDayWeekday(a.task.target_date)}</strong><p>${escape(a.message)}</p></div><button type="button" class="btn" data-resolve="${a.task.task_id}">已核对并跳过</button></div>`).join("") : "";
+    const attempts = view.plans.attempts.filter(a => !["unconfirmed", "queued", "running"].includes(a.status)).slice(-5).reverse();
     const labels: Record<string, string> = { queued: "等待执行", missed: "已错过", running: "准备 / 执行中", succeeded: "已约到", existing: "已有预约", failed: "未约到", skipped: "已跳过", cancelled: "已停止", unconfirmed: "待确认" };
     panel.querySelector("#plan_results")!.innerHTML = attempts.length ? `<h3>最近执行</h3><div class="plan-results">` + attempts.map(a => {
       const detail = a.status === "failed" ? outcomeFromEvent({ ts: "", task_id: a.task.task_id, action: "fail", result: a.message })?.title ?? "请查看运行记录" : a.status === "succeeded" ? "" : a.message;
-      return `<div class="plan-result"><div><strong>${escape(a.task.sport)} · ${a.task.target_date}</strong><span>${escape(detail)}</span></div><span class="plan-result-status" data-status="${a.status}">${labels[a.status] ?? "待处理"}</span>${a.status === "unconfirmed" ? `<button type="button" class="btn ghost" data-resolve="${a.task.task_id}">已核对并跳过</button>` : ""}</div>`;
+      return `<div class="plan-result"><div><strong>${escape(a.task.sport)} ${formatMonthDayWeekday(a.task.target_date)}</strong><span>${escape(detail)}</span></div><span class="plan-result-status" data-status="${a.status}">${labels[a.status] ?? "待处理"}</span></div>`;
     }).join("") + `</div>` : "";
     panel.querySelectorAll<HTMLButtonElement>("[data-resolve]").forEach(button => button.onclick = async () => {
       if (await askConfirm({title:"已在我的预约或小程序核对结果？",lead:"该项会保留为已跳过，不会标记为预约成功，也不会自动再次下单。",confirmLabel:"已核对，跳过本项"})) {
@@ -199,8 +210,14 @@ export async function renderBookingPlans(panel: Element) {
   }
 
   add.onclick = () => openEditor();
+  panel.querySelector<HTMLButtonElement>("#plans_retry")!.onclick = () => { void load(); };
   pause.onclick = () => { void save(view.plans.rules, !view.plans.paused).catch(() => {}); };
   await load();
+  if (scope.current() && options?.focusPlanId) {
+    const target = [...list.querySelectorAll<HTMLElement>("[data-plan]")].find(card => card.dataset.plan === options.focusPlanId);
+    target?.scrollIntoView({ block: "nearest" });
+    target?.querySelector<HTMLButtonElement>("[data-edit]")?.focus();
+  }
   try {
     const startup=await invoke<{supported:boolean;enabled:boolean}>("get_startup");
     if(scope.current() && startup.supported && !startup.enabled) {

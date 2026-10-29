@@ -11,7 +11,7 @@ import { showUpdateExit } from "./ui/update-exit";
 import { showCloseAsk } from "./ui/close-ask";
 import { preloadHistory } from "./pages/history";
 import { renderLive } from "./pages/live";
-import { renderBooking as renderSetup } from "./pages/booking";
+import { renderSetup } from "./pages/setup";
 import { askConfirm } from "./ui/confirm-ask";
 import { closeShellSelects } from "./ui/select";
 import { getVersion } from "@tauri-apps/api/app";

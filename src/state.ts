@@ -3,6 +3,7 @@ import type { LiveStatus, ShellThemePref, Tab, WechatProbe } from "./types";
 export const app = document.querySelector("#app")!;
 
 export let tab: Tab = "setup";
+try { if (localStorage.getItem("xmu.booking.mode") === "plans") tab = "plans"; } catch { /* Use single booking. */ }
 export let maximized = false;
 /** 启动时由 `applyTheme(readThemePref())` 写入 */
 export let themePref: ShellThemePref = "system";
@@ -21,6 +22,9 @@ export function subscribeLiveStatus(listener: (status: LiveStatus) => void) {
 
 export function setTab(next: Tab) {
   tab = next;
+  if (next === "setup" || next === "plans") {
+    try { localStorage.setItem("xmu.booking.mode", next === "plans" ? "plans" : "single"); } catch { /* Keep session navigation. */ }
+  }
 }
 
 export function setMaximized(v: boolean) {

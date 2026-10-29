@@ -16,7 +16,8 @@ import {
 } from "../lib/calibrate-target-date";
 import { log } from "../lib/log";
 import { SVG, winButtonsHtml } from "./icons";
-import { renderBooking as renderSetup } from "../pages/booking";
+import { renderSetup } from "../pages/setup";
+import { renderBookingPlans } from "../pages/booking-plans";
 import { renderLive } from "../pages/live";
 import { renderHistory } from "../pages/history";
 import { renderSettings } from "../pages/settings";
@@ -64,9 +65,8 @@ function bindChromeOnce() {
     const tabBtn = t?.closest?.("[data-tab]") as HTMLButtonElement | null;
     if (tabBtn?.dataset.tab) {
       const next = tabBtn.dataset.tab as Tab;
-      if (next === tab) return;
-      setTab(next);
-      void showTab(next);
+      if (next === tab && !tabBtn.dataset.planId) return;
+      void showTab(next, false, tabBtn.dataset.planId);
       return;
     }
     const themeBtn = t?.closest?.("[data-theme]") as HTMLButtonElement | null;
@@ -97,9 +97,11 @@ function bindChromeOnce() {
 }
 
 function updateNavActive() {
-  app.querySelectorAll("[data-tab]").forEach((btn) => {
+  app.querySelectorAll(".nav-tabs [data-tab]").forEach((btn) => {
     const id = (btn as HTMLButtonElement).dataset.tab;
     btn.classList.toggle("active", id === tab);
+    if (id === tab) btn.setAttribute("aria-current", "page");
+    else btn.removeAttribute("aria-current");
     if (id === "live") btn.classList.toggle("has-run-dot", runIndicatorOn);
   });
 }
@@ -124,7 +126,8 @@ async function fillNavFoot() {
 }
 
 export function openAppUpdates() {void showTab("settings",true);}
-async function showTab(next: Tab, about = false) {
+async function showTab(next: Tab, about = false, planId?: string) {
+  setTab(next);
   const request = ++navigation;
   log.debug("chrome", "show_tab", { tab: next });
   const end = log.time("chrome", "show_tab_done", { tab: next });
@@ -139,6 +142,7 @@ async function showTab(next: Tab, about = false) {
     await flushTask();
     if (request !== navigation || next !== tab) return;
     if (next === "setup") await renderSetup(panel);
+    else if (next === "plans") await renderBookingPlans(panel, { focusPlanId: planId });
     else if (next === "live") await renderLive(panel);
     else if (next === "history") await renderHistory(panel);
     else if (about) await renderAbout(panel, () => { void showTab("settings"); });
@@ -170,15 +174,16 @@ function mountShell() {
             </div>
             <div class="nav-win titlebar-right">${wins}</div>
           </div>
-          <nav class="nav-tabs" aria-label="主导航">
-            <button type="button" data-tab="setup" class="${tab === "setup" ? "active" : ""}">${SVG.tabSetup}<span class="nav-tab-label">预约</span></button>
+          <nav class="nav-tabs nav-primary" aria-label="主导航">
+            <button type="button" data-tab="setup" class="${tab === "setup" ? "active" : ""}">${SVG.tabSetup}<span class="nav-tab-label">单次预约</span></button>
+            <button type="button" data-tab="plans" class="${tab === "plans" ? "active" : ""}">${SVG.tabGlance}<span class="nav-tab-label">长期计划</span></button>
             <button type="button" data-tab="live" class="${tab === "live" ? "active" : ""}${
               runIndicatorOn ? " has-run-dot" : ""
             }">${SVG.tabLive}<span class="nav-tab-label">运行</span></button>
             <button type="button" data-tab="history" class="${tab === "history" ? "active" : ""}">${SVG.tabHistory}<span class="nav-tab-label">历史</span></button>
-            <button type="button" data-tab="settings" class="${tab === "settings" ? "active" : ""}">${SVG.tabSettings}<span class="nav-tab-label">设置</span></button>
           </nav>
           <section class="my-orders" id="my_orders" aria-label="未核销预约"></section>
+          <nav class="nav-tabs nav-utility" aria-label="应用"><button type="button" data-tab="settings" class="${tab === "settings" ? "active" : ""}">${SVG.tabSettings}<span class="nav-tab-label">设置</span></button></nav>
           <div class="nav-foot" id="nav_foot" hidden><span class="nav-version"></span></div>
         </aside>
         <div class="shell-main">
@@ -195,6 +200,7 @@ function mountShell() {
   `;
   chromeBound = false;
   bindChromeOnce();
+  updateNavActive();
   void fillNavFoot();
   mountVersionUpdate(app.querySelector("#nav_foot")!, () => {
     setTab("settings");

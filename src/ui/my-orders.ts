@@ -58,6 +58,7 @@ export function mountMyOrders(host:HTMLElement) {
   let rows:Order[] = [], account = "", lastSuccess = 0, lastAttempt = -Infinity;
   let loading = false, recovering = false, confirming = false, cancelling = false, loginRequired = false, known = false, busy = true, message = "";
   let queued = false;
+  let expanded = false;
   let changedAt = 0, dirty = false, failures = 0, retryAt = 0;
   const label = (row:Order) => `${row.venue}${row.court ? `、${row.court}` : ""}，${row.date} ${row.start}–${row.end}`;
   let paintedPolicy="";
@@ -71,9 +72,16 @@ export function mountMyOrders(host:HTMLElement) {
       : "";
     const refreshLabel = recovering ? "正在重新登录" : loading ? "正在更新预约" : loginRequired ? "重新登录并刷新预约" : "刷新我的预约";
     const liveStatus = recovering ? "正在恢复微信登录" : loading ? "正在更新预约" : visibleStatus || "预约列表已更新";
-    host.innerHTML = `<div class="my-orders-head"><h2>我的预约${rows.length ? `<span>${rows.length}</span>` : ""}</h2><button type="button" class="order-icon ${loading || recovering ? "is-loading" : ""}" data-orders-refresh aria-label="${refreshLabel}" aria-busy="${loading || recovering}" ${disabled ? "disabled" : ""}>${refreshIcon}</button></div>
-      ${visibleStatus ? `<p class="my-orders-status" role="status">${escape(visibleStatus)}</p>` : `<span class="sr-only" role="status" aria-live="polite">${escape(liveStatus)}</span>`}
-      <div class="my-orders-list">${rows.map((row,index) => {const place=orderPlace(row);const cancellable=orderCanCancel(row);const cancelReason=!cancellable ? (Date.parse(`${row.date}T${row.start}:00+08:00`)-Date.now()<=3600000 ? "开始前1小时内不可取消" : "此预约暂不可取消") : "";return `<article class="my-order"><div class="my-order-head"><span class="my-order-name">${escape(place.name)}</span><button type="button" class="order-cancel" data-order-cancel="${index}" aria-label="${escape(`取消预约：${label(row)}`)}" ${disabled || loginRequired || !cancellable ? "disabled" : ""}>${cancelIcon}</button></div><p class="my-order-time"><span class="my-order-day">${escape(orderDay(row.date))}</span><strong>${escape(row.start)}–${escape(row.end)}</strong></p>${place.court ? `<p class="my-order-court">${escape(place.court)}</p>` : ""}${cancelReason ? `<p class="my-order-cancel-reason">${cancelReason}</p>` : ""}</article>`;}).join("")}</div>`;
+    host.classList.toggle("is-expanded", expanded);
+    host.innerHTML = `<div class="my-orders-head"><h2>我的预约${rows.length ? `<span>${rows.length}</span>` : ""}</h2><button type="button" class="my-orders-toggle" aria-expanded="${expanded}" aria-controls="my_orders_body">我的预约${rows.length ? ` ${rows.length}` : ""}<span>${expanded ? "收起" : "展开"}</span></button><button type="button" class="order-icon ${loading || recovering ? "is-loading" : ""}" data-orders-refresh aria-label="${refreshLabel}" aria-busy="${loading || recovering}" ${disabled ? "disabled" : ""}>${refreshIcon}</button></div>
+      <div class="my-orders-body" id="my_orders_body">${visibleStatus ? `<p class="my-orders-status" role="status">${escape(visibleStatus)}</p>` : `<span class="sr-only" role="status" aria-live="polite">${escape(liveStatus)}</span>`}
+      <div class="my-orders-list">${rows.map((row,index) => {const place=orderPlace(row);const cancellable=orderCanCancel(row);const cancelReason=!cancellable ? (Date.parse(`${row.date}T${row.start}:00+08:00`)-Date.now()<=3600000 ? "开始前1小时内不可取消" : "此预约暂不可取消") : "";return `<article class="my-order"><div class="my-order-head"><span class="my-order-name">${escape(place.name)}</span><button type="button" class="order-cancel" data-order-cancel="${index}" aria-label="${escape(`取消预约：${label(row)}`)}" ${disabled || loginRequired || !cancellable ? "disabled" : ""}>${cancelIcon}</button></div><p class="my-order-time"><span class="my-order-day">${escape(orderDay(row.date))}</span><strong>${escape(row.start)}–${escape(row.end)}</strong></p>${place.court ? `<p class="my-order-court">${escape(place.court)}</p>` : ""}${cancelReason ? `<p class="my-order-cancel-reason">${cancelReason}</p>` : ""}</article>`;}).join("")}</div></div>`;
+    host.querySelector<HTMLButtonElement>(".my-orders-toggle")!.onclick = event => {
+      expanded = !expanded; host.classList.toggle("is-expanded", expanded);
+      const button = event.currentTarget as HTMLButtonElement;
+      button.setAttribute("aria-expanded", String(expanded));
+      button.querySelector("span")!.textContent = expanded ? "收起" : "展开";
+    };
     host.querySelector<HTMLButtonElement>("[data-orders-refresh]")!.onclick = () => void refresh(true);
     host.querySelectorAll<HTMLButtonElement>("[data-order-cancel]").forEach(button => {
       button.onclick = () => void cancelRow(rows[Number(button.dataset.orderCancel)]);

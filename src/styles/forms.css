@@ -3,8 +3,8 @@
 [hidden] { display: none !important; }
 
 button:focus-visible, input:focus-visible, summary:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 3px;
+  outline: 1px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .settings-group {
@@ -420,6 +420,9 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
 .switch input {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
   opacity: 0;
   margin: 0;
   cursor: pointer;
@@ -427,6 +430,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
 
 .switch::after {
   content: "";
+  pointer-events: none;
   position: absolute;
   top: 2px;
   left: 2px;
@@ -455,6 +459,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
 .switch:has(input:disabled) input {
   cursor: default;
 }
+
+.switch:has(input:focus-visible) { outline: 1px solid var(--color-accent); outline-offset: 2px; }
 
 .seg-shell {
   display: inline-flex;
@@ -546,20 +552,20 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  height: 36px;
+  height: var(--control-h);
   padding: 0 14px;
   border: 1px solid var(--color-line-strong);
   background: var(--color-btn-fill);
   color: var(--color-ink);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 22px;
   cursor: pointer;
-  border-radius: 18px;
-  transition: background 0.12s ease;
+  border-radius: var(--radius-control);
+  transition: background 0.14s ease, border-color 0.14s ease;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   background: var(--color-btn-fill-hover);
 }
 
@@ -567,28 +573,23 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
   background: transparent;
 }
 
-.btn.ghost:hover {
+.btn.ghost:hover:not(:disabled) {
   background: var(--color-nav-hover);
 }
 
 .btn.primary {
-  border-color: rgba(103, 158, 254, 0.45);
-  background: rgba(103, 158, 254, 0.22);
-  color: var(--color-ink);
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-ink);
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: rgba(103, 158, 254, 0.32);
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
-:root[data-shell-theme="light"] .btn.primary {
-  border-color: rgba(59, 130, 246, 0.45);
-  background: rgba(59, 130, 246, 0.14);
-}
-
-:root[data-shell-theme="light"] .btn.primary:hover:not(:disabled) {
-  background: rgba(59, 130, 246, 0.22);
-}
+.btn.text { border-color: transparent; background: transparent; color: var(--color-accent); padding: 0 8px; }
+.btn.text:hover:not(:disabled) { background: var(--color-nav-hover); }
 
 .msg {
   min-height: 1.2em;

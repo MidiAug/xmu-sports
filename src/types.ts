@@ -1,4 +1,4 @@
-export type Tab = "setup" | "live" | "history" | "settings";
+export type Tab = "setup" | "plans" | "live" | "history" | "settings";
 export type FallbackOrder = "up_then_down" | "down_then_up";
 export type ShellThemePref = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";

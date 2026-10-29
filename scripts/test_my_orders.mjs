@@ -89,6 +89,12 @@ try {
  await page.screenshot({path:"artifacts/sidebar-orders/dark.png"});
  for(const size of [{width:970,height:480},{width:480,height:720}]) {
   await page.setViewportSize(size);
+  if(size.width<=720) {
+   assert.equal(await page.locator('.my-orders-toggle').getAttribute('aria-expanded'),'false');
+   assert.equal(await page.locator('.my-orders-body').isVisible(),false);
+   await page.locator('.my-orders-toggle').click();
+   assert.equal(await page.locator('.my-orders-body').isVisible(),true);
+  }
   for(const button of await page.locator(".order-cancel").all()) {
    await button.scrollIntoViewIfNeeded();
    const bounds=await button.boundingBox();

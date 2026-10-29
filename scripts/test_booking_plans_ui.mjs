@@ -75,6 +75,7 @@ try {
   assert.equal(await more.locator('summary').evaluate(el=>el===document.activeElement),true);
   await more.locator('summary').click();await page.locator('.page-heading h2').click();
   assert.equal(await more.getAttribute('open'),null);
+  await more.locator('summary').click();
   await page.locator("[data-skip]").first().click();
   await page.waitForFunction(()=>window.__calls.some(c=>c.command==="skip_booking_plan"));
   await page.getByText('已跳过 10月30日(周五) 的运动预约',{exact:true}).waitFor();
@@ -154,7 +155,7 @@ try {
   await page.getByText('自动计划已开启',{exact:true}).waitFor();
   const weekendId=await page.evaluate(id=>window.__plans.rules.find(r=>r.sport===id && r.weekdays.length===2).id,gym.id);
   await page.locator(`[data-enable="${weekendId}"]`).uncheck();
-  await page.getByRole('tab',{name:'单次预约',exact:true}).click();
+  await page.getByRole('button',{name:'单次预约',exact:true}).click();
   await page.locator('#sport_host .shell-select-trigger').waitFor();
   await page.locator('[data-date="2026-10-30"]').click();
   await page.clock.runFor(1000);

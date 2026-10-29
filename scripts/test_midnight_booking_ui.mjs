@@ -120,7 +120,7 @@ try {
   await page.evaluate(()=>document.documentElement.dataset.shellTheme='light');
   await showLive({});
   assert.equal(await page.locator('#arm_hang,#trial_run,#http_prepare').count(),0);
-  await page.getByRole('button',{name:'修改预约',exact:true}).waitFor();
+  await page.getByRole('button',{name:'修改单次预约',exact:true}).waitFor();
   await page.screenshot({path:`${output}/live-idle.png`});
   await showLive({armed:true,fire_at:'2026-10-28T07:00:00+08:00'});
   await page.locator('#live_remain').waitFor();

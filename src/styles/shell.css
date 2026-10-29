@@ -85,7 +85,7 @@ h1, h2, h3, button, summary, .nav-foot, .page-heading { user-select: none; }
   gap: 4px;
   padding: 8px 12px 16px;
   border-right: 1px solid var(--color-line);
-  background: var(--color-canvas);
+  background: var(--color-nav-canvas);
   min-height: 0;
 }
 
@@ -180,7 +180,7 @@ h1, h2, h3, button, summary, .nav-foot, .page-heading { user-select: none; }
   color: var(--color-muted);
   text-align: left;
   padding: 9px 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   font: inherit;
   font-size: 13px;
   line-height: 20px;
@@ -209,7 +209,7 @@ h1, h2, h3, button, summary, .nav-foot, .page-heading { user-select: none; }
 
 .nav-tabs > button.active {
   background: var(--color-nav-active);
-  color: var(--color-ink);
+  color: var(--color-accent);
   font-weight: 500;
 }
 
@@ -297,6 +297,10 @@ h1, h2, h3, button, summary, .nav-foot, .page-heading { user-select: none; }
 
 /* Current reservations stay above the version, independently of page navigation. */
 .my-orders { margin-top: auto; min-height: 0; display: flex; flex-direction: column; padding: 10px 0 2px; }
+.nav-utility { margin-top: 12px; }
+.nav-utility + .nav-foot { margin-top: 4px; flex: none; }
+.my-orders-toggle { display: none; }
+.my-orders-body { min-height: 0; }
 .my-orders-head { display: flex; align-items: center; justify-content: space-between; padding: 0 3px 0 5px; gap: 6px; margin-bottom: 6px; }
 .my-orders-head h2 { margin: 0; font-size: 12px; line-height: 24px; font-weight: 600; }
 .my-orders-head h2 span { margin-left: 6px; color: var(--color-muted); font-size: 10px; font-weight: 400; }

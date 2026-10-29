@@ -1,7 +1,7 @@
 import { createAvailabilityStore, availabilitySessionCache } from "../lib/availability-store";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { hasBookingPlan, type PlanHints } from "../lib/booking-plan-hints";
+import { hasBookingPlan, bookingPlanConflict, type PlanHints } from "../lib/booking-plan-hints";
 import type { BookingTask, FallbackOrder, SelectOption, ShellPrefs, Sport, Venue } from "../types";
 import {
   favoriteSports,
@@ -118,7 +118,7 @@ export async function renderSetup(panel: Element) {
 
   panel.innerHTML = `
     <div class="page-stack setup-page">
-      <div class="page-heading"><div><h2>预约场馆</h2><p>选好运动时间，立即预约或安排定时执行</p></div></div>
+      <div class="page-heading"><div><h2>单次预约</h2><p>选择运动时间，立即预约或定时执行</p></div></div>
       <div class="task-busy-note" id="task_busy_note" ${busy ? "" : "hidden"}>当前任务已锁定，结束后可修改。<button type="button" class="btn ghost" data-tab="live">查看运行</button></div>
       <fieldset class="task-fields" id="task_fields" ${busy ? "disabled" : ""}>
       <section class="booking-form-card">
@@ -211,7 +211,7 @@ export async function renderSetup(panel: Element) {
       </details>
       </fieldset>
       <p class="msg" id="setup_msg"></p>
-      <div class="task-action-bar"><div class="task-action-copy"><span class="task-summary-label">本次预约</span><strong id="task_summary"></strong><p id="task_execution"></p><p id="task_action_reason" role="status"></p></div><div class="task-actions"><button type="button" class="btn ghost" id="setup_check">检查登录</button><button type="button" class="btn ghost" id="setup_now">立即预约</button><button type="button" class="btn primary" id="setup_primary">定时预约</button></div></div>
+      <div class="task-action-bar"><div class="task-action-copy"><span class="task-summary-label">本次预约</span><strong id="task_summary"></strong><p id="task_execution"></p><p id="task_action_reason" role="status"></p><button type="button" class="btn text" id="task_plan_link" data-tab="plans" hidden>查看对应计划</button></div><div class="task-actions"><button type="button" class="btn ghost" id="setup_check">检查登录</button><button type="button" class="btn ghost" id="setup_now">立即预约</button><button type="button" class="btn primary" id="setup_primary">定时预约</button></div></div>
     </div>
   `;
 
@@ -655,6 +655,11 @@ export async function renderSetup(panel: Element) {
   }
 
   function updateSummary() {
+    const conflict = bookingPlanConflict(planHints, findSport(sportSelect.getValue())?.id ?? "", targetDate, availabilitySessionCache.account);
+    const planLink = panel.querySelector<HTMLButtonElement>("#task_plan_link")!;
+    planLink.hidden = !conflict;
+    if (conflict?.ruleId) planLink.dataset.planId = conflict.ruleId;
+    else delete planLink.dataset.planId;
     syncDateOptions();
     const valid = validInputs();
     if (!valid) {
