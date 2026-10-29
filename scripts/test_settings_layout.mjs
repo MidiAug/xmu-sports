@@ -1,50 +1,29 @@
-// Actual settings UI and preference store, isolated from Tauri and user data.
+// Full settings page with an offline Tauri boundary; no copied component implementation.
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
-import ts from 'typescript';
-const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE, '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
-const output = resolve('artifacts/settings-layout-test');
-mkdirSync(output, { recursive: true });
-const module = source => `data:text/javascript;base64,${Buffer.from(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText).toString('base64')}`;
-const source = file => readFileSync(file, 'utf8').replace(/^import[\s\S]*?from ["'][^"']+["'];\r?\n/gm, '');
-const icons = module(source('src/ui/icons.ts'));
-const select = module(`import {SVG} from ${JSON.stringify(icons)};\n` + source('src/ui/select.ts'));
-const catalog = module(`const catalog=${readFileSync('src/catalog/venues.json', 'utf8')};\n` + source('src/lib/catalog.ts'));
-const prefs = module('const invoke=(...args)=>window.mockInvoke(...args);\n' + source('src/lib/prefs-store.ts'));
-const dependencies = [
-  ['closeModeFromPrefs,withCloseMode', module(source('src/lib/close-prefs.ts'))],
-  ['isSportEnabled,resolveFavoriteSportIds,sports', catalog],
-  ['SVG', icons], ['mountShellSelect', select], ['updatePrefs', prefs],
-  ['mountPage', module(source('src/lib/page-lifecycle.ts'))], ['setMsg', module(source('src/lib/msg.ts'))],
-].map(([names, url]) => `import {${names}} from ${JSON.stringify(url)};`).join('\n');
-const settings = module(dependencies + '\n' + source('src/pages/settings.ts') + `
-const invoke=(...args)=>window.mockInvoke(...args),getVersion=async()=>"0.1.29";
-const log={debug(){},info(){},warn(){}};const currentThemePref=()=>document.documentElement.dataset.shellTheme;
-const applyTheme=value=>document.documentElement.dataset.shellTheme=value;const renderAbout=async()=>{};`);
-const css = readFileSync(join('dist/assets', readdirSync('dist/assets').find(name => name.endsWith('.css'))), 'utf8');
-const fixture = join(output, 'fixture.html');
-writeFileSync(fixture, `<!doctype html><html data-shell-theme="light"><meta charset="utf-8"><style>${css}</style>
-<div id="app"><div class="shell"><div class="shell-row"><aside class="nav"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button>运行</button><button>历史</button><button class="active">设置</button></nav><div class="nav-foot">v0.1.29</div></aside><div class="shell-main"><div class="titlebar"></div><main class="main"><div class="content" id="panel"></div></main></div></div></div></div>
-<script>window.prefs={favorite_sport_ids:['pingpong','badminton','swimming','gym'],close_to_tray:true,close_pref_set:true,venue_slot_prefs:{}};
-window.mockInvoke=async(command,args)=>{if(command==='get_shell_prefs')return structuredClone(window.prefs);if(command==='save_shell_prefs'){if(window.failSave)throw Error('模拟保存失败');window.prefs=args.prefs;return;}throw Error(command);};</script>
-<script type="module">import {renderSettings} from ${JSON.stringify(settings)};await renderSettings(document.querySelector('#panel'));window.ready=true;</script>`);
-const browser = await chromium.launch({ headless: true, channel: 'msedge' });
+import {mkdirSync} from 'node:fs';
+import {join} from 'node:path';
+import {launchBrowser} from './lib/browser.mjs';
+import {installShellFixture} from './fixtures/tauri-shell.js';
+import {shellData} from './fixtures/shell-data.mjs';
+const base=process.env.XMU_TEST_BASE_URL;
+assert.ok(base,'Set XMU_TEST_BASE_URL to an isolated running Vite fixture server');
+const output='artifacts/settings-layout-test';mkdirSync(output,{recursive:true});
+const browser=await launchBrowser();
 try {
-  const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
-  page.setDefaultTimeout(10000);
-  page.on('pageerror', error => console.error(error.message));
-  await page.goto(pathToFileURL(fixture).href);
-  await page.waitForFunction(() => window.ready, null, { timeout: 10000 });
+  const context=await browser.newContext({viewport:{width:960,height:720}});
+  await context.addInitScript(installShellFixture,shellData());
+  const page=await context.newPage(),errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  await page.clock.install({time:new Date('2026-10-30T12:00:00+08:00')});
+  await page.goto(base);
+  await page.getByRole('button',{name:'设置',exact:true}).click();
+  await page.locator('.settings-page').waitFor();
   const card = page.locator('.settings-favorites');
   const toggle = page.locator('.favorite-edit');
   assert.equal(await page.locator('#favorite_sports_body').isVisible(), false);
   assert.ok((await card.boundingBox()).height < 100);
   assert.equal(await page.locator('.preference-card').first().locator('h3').innerText(), '外观与窗口');
-  assert.equal(await page.locator('h2').evaluate(el => getComputedStyle(el).userSelect), 'none');
+  assert.equal(await page.locator('.settings-page h2').evaluate(el => getComputedStyle(el).userSelect), 'none');
   assert.notEqual(await page.locator('#settings_msg').evaluate(el => getComputedStyle(el).userSelect), 'none');
   await page.screenshot({ path: join(output, 'collapsed-light.png') });
   await toggle.click();
@@ -82,5 +61,6 @@ try {
     assert.ok(rect.x >= box.x && rect.x + rect.width <= box.x + box.width + 1);
   }
   await page.screenshot({ path: join(output, 'expanded-narrow.png') });
+  assert.deepEqual(errors,[]);
   console.log('Settings browser checks passed: collapsed height, order, selection policy, editing, save/rollback, minimum one, keyboard and narrow layout');
 } finally { await browser.close(); }

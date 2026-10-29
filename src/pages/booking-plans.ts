@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { sports, isSportEnabled } from "../lib/catalog";
 import { mountPage } from "../lib/page-lifecycle";
 import { mountShellSelect } from "../ui/select";
@@ -7,6 +6,7 @@ import { askConfirm } from "../ui/confirm-ask";
 import { outcomeFromEvent } from "../lib/run-outcome";
 import { formatEventTimeHuman, formatMonthDayWeekday } from "../lib/format-human";
 import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, type BookingPlan, type BookingPlansView } from "../lib/booking-plans";
+import { bookingPlans } from "../lib/booking-plans-store";
 
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export async function renderBookingPlans(panel: Element, options?: { focusPlanId?: string }) {
@@ -43,10 +43,10 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
   document.addEventListener("keydown", closeMore);
   scope.onDispose(() => { document.removeEventListener("click", closeMore); document.removeEventListener("keydown", closeMore); });
 
-  const load = async () => {
+  const load = async (force = false) => {
     try {
-      const next = await invoke<BookingPlansView>("get_booking_plans");
-      if (!scope.current()) return;
+      const next = await bookingPlans.read(force);
+      if (!scope.current() || view === next) return;
       view = next;
       panel.querySelector<HTMLElement>("#plans_retry")!.hidden = true;
       if (message.classList.contains("err")) { message.textContent = ""; message.className = "msg"; }
@@ -77,7 +77,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     try {
       await invoke("save_booking_plans", { rules, paused });
       message.textContent = "";
-      await load();
+      await load(true);
     } catch (e) { fail(e); throw e; }
     finally { saving = false; add.disabled = editing; pause.disabled = view.plans.paused && view.plans.attempts.some(a => a.status === "unconfirmed"); }
   };
@@ -121,7 +121,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     });
     list.querySelectorAll<HTMLButtonElement>("[data-skip]").forEach(b => b.onclick = async () => {
       b.disabled = true;
-      try { const date = await invoke<string>("skip_booking_plan", { id: b.dataset.skip }); await load(); message.className = "msg"; message.textContent = `已跳过 ${formatMonthDayWeekday(date)} 的运动预约`; } catch (e) { fail(e); b.disabled = false; }
+      try { const date = await invoke<string>("skip_booking_plan", { id: b.dataset.skip }); await load(true); message.className = "msg"; message.textContent = `已跳过 ${formatMonthDayWeekday(date)} 的运动预约`; } catch (e) { fail(e); b.disabled = false; }
     });
     for (const [attr, offset] of [["up", -1], ["down", 1]] as const) {
       list.querySelectorAll<HTMLButtonElement>(`[data-${attr}]`).forEach(b => b.onclick = () => { void move(b.dataset[attr]!, view.plans.rules.findIndex(r => r.id === b.dataset[attr]) + offset).catch(() => {}); });
@@ -139,7 +139,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     const pending = view.plans.attempts.filter(a => a.status === "unconfirmed");
     const attention = panel.querySelector<HTMLElement>("#plan_attention")!;
     attention.hidden = !pending.length;
-    attention.innerHTML = pending.length ? `<div class="plan-attention-heading"><h3>${pending.length} 项预约结果待确认</h3><span>需要处理</span></div><p>请先在我的预约或小程序核对结果，再恢复自动计划。</p>` + pending.map(a => `<div class="plan-attention-item"><div><strong>${escape(a.task.sport)} ${formatMonthDayWeekday(a.task.target_date)}</strong><p>${escape(a.message)}</p></div><button type="button" class="btn" data-resolve="${a.task.task_id}">已核对并跳过</button></div>`).join("") : "";
+    attention.innerHTML = pending.length ? `<div class="plan-attention-heading"><h3>${pending.length} 项预约结果待确认</h3><span>需要处理</span></div><p>请先在我的预约或小程序核对结果，再恢复自动计划。</p>` + pending.map(a => `<div class="plan-attention-item"><div><strong>${escape(a.task.sport)} ${formatMonthDayWeekday(a.task.target_date)}</strong><details class="plan-attention-details"><summary>查看原因</summary><p>${escape(a.message)}</p></details></div><button type="button" class="btn" data-resolve="${a.task.task_id}">已核对并跳过</button></div>`).join("") : "";
     const attempts = view.plans.attempts.filter(a => !["unconfirmed", "queued", "running"].includes(a.status)).slice(-5).reverse();
     const labels: Record<string, string> = { queued: "等待执行", missed: "已错过", running: "准备 / 执行中", succeeded: "已约到", existing: "已有预约", failed: "未约到", skipped: "已跳过", cancelled: "已停止", unconfirmed: "待确认" };
     panel.querySelector("#plan_results")!.innerHTML = attempts.length ? `<h3>最近执行</h3><div class="plan-results">` + attempts.map(a => {
@@ -149,7 +149,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     panel.querySelectorAll<HTMLButtonElement>("[data-resolve]").forEach(button => button.onclick = async () => {
       if (await askConfirm({title:"已在我的预约或小程序核对结果？",lead:"该项会保留为已跳过，不会标记为预约成功，也不会自动再次下单。",confirmLabel:"已核对，跳过本项"})) {
         button.disabled = true;
-        try {await invoke("resolve_booking_plan",{taskId:button.dataset.resolve});await load();} catch(e) {fail(e);button.disabled=false;}
+        try {await invoke("resolve_booking_plan",{taskId:button.dataset.resolve});await load(true);} catch(e) {fail(e);button.disabled=false;}
       }
     });
   }
@@ -157,6 +157,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
   function openEditor(existing?: BookingPlan, copying = false) {
     if (saving || !view) return;
     editing = true; editor.hidden = false; add.disabled = true; list.hidden = true;
+    panel.querySelector(".plans-page")!.setAttribute("data-editing", "true");
     const enabledSports = sports.filter(isSportEnabled);
     let sport = enabledSports.find(s => s.id === existing?.sport) ?? enabledSports[0];
     let venue = sport.venues.find(v => v.id === existing?.venue) ?? sport.venues[0];
@@ -183,7 +184,11 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     editor.querySelectorAll<HTMLButtonElement>("[data-day]").forEach(b => b.onclick = () => { const day = Number(b.dataset.day); if (selected.has(day)) selected.delete(day); else selected.add(day); preview(); });
     editor.querySelectorAll<HTMLButtonElement>("[data-days]").forEach(b => b.onclick = () => { selected = new Set(b.dataset.days!.split(",").map(Number)); preview(); });
     editor.querySelectorAll<HTMLElement>(".plan-fields > label").forEach(label => label.querySelector(".shell-select-trigger")?.setAttribute("aria-label",label.firstChild?.textContent ?? "选择选项"));
-    const close = () => { editing = false; updateEditorStatus = undefined; editor.hidden = true; editor.innerHTML = ""; add.disabled = false; list.hidden = false; paintList(); add.focus(); };
+    const close = () => {
+      editing = false; updateEditorStatus = undefined; editor.hidden = true; editor.innerHTML = "";
+      panel.querySelector(".plans-page")!.removeAttribute("data-editing");
+      add.disabled = false; list.hidden = false; paintList(); add.focus();
+    };
     editor.querySelector<HTMLButtonElement>("#plan_cancel")!.onclick = close;
     editor.querySelector<HTMLFormElement>("form")!.onsubmit = async event => {
       event.preventDefault();
@@ -210,8 +215,12 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
   }
 
   add.onclick = () => openEditor();
-  panel.querySelector<HTMLButtonElement>("#plans_retry")!.onclick = () => { void load(); };
+  panel.querySelector<HTMLButtonElement>("#plans_retry")!.onclick = () => { void load(true); };
   pause.onclick = () => { void save(view.plans.rules, !view.plans.paused).catch(() => {}); };
+  scope.onDispose(bookingPlans.subscribe(snapshot => {
+    if (snapshot.error) { fail(snapshot.error); panel.querySelector<HTMLElement>("#plans_retry")!.hidden = false; }
+    else void load();
+  }));
   await load();
   if (scope.current() && options?.focusPlanId) {
     const target = [...list.querySelectorAll<HTMLElement>("[data-plan]")].find(card => card.dataset.plan === options.focusPlanId);
@@ -226,8 +235,4 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       enable.onclick=async()=>{enable.disabled=true;try{await invoke("set_startup",{enabled:true});hint.hidden=true;}catch(e){fail(e);enable.disabled=false;}};
     }
   } catch { /* Settings retains the explicit startup status and error. */ }
-  for (const event of ["plans-changed", "plans-health"]) {
-    const unlisten = await listen(event, () => { void load(); });
-    scope.onDispose(unlisten);
-  }
 }

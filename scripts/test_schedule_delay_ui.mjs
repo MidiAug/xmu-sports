@@ -1,11 +1,9 @@
 // Real frontend in an isolated browser, with an in-memory Tauri stub. No booking access.
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
+import {launchBrowser} from "./lib/browser.mjs";
+import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE,".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"));
-const browser = await chromium.launch({channel:"msedge",headless:true});
+const browser = await launchBrowser();
 try {
   const page = await browser.newPage({viewport:{width:960,height:820}});
   await page.clock.install({time:new Date("2026-10-23T06:58:00+08:00")});

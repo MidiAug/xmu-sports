@@ -1,16 +1,13 @@
 // Full frontend, deterministic clock and an offline host boundary. No school access.
 import assert from "node:assert/strict";
 import {mkdirSync} from "node:fs";
-import {createRequire} from "node:module";
-import {join} from "node:path";
+import {launchBrowser} from "./lib/browser.mjs";
 import {installShellFixture} from "./fixtures/tauri-shell.js";
 import {shellData} from "./fixtures/shell-data.mjs";
-const require=createRequire(import.meta.url);
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE,".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"));
 const base=process.env.XMU_TEST_BASE_URL;
 assert.ok(base,"Set XMU_TEST_BASE_URL to an isolated running Vite fixture server");
 const output="artifacts/ui-refactor";mkdirSync(output,{recursive:true});
-const browser=await chromium.launch({headless:true,channel:"msedge"});
+const browser=await launchBrowser();
 try {
   const context=await browser.newContext({viewport:{width:960,height:720}});
   const data=shellData();
@@ -25,13 +22,16 @@ try {
   assert.match(await page.locator('#plans_next').innerText(),/明天 07:00/);
   assert.match(await page.locator('#plans_exercise').innerText(),/11月1日/);
   assert.equal(await page.locator('.plan-card').count(),2);
+  const planReads=()=>page.evaluate(()=>window.__calls.filter(c=>c.command==='get_booking_plans').length);
+  const firstReads=await planReads();
   await page.screenshot({path:`${output}/plans-light.png`});
   await page.getByRole('button',{name:'运行',exact:true}).click();
   await page.locator('.plan-queue-row').waitFor();
   assert.equal(await page.getByText('尚未配置任务',{exact:true}).isVisible(),false);
-  assert.equal(await page.locator('#live_configuration').getAttribute('data-tab'),'plans');
+  assert.equal(await page.locator('#live_configuration').isVisible(),false,'no duplicate management action beside the queue');
+  assert.equal(await planReads(),firstReads,'navigation reuses the application plan snapshot');
   await page.screenshot({path:`${output}/live-plans-light.png`});
-  await page.locator('#live_configuration').click();
+  await page.locator('.plan-queue-heading [data-tab="plans"]').click();
   await page.locator('.plans-page').waitFor();
   // A pending outcome is actionable on the first screen, and cannot be resumed past.
   await page.evaluate(()=>{
@@ -44,6 +44,17 @@ try {
   const bounds=await page.locator('[data-resolve]').boundingBox();
   assert.ok(bounds.y>=0 && bounds.y+bounds.height<=720,'pending action must be on the first screen');
   await page.screenshot({path:`${output}/attention-light.png`});
+  await page.evaluate(()=>{window.__plans.attempts[0].message='提交响应尚未确认，请先核对已有预约。'.repeat(12);window.__emit('plans-changed');});
+  await page.waitForFunction(()=>document.querySelector('.plan-attention-details p').textContent.length>120);
+  await page.setViewportSize({width:480,height:520});
+  assert.equal(await page.locator('.plan-attention-details').getAttribute('open'),null);
+  const narrowPending=await page.locator('[data-resolve]').boundingBox();
+  assert.ok(narrowPending.y+narrowPending.height<=520,'long reasons must not push the pending action off screen');
+  await page.screenshot({path:`${output}/attention-narrow.png`});
+  await page.locator('.plan-attention-details summary').focus();await page.keyboard.press('Enter');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.keyboard.press('Enter');
+  await page.setViewportSize({width:960,height:720});
   await page.locator('[data-resolve]').click();
   await page.getByRole('button',{name:'已核对，跳过本项',exact:true}).click();
   await page.locator('#plan_attention').waitFor({state:'hidden'});
@@ -74,6 +85,15 @@ try {
   assert.match(await page.locator('.plan-queue-row').innerText(),/原场馆[\s\S]*09:00/);
   assert.equal(await page.locator('#live_configuration').getAttribute('data-tab'),'plans');
   assert.equal(await page.locator('#live_configuration').getAttribute('data-plan-id'),data.plans.rules[0].id);
+  await page.evaluate(()=>{window.__live.running=true;window.__live.armed=false;window.__emit('run-changed');});
+  await page.locator('[data-stop-round]').waitFor();
+  await page.locator('[data-stop-round]').focus();
+  await page.evaluate(()=>window.__queueStop=document.querySelector('[data-stop-round]'));
+  const beforePoll=await planReads();
+  await page.clock.runFor(11000);
+  assert.equal(await planReads(),beforePoll,'live polling does not refetch plans or probe WeChat');
+  assert.equal(await page.evaluate(()=>window.__queueStop===document.querySelector('[data-stop-round]')),true);
+  assert.equal(await page.locator('[data-stop-round]').evaluate(el=>el===document.activeElement),true);
   await page.locator('#live_configuration').click();
   await page.locator('.plans-page').waitFor();
   // Reset only the synthetic host; no actual booking or system operation was invoked.
@@ -102,6 +122,12 @@ try {
   await page.keyboard.press('Enter');await page.keyboard.press('Escape');
   assert.equal(await page.locator('.plan-more').first().getAttribute('open'),null);
   assert.equal(await page.locator('.plan-more').first().locator('summary').evaluate(el=>el===document.activeElement),true);
+  await page.evaluate(()=>{window.__plans.paused=true;window.__emit('plans-changed');});
+  await page.getByText('自动计划已暂停',{exact:true}).waitFor();
+  const midnightReads=await planReads();
+  await page.clock.fastForward(12*3600*1000);
+  await page.waitForFunction(()=>document.querySelector('#plans_next').textContent.includes('今天 07:00'));
+  assert.ok(await planReads()>midnightReads,'paused plans refresh date previews at midnight without health events');
   // Read failures retain the page and expose a working retry.
   await page.evaluate(()=>{window.__plansError='模拟计划读取失败';window.__emit('plans-changed');});
   await page.getByRole('button',{name:'重新读取计划',exact:true}).waitFor();
@@ -113,7 +139,8 @@ try {
   await page.getByRole('button',{name:'运行',exact:true}).click();
   await page.getByText('尚未配置任务',{exact:true}).waitFor();
   assert.equal(await page.locator('#live_configuration').getAttribute('data-tab'),'setup');
-  await page.locator('#live_configuration').click();
+  assert.equal(await page.locator('#live_configuration').isVisible(),false);
+  await page.getByRole('button',{name:'去配置任务',exact:true}).click();
   await page.locator('.setup-page').waitFor();
   assert.equal(await page.locator('.nav-tabs [aria-current="page"]').getAttribute('data-tab'),'setup');
   assert.deepEqual(errors,[]);

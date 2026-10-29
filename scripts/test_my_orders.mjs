@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
 import {readFileSync,mkdirSync} from "node:fs";
-import {createRequire} from "node:module";
+import {launchBrowser} from "./lib/browser.mjs";
 import ts from "typescript";
-const require=createRequire(import.meta.url);
-const {chromium}=require("C:/Users/22346/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright");
 const timeSource=ts.transpileModule(readFileSync("src/lib/time.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const timeUrl=`data:text/javascript;base64,${Buffer.from(timeSource).toString("base64")}`;
 const availabilitySource=ts.transpileModule(readFileSync("src/lib/availability.ts","utf8"),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
@@ -23,7 +21,7 @@ const source=readFileSync("src/ui/my-orders.ts","utf8")
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const moduleUrl=`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`;
 const css=["tokens","shell","forms","pages","overlays","responsive"].map(name=>readFileSync(`src/styles/${name}.css`,"utf8").replace(/^\uFEFF/, "")).join("\n");
-const browser=await chromium.launch({headless:true,channel:"msedge"});
+const browser=await launchBrowser();
 try {
  const page=await browser.newPage({viewport:{width:970,height:815}});
  await page.setContent(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style><div id="app"><div class="shell"><div class="shell-row"><aside class="nav"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button class="active">运行</button><button>历史</button><button>设置</button></nav><section class="my-orders" id="orders" aria-label="未核销预约"></section><div class="nav-foot">v0.1.29</div></aside><div class="shell-main"><header class="titlebar"></header><main class="content"><h2>运行状态</h2><p>查看执行进度与预约结果</p><div class="page-card"><strong>当前任务</strong><p>翔安校区乒乓球室　19:30–21:00</p></div></main></div></div></div></div>`);

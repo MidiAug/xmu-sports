@@ -7,8 +7,8 @@
 - 前端逻辑：`npm test`；类型和静态资源：`npm run build`。
 - Rust 宿主：`cargo test --manifest-path src-tauri/Cargo.toml -p xmu-sports --lib`。
 - HTTP 执行器：在其目录使用 Python 3.12 环境运行 `python -m pytest -q`；测试依赖见 requirements-dev.txt，包含历史通道模拟测试所需 websockets 与单测超时保护。
-- 浏览器交互：先构建前端，配置 `PLAYWRIGHT_MODULE` 为 Playwright 模块路径，再执行 `npm run test:select` 或相关 `scripts/test_*_ui.mjs`。需要安装 Edge，部分脚本有开发机路径回退，应显式覆盖。
-- 关于与更新交互：先启动 `npm run preview -- --host 127.0.0.1 --port 1425`，执行 `node scripts/test_about_ui.mjs`；可用 `XMU_TEST_BASE_URL` 覆盖地址。脚本使用模拟发布、进度与失败结果，不会下载或执行真实安装器。
+- 浏览器交互：`npm ci` 安装项目声明的 Playwright，先执行 `npm run build`，再执行 `npm run test:ui`。默认使用本机 Edge；`npx playwright install chromium` 后设置 `XMU_TEST_BROWSER=chromium` 可使用与 CI 一致的浏览器。脚本自动启动隔离 Vite 服务并在结束时关闭，也可用 `XMU_TEST_BASE_URL` 指定已有隔离服务。所有预约、账号、订单及自启调用均为模拟边界。
+- 单独检查可运行 `npm run test:plans`、`npm run test:orders`、`npm run test:select` 或对应脚本；完整页面脚本需要 `XMU_TEST_BASE_URL`。关于与更新回归已包含在 `test:ui` 中，使用模拟发布、进度与失败结果，不会下载或执行真实安装器。
 - 安装升级检查：`npm run test:installer`，需要先有一次本机 Tauri NSIS 构建生成工具和辅助文件；测试只执行隔离的安装判断函数。
 - 打包审计：准备已打包执行器后，使用执行器 Python 环境运行 `scripts/test_lite_bundle.py`。
 

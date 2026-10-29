@@ -1,11 +1,8 @@
 // Real frontend under a synthetic Tauri boundary. No credentials or school access.
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import {launchBrowser} from "./lib/browser.mjs";
 import { mkdirSync } from 'node:fs';
-const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE, '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await launchBrowser();
 const output = 'artifacts/midnight-booking'; mkdirSync(output, { recursive: true });
 try {
   const context = await browser.newContext({ viewport: { width: 960, height: 800 } });

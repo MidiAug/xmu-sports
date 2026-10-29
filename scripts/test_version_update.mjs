@@ -2,12 +2,10 @@
 // synthetic release/download only, with no account or installation access.
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve } from "node:path";
 import { pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
+import {launchBrowser} from "./lib/browser.mjs";
 import ts from 'typescript';
-const require = createRequire(import.meta.url);
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE, '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
 const output = resolve('artifacts/version-update-test');
 mkdirSync(output, { recursive: true });
 const asModule = source => `data:text/javascript;base64,${Buffer.from(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText).toString('base64')}`;
@@ -37,7 +35,7 @@ writeFileSync(fixture, `<!doctype html><html data-shell-theme="light"><meta char
 <script>window.calls=[];window.opened=[];window.releaseNotes=${JSON.stringify(notes).replaceAll('<','\\u003c')};window.mockInvoke=async command=>{calls.push(command);if(command==='check_app_update')return {status:window.releaseStatus||'available',version:'0.2.0',size:10485760,notes:window.releaseNotes};if(command==='download_app_update')return 'synthetic.exe';throw Error('Installation is unavailable in this fixture');};</script>
 <script type="module">import {mountVersionUpdate} from ${JSON.stringify(icon)};import {renderAbout} from ${JSON.stringify(about)};import {checkAppUpdate} from ${JSON.stringify(controller)};import {disposePage} from ${JSON.stringify(lifecycle)};
 const panel=document.querySelector('#panel');window.leave=()=>{disposePage(panel);panel.textContent='预约';};window.openAbout=()=>renderAbout(panel,leave);mountVersionUpdate(document.querySelector('.nav-foot'),openAbout);window.check=checkAppUpdate;window.ready=true;</script>`);
-const browser = await chromium.launch({ headless: true, channel: 'msedge' });
+const browser = await launchBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
   await page.goto(pathToFileURL(fixture).href);

@@ -1,8 +1,10 @@
+import type { BookingPlan, BookingPlanAttempt } from "./booking-plans";
+
 export type PlanHints = {
   plans: {
     paused: boolean;
-    rules: { id?: string; sport: string; account: string; enabled: boolean; weekdays: number[]; first_date: string }[];
-    attempts: { sport: string; account: string; status: string; task: { target_date: string; plan_id?: string } }[];
+    rules: (Pick<BookingPlan, "sport" | "account" | "enabled" | "weekdays" | "first_date"> & Partial<Pick<BookingPlan, "id">>)[];
+    attempts: (Pick<BookingPlanAttempt, "sport" | "account" | "status"> & { task: Pick<BookingPlanAttempt["task"], "target_date" | "plan_id"> })[];
   };
 };
 

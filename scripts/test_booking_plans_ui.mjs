@@ -1,10 +1,7 @@
 // Offline Tauri boundary fixture. Never checks a real account or starts a worker.
 import assert from "node:assert/strict";
 import { readFileSync, mkdirSync } from "node:fs";
-import { createRequire } from "node:module";
-import { join } from "node:path";
-const require=createRequire(import.meta.url);
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE,".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"));
+import {launchBrowser} from "./lib/browser.mjs";
 const base=process.env.XMU_TEST_BASE_URL;
 assert.ok(base,"Set XMU_TEST_BASE_URL to an isolated running Vite fixture server");
 const {sports}=JSON.parse(readFileSync("src/catalog/venues.json","utf8"));
@@ -14,7 +11,7 @@ const plan=(sport,id)=>({id,sport:sport.id,venue:sport.venues[0].id,start:sport.
 const rules=[plan(gym,"123e4567-e89b-42d3-a456-426614174000"),plan(other,"123e4567-e89b-42d3-a456-426614174001")];
 const gymSlot=gym.venues[0].time_slots.find(s=>s.start==="16:30" && s.end==="18:00");
 if(gymSlot)Object.assign(rules[0],gymSlot);
-const browser=await chromium.launch({headless:true,channel:"msedge"});
+const browser=await launchBrowser();
 mkdirSync("artifacts/booking-plans",{recursive:true});
 try {
   const context=await browser.newContext({viewport:{width:970,height:815}});

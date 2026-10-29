@@ -1,7 +1,7 @@
 import { createAvailabilityStore, availabilitySessionCache } from "../lib/availability-store";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { hasBookingPlan, bookingPlanConflict, type PlanHints } from "../lib/booking-plan-hints";
+import { bookingPlans } from "../lib/booking-plans-store";
 import type { BookingTask, FallbackOrder, SelectOption, ShellPrefs, Sport, Venue } from "../types";
 import {
   favoriteSports,
@@ -401,7 +401,7 @@ export async function renderSetup(panel: Element) {
   let planHints: PlanHints | undefined;
   let sportHintsKey = "";
   const refreshPlanHints = async () => {
-    try { const next = await invoke<PlanHints>("get_booking_plans"); if (scope.current()) { planHints = next; syncSportHints(); updateSummary(); } }
+    try { const next = await bookingPlans.read(); if (scope.current()) { planHints = next; syncSportHints(); updateSummary(); } }
     catch (error) { log.warn("setup", "plan_hints_failed", { err: String(error) }); }
   };
 
@@ -732,6 +732,8 @@ export async function renderSetup(panel: Element) {
   updateSummary();
   scheduleAvailability();
   void refreshPlanHints();
-  scope.onDispose(await listen("plans-changed", () => { void refreshPlanHints(); }));
+  scope.onDispose(bookingPlans.subscribe(snapshot => {
+    if (snapshot.view && !snapshot.error) { planHints = snapshot.view; syncSportHints(); updateSummary(); }
+  }));
   end();
 }

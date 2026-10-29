@@ -1,15 +1,13 @@
 import assert from "node:assert/strict";
 import {readFileSync,mkdirSync,readdirSync} from "node:fs";
-import {createRequire} from "node:module";
+import {launchBrowser} from "./lib/browser.mjs";
 import ts from "typescript";
-const require=createRequire(import.meta.url);
-const {chromium}=require("C:/Users/22346/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright");
 const source=readFileSync("src/ui/order-recheck.ts","utf8")
   .replace('import { invoke } from "@tauri-apps/api/core";','const invoke = (command, args) => window.__invoke(command,args);')
   .replace('import { toastError, toastInfo } from "./toast";','const toastError = (...args) => window.__toasts.push(args); const toastInfo = toastError;');
 const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const moduleUrl=`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`;
-const browser=await chromium.launch({headless:true,channel:"msedge"});
+const browser=await launchBrowser();
 try {
   const page=await browser.newPage({viewport:{width:960,height:720}});
   const cssFile=readdirSync("dist/assets").find(name=>name.endsWith(".css"));

@@ -1,6 +1,11 @@
 /* Recurring rules and the current round share one visual hierarchy. */
 .plans-page .page-heading { padding-bottom: 2px; }
 .plans-page .page-heading .btn { flex: none; }
+.plans-page[data-editing="true"] .plan-next,
+.plans-page[data-editing="true"] #plans_health,
+.plans-page[data-editing="true"] #plans_startup,
+.plans-page[data-editing="true"] #plan_results,
+.plans-page[data-editing="true"] .plan-footnote { display: none; }
 .plan-secondary, .plan-title span, .plan-result span, .plan-footnote { color: var(--color-muted); font-size: 12px; line-height: 1.65; margin: 4px 0 0; }
 .plans-summary { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 14px 16px; padding: 18px 20px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-panel); }
 .plan-state { min-width: 0; }
@@ -109,3 +114,7 @@
   .plan-queue-row { grid-template-columns: 24px minmax(0,1fr) auto; gap: 8px 12px; }
   .plan-queue-status { grid-column: 2 / -1; }
 }
+
+.plan-attention-details { margin-top: 6px; font-size: 12px; color: var(--color-muted); }
+.plan-attention-details summary { cursor: pointer; width: fit-content; padding: 3px 0; }
+.live-plan-queue { overflow-wrap: anywhere; }

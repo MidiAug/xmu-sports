@@ -16,6 +16,7 @@ import { askConfirm } from "./ui/confirm-ask";
 import { closeShellSelects } from "./ui/select";
 import { getVersion } from "@tauri-apps/api/app";
 import { startAutoAppUpdate } from "./lib/app-update";
+import { startBookingPlansUpdates } from "./lib/booking-plans-store";
 
 type BootNav = {
   connect_ms: number;
@@ -53,6 +54,8 @@ log.info("boot", "ui_start", {
 });
 
 applyTheme(readThemePref());
+const stopPlanUpdates = startBookingPlansUpdates();
+import.meta.hot?.dispose(() => { void stopPlanUpdates.then(stop => stop()); });
 window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener("change", () => {
   if (themePref === "system") applyTheme("system");
 });

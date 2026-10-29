@@ -1,4 +1,5 @@
-import { mountPlanQueue } from "../ui/plan-queue";
+import { renderPlanQueue } from "../ui/plan-queue";
+import { bookingPlans, type PlansSnapshot } from "../lib/booking-plans-store";
 import { invoke } from "@tauri-apps/api/core";
 import type { BookingTask, LiveStatus, RunEvent, WechatProbe } from "../types";
 import { ingestLiveStatus } from "../lib/run-feedback";
@@ -10,7 +11,6 @@ import {
   formatTargetBrief,
   formatTaskSportVenue,
   joinParts,
-  pageLabelZh,
 } from "../lib/format-human";
 import { formatRemaining } from "../lib/time";
 import { BOOKING_STEPS, currentRunEvents, elapsedLabel, progressMessage, progressStep } from "../lib/booking-progress";
@@ -34,104 +34,6 @@ export type RenderLiveOpts = {
   statusOnly?: boolean;
   status?: LiveStatus;
 };
-
-/** Native 现在开始 / 开抢进度（协议开小程序后从预约域续跑，不再列发现/搜索壳步骤） */
-const FLOW_STEPS: { id: string; label: string }[] = [
-  { id: "spawn", label: "启动" },
-  { id: "launch_mp", label: "打开小程序" },
-  { id: "home", label: "体育首页" },
-  { id: "venue_booking", label: "场馆预约" },
-  { id: "booking_notice", label: "关闭公告" },
-  { id: "venue_sport_list", label: "选择运动" },
-  { id: "venue_list", label: "选择场馆" },
-  { id: "venue_detail", label: "选择日期" },
-  { id: "select_slot", label: "选择场次" },
-];
-
-const PAGE_TO_STEP: Record<string, string> = {
-  home: "home",
-  booking_notice: "booking_notice",
-  venue_sport_list: "venue_sport_list",
-  venue_list: "venue_list",
-  venue_detail: "venue_detail",
-  select_slot: "select_slot",
-  confirm_order: "select_slot",
-  success: "select_slot",
-  my_reservations: "select_slot",
-  xmu_login_gate: "home",
-  xmu_wx_authorize: "home",
-  xmu_auth_waiting: "home",
-};
-
-function stepIdFromEvent(ev: RunEvent | null): string | null {
-  if (!ev) return null;
-  const action = ev.action ?? "";
-  if (action === "spawn" || action === "spawn_failed") return "spawn";
-  if (action === "launch_mp" || action === "launch_mp_failed") return "launch_mp";
-  if (action === "done" && ev.page_id) {
-    return PAGE_TO_STEP[ev.page_id] ?? "select_slot";
-  }
-  if (ev.page_id && PAGE_TO_STEP[ev.page_id]) return PAGE_TO_STEP[ev.page_id];
-  if (action === "glance" || action === "click" || action === "after_click" || action === "fail") {
-    return ev.page_id ? PAGE_TO_STEP[ev.page_id] ?? null : null;
-  }
-  return null;
-}
-
-const HTTP_STEPS = [
-  {id: "auth", label: "检测与恢复登录"}, {id: "captcha", label: "验证码"},
-  {id: "query", label: "查询实时场次"}, {id: "verify", label: "校验预约条件"},
-  {id: "submit", label: "提交预约"}, {id: "order", label: "查单确认"},
-];
-const HTTP_PHASE_STEP: Record<string, string> = {
-  local_eligibility: "auth",
-  warming: "query", reading_entry: "auth", authenticating: "auth", checking_orders: "query",
-  resolving_venue: "query", querying_slots: "query", selecting_candidate: "query", waiting_open: "query",
-  waiting_slot_retry: "query",
-  checking_slot: "verify", server_precheck: "verify", checking_config: "verify",
-  captcha: "captcha", captcha_recognized: "captcha", captcha_retry: "captcha",
-  slot_ready: "verify", discovering_fallbacks: "query", candidate_rejected: "verify",
-  submitting: "submit", order_accepted: "submit", verifying_order: "order",
-};
-function httpStep(ev: RunEvent | null): string {
-  if (ev?.action === "http_phase") return HTTP_PHASE_STEP[ev.result ?? ""] ?? "query";
-  if (ev?.action === "done") return "order";
-  if (ev?.page_id?.startsWith("xmu_")) return "auth";
-  if (["home", "booking_notice", "venue_sport_list"].includes(ev?.page_id ?? "")) return "auth";
-  return "auth";
-}
-function currentStepLabel(ev: RunEvent | null, http = false): string {
-  if (http) return `正在${HTTP_STEPS.find(s => s.id === httpStep(ev))?.label ?? "预约"}`;
-  const id = stepIdFromEvent(ev);
-  const step = id ? FLOW_STEPS.find((s) => s.id === id) : null;
-  if (step) return `正在${step.label}`;
-  const page = pageLabelZh(ev?.page_id);
-  if (page) return `在「${page}」`;
-  return "等待步骤事件…";
-}
-
-function flowStepsHtml(ev: RunEvent | null, http = false): string {
-  const cur = http ? httpStep(ev) : stepIdFromEvent(ev);
-  const steps = http ? HTTP_STEPS : FLOW_STEPS;
-  const failed = Boolean(
-    ev?.action === "fail" ||
-      ev?.action === "launch_mp_failed" ||
-      ev?.action === "click_failed" ||
-      ev?.action === "glance_failed" ||
-      ev?.result === "failed",
-  );
-  const curIdx = cur ? steps.findIndex((s) => s.id === cur) : 0;
-  const items = steps.map((s, i) => {
-    let cls = "";
-    if (failed && i === curIdx) cls = "fail";
-    else if (cur && i < curIdx) cls = "done";
-    else if (cur && i === curIdx) cls = "current";
-    return `<li class="${cls}"><span class="live-step-mark"></span><span>${s.label}</span></li>`;
-  }).join("");
-  return `
-    <ol class="live-steps" aria-label="执行进度">${items}</ol>
-    <p class="live-countdown-sub" id="live_step_detail">${currentStepLabel(ev, http)}</p>`;
-}
 
 function escText(s: string): string {
   return s
@@ -245,6 +147,19 @@ function envRowHtml(wxText: string, wxRunning: boolean): string {
     </div>`;
 }
 
+function paintPlanContext(panel: Element, status: LiveStatus | null, snapshot: PlansSnapshot) {
+  const host = panel.querySelector<HTMLElement>("#live_plan_queue");
+  if (!host || (!snapshot.view && !snapshot.error)) return;
+  let hasPlans: boolean;
+  if (snapshot.error) {
+    host.textContent = `暂未读取到长期计划：${String(snapshot.error)}`;
+    hasPlans = true;
+  } else hasPlans = renderPlanQueue(host, snapshot.view!);
+  const task = status?.task;
+  const context = panel.querySelector<HTMLElement>("#live_single_context");
+  if (context && !status?.armed && !status?.running) context.hidden = task ? Boolean(task.plan_id) : hasPlans;
+}
+
 function paintLiveBody(
   panel: Element,
   st: LiveStatus | null,
@@ -252,6 +167,7 @@ function paintLiveBody(
   opts?: { knownStatus?: boolean; knownWx?: boolean; scope?: PageScope },
 ) {
   const previousTimeline = panel.querySelector<HTMLElement>(".live-timeline");
+  const previousQueue = panel.querySelector("#live_plan_queue")?.innerHTML ?? "";
   const detailsOpen = panel.querySelector<HTMLDetailsElement>(".booking-details")?.open ?? false;
   const timelineTop = previousTimeline?.scrollTop ?? 0;
   const followTimeline = !previousTimeline || previousTimeline.scrollHeight - previousTimeline.clientHeight - timelineTop < 32;
@@ -311,8 +227,8 @@ function paintLiveBody(
 
   patchHtml(panel, `
     <div class="page-stack live-page">
-      <div class="page-heading"><div><h2>运行状态</h2><p>当前进度、执行队列与预约结果</p></div><button type="button" class="btn ghost" id="live_configuration" data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看计划" : busy ? "查看配置" : "修改单次预约"}</button></div>
-      <section id="live_plan_queue" class="live-plan-queue"></section>
+      <div class="page-heading"><div><h2>运行状态</h2><p>当前进度、执行队列与预约结果</p></div><button type="button" class="btn ghost" id="live_configuration" ${t ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : busy ? "查看配置" : "修改单次预约"}</button></div>
+      <section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section>
       ${outcomeBlock}
       ${envRowHtml(wxText, wxRunning)}
       ${executionBlock}
@@ -322,16 +238,7 @@ function paintLiveBody(
     </div>
     ${stopping ? '<p class="task-busy-note" role="status">正在停止，请等待已发送请求的结果确认。</p>' : ""}
   `);
-  const queueHost=panel.querySelector<HTMLElement>("#live_plan_queue");
-  if (queueHost) void mountPlanQueue(queueHost,()=>!opts?.scope || opts.scope.current()).then(hasPlans => {
-    if (!queueHost.isConnected || (opts?.scope && !opts.scope.current())) return;
-    const context = panel.querySelector<HTMLElement>("#live_single_context");
-    if (context && !busy && !t) context.hidden = hasPlans;
-    if (hasPlans && !t) {
-      const link = panel.querySelector<HTMLButtonElement>("#live_configuration")!;
-      link.dataset.tab = "plans"; link.textContent = "管理计划";
-    }
-  });
+  paintPlanContext(panel, st, bookingPlans.snapshot());
   const pendingHost=panel.querySelector<HTMLElement>("#pending_order_checks");
   if (pendingHost) void mountOrderRecheck(pendingHost,busy,()=>!opts?.scope || opts.scope.current());
   if (stopping) {
@@ -425,6 +332,10 @@ export async function renderLive(panel: Element, opts?: RenderLiveOpts) {
     scope,
   });
   endPaint();
+  scope.onDispose(bookingPlans.subscribe(snapshot => {
+    if (scope.current()) paintPlanContext(panel, liveStatusCache, snapshot);
+  }));
+  void bookingPlans.read().catch(error => log.warn("plans", "read_failed", { err: String(error) }));
 
   let st: LiveStatus | null = liveStatusCache;
   let wx: WechatProbe | null = liveWxCache;

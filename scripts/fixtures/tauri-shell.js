@@ -10,6 +10,7 @@ export function installShellFixture(data) {
   window.__task = null;
   window.__live = {task:null,armed:false,running:false,recent_events:[],last_event:null,fire_at:null};
   window.__startup = {supported:true,enabled:true,hidden:true};
+  window.__prefs = {favorite_sport_ids:[],venue_slot_prefs:{},autostart_hidden:true};
   const callbacks = new Map(), listeners = new Map();
   let serial = 0;
   window.__emit = (event, payload = {}) => {
@@ -32,7 +33,8 @@ export function installShellFixture(data) {
       if (command === "get_live_status") return structuredClone(window.__live);
       if (command === "read_task_raw") return structuredClone(window.__task);
       if (command === "save_task") {window.__task=structuredClone(args.task);return args.task;}
-      if (command === "get_shell_prefs") return {favorite_sport_ids:[],venue_slot_prefs:{},autostart_hidden:true};
+      if (command === "get_shell_prefs") return structuredClone(window.__prefs);
+      if (command === "save_shell_prefs") {if(window.failSave)throw new Error('模拟保存失败');window.__prefs=structuredClone(args.prefs);return window.__prefs;}
       if (command === "get_startup") return window.__startup;
       if (command === "get_my_orders") return {ok:true,orders:structuredClone(window.__orders),account_fingerprint:"a".repeat(64),fetched_at:new Date().toISOString()};
       if (command === "get_venue_availability") return {ok:true,state:"availability_ready",...args,account_fingerprint:"a".repeat(64),fetched_at:new Date().toISOString(),slots:[]};

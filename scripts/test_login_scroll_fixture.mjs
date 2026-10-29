@@ -2,12 +2,10 @@
 // Run cargo test --lib first to generate the synthetic traces.
 import assert from 'node:assert/strict';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
-import {createRequire} from 'node:module';
-import {join,resolve} from 'node:path';
-const require=createRequire(import.meta.url);
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE,'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
+import {launchBrowser} from "./lib/browser.mjs";
+import { join, resolve } from "node:path";
 const output=resolve('artifacts/login-scroll-fixture');mkdirSync(output,{recursive:true});
-const browser=await chromium.launch({channel:'msedge',headless:true});
+const browser=await launchBrowser();
 const css=`*{box-sizing:border-box}body{margin:0;padding:24px;background:#eef2f7;color:#21334c;font:14px 'Microsoft YaHei',sans-serif}h1{font-size:22px;margin:0 0 8px}p{margin:0 0 20px;color:#52647c}.grid{display:grid;grid-template-columns:repeat(2,360px);gap:20px}.card{background:white;border-radius:12px;padding:12px;box-shadow:0 2px 12px #19396212}h2{font-size:15px;margin:0 0 10px}.view{height:320px;overflow:auto;border:1px solid #bdcbdc;position:relative;box-sizing:content-box}.document{position:relative;background:#fafbfd}.heading{position:absolute;top:18px;width:100%;text-align:center;color:#064485;font-size:20px}.school{position:absolute;top:150px;left:85px;width:160px;height:220px;background:#e2ebf8;display:grid;place-items:center;border-radius:16px;font-size:24px;color:#084784}.control{position:absolute;left:20px;right:20px;height:50px;display:flex;align-items:center;justify-content:center;border:0;border-radius:26px;background:#064485;color:white;font:16px 'Microsoft YaHei'}.agreement{background:transparent;color:#365674;font-size:14px;justify-content:flex-start;border-radius:0}.agreement input{margin-right:8px}button:disabled{background:#d6dee8;color:#7e8b9e}.home-icons{position:absolute;top:500px;left:20px;right:20px;display:grid;grid-template-columns:1fr 1fr;gap:50px;color:#2b5781}.muted{font-size:12px;color:#65788d;margin-top:8px}`;
 function markup(frame,index,title,hide=false) {
  const auth=frame.page==='authorization';const home=frame.page==='home';

@@ -1,12 +1,10 @@
 // Full frontend with a fake Tauri boundary; no real login, school calls or bookings.
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
+import {launchBrowser} from "./lib/browser.mjs";
+import { resolve } from "node:path";
 import { mkdirSync } from "node:fs";
-const require=createRequire(import.meta.url);
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE,".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"));
 const artifacts=process.env.XMU_UI_ARTIFACTS ?? "artifacts/compact-availability-025";
-const browser=await chromium.launch({channel:"msedge",headless:true});
+const browser=await launchBrowser();
 try {
   const context=await browser.newContext({viewport:{width:960,height:900}});
   const page=await context.newPage();

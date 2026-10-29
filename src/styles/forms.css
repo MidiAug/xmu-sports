@@ -83,7 +83,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
   min-width: 160px;
   max-width: 100%;
   padding: 0 12px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-line-strong);
   background: var(--color-canvas);
   color: var(--color-ink);
@@ -113,7 +113,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
   flex-shrink: 0;
   width: 200px;
   height: 36px;
-  border-radius: 18px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-line);
   background: var(--color-btn-fill);
   overflow: hidden;
@@ -216,7 +216,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
   height: 36px;
   padding: 0 14px;
   border: 1px solid var(--color-line);
-  border-radius: 18px;
+  border-radius: var(--radius-control);
   background: var(--color-btn-fill);
   color: var(--color-ink);
   font: inherit;
@@ -605,4 +605,23 @@ button:focus-visible, input:focus-visible, summary:focus-visible {
 
 .msg.err {
   color: var(--color-danger);
+  overflow-wrap: anywhere;
 }
+
+/* Shared select states belong to the control, including planned and locked options. */
+.shell-select-option:disabled, .shell-select-option:disabled:hover { color:var(--color-muted); background:var(--color-canvas); cursor:default; opacity:1; }
+.shell-select.has-disabled-value .shell-select-value { color:var(--color-muted); }
+
+.shell-select-value { display:flex; align-items:center; gap:8px; min-width:0; }
+.shell-select-main { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.shell-select-badge { display:inline-block; flex:none; padding:1px 6px; border-radius:4px; background:var(--color-canvas); color:var(--color-muted); font-size:11px; line-height:1.6; font-weight:400; }
+.shell-select.has-option-details .shell-select-option-label { display:block; white-space:normal; overflow:visible; }
+.shell-select-option-main { display:flex; flex-wrap:wrap; align-items:center; gap:5px 8px; }
+.shell-select-trigger:disabled { color:var(--color-muted); cursor:default; opacity:.65; }
+
+.shell-select-badge.badge-locked { color:#8b5360; background:#f5edef; font-weight:500; }
+.shell-select-badge.badge-full { color:#776447; background:#f4f0e8; font-weight:500; }
+.shell-select-badge.badge-partial { color:#79614f; background:#f4eee9; font-weight:500; }
+:root[data-shell-theme="dark"] .shell-select-badge.badge-locked { color:#c5a2aa; background:#342c30; }
+:root[data-shell-theme="dark"] .shell-select-badge.badge-full { color:#c5b496; background:#322f29; }
+:root[data-shell-theme="dark"] .shell-select-badge.badge-partial { color:#c2ac9d; background:#332e2a; }

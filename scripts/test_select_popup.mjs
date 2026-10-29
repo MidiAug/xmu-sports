@@ -4,10 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createRequire } from "node:module";
+import {launchBrowser} from "./lib/browser.mjs";
 import ts from "typescript";
-const require=createRequire(import.meta.url);
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE,".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"));
 const root=resolve("artifacts/select-popup-test");mkdirSync(root,{recursive:true});
 const asModule=source=>`data:text/javascript;base64,${Buffer.from(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText).toString("base64")}`;
 const icons=asModule(readFileSync("src/ui/icons.ts","utf8"));
@@ -21,7 +19,7 @@ body{margin:0}.shell{--nav-w:194px}.fixture-spacer{height:230px}.fixture-tail{he
 window.changed=[];const options=Array.from({length:12},(_,i)=>({value:String(i),label:(8+i)+':00–'+(9+i)+':00'}));
 const courts=options.map((o,i)=>({value:o.value,label:i===0?'自动选择':String(i).padStart(2,'0')+' 号场地',badge:i>0?'已锁':undefined}));
 window.selects={slot:mountShellSelect(document.querySelector('#slot'),options,'3',v=>changed.push(v),{columns:true}),venue:mountShellSelect(document.querySelector('#venue'),courts,'2',v=>changed.push(v),{compact:true})};document.addEventListener('click',closeShellSelects);window.ready=true;</script>`);
-const browser=await chromium.launch({headless:true,channel:process.env.SELECT_TEST_BROWSER ?? "msedge"});
+const browser=await launchBrowser(process.env.SELECT_TEST_BROWSER);
 let cases=0;
 try {
   for(const fallback of [false,true]){
