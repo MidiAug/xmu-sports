@@ -366,7 +366,9 @@ export async function renderSetup(panel: Element) {
     refreshCourts(vn);
   }
 
-  function adminBlockedReason():string|null {
+  function selectionBlockedReason():string|null {
+    const sport = findSport(sportSelect.getValue());
+    if (sport && hasBookingPlan(planHints, sport.id, targetDate, availabilitySessionCache.account)) return "该运动当天已有长期计划，请先跳过或停用对应计划";
     const current=availabilityKey===stateKey() ? availability : null;
     const selected=current?.slots.find(slot=>`${slot.start}|${slot.end}`===slotSelect.getValue());
     return selected && isAdminLocked(selected) ? "时段已锁，请换时段或刷新"
@@ -399,7 +401,7 @@ export async function renderSetup(panel: Element) {
   let planHints: PlanHints | undefined;
   let sportHintsKey = "";
   const refreshPlanHints = async () => {
-    try { const next = await invoke<PlanHints>("get_booking_plans"); if (scope.current()) { planHints = next; syncSportHints(); } }
+    try { const next = await invoke<PlanHints>("get_booking_plans"); if (scope.current()) { planHints = next; syncSportHints(); updateSummary(); } }
     catch (error) { log.warn("setup", "plan_hints_failed", { err: String(error) }); }
   };
 
@@ -446,8 +448,10 @@ export async function renderSetup(panel: Element) {
   );
 
   function sportOptions(): SelectOption[] {
-    return selectable.map((s) => ({ value: s.ocr_label, label: s.label,
-      badge: hasBookingPlan(planHints, s.id, targetDate, availabilitySessionCache.account) ? "已计划" : undefined }));
+    return selectable.map((s) => {
+      const planned = hasBookingPlan(planHints, s.id, targetDate, availabilitySessionCache.account);
+      return { value: s.ocr_label, label: s.label, badge: planned ? "已计划" : undefined, disabled: planned };
+    });
   }
 
   function syncSportHints() {
@@ -660,7 +664,7 @@ export async function renderSetup(panel: Element) {
     }
     const task = readTask();
     const future = !isFireAtPast(task.fire_at);
-    const blocked = valid ? (adminBlockedReason() ?? (future ? hangBlockedReason(task) : bookingBlockedReason(task))) : "请填写有效的预约日期和执行时间";
+    const blocked = valid ? (selectionBlockedReason() ?? (future ? hangBlockedReason(task) : bookingBlockedReason(task))) : "请填写有效的预约日期和执行时间";
     panel.querySelector("#task_summary")!.textContent = `${task.sport}　${task.venue}　${formatTargetDateHuman(task.target_date)} ${task.target_time_start}–${task.target_time_end}`;
     const dayOffset=(Date.parse(`${task.target_date}T00:00:00+08:00`)-Date.parse(`${todayISO()}T00:00:00+08:00`))/86400_000;
     const hint = panel.querySelector("#date_hint")!;
@@ -674,7 +678,7 @@ export async function renderSetup(panel: Element) {
     primary.disabled = busy || starting || availabilityRecovering || !!blocked;
     const now = panel.querySelector<HTMLButtonElement>("#setup_now")!;
     now.hidden = !future || !!bookingBlockedReason(task);
-    now.disabled = busy || starting || availabilityRecovering || !valid || !!bookingBlockedReason(task) || !!adminBlockedReason();
+    now.disabled = busy || starting || availabilityRecovering || !valid || !!bookingBlockedReason(task) || !!selectionBlockedReason();
     const check = panel.querySelector<HTMLButtonElement>("#setup_check")!;
     check.hidden = task.executor !== "http";
     check.disabled = busy || starting || availabilityRecovering || !valid;
@@ -686,7 +690,7 @@ export async function renderSetup(panel: Element) {
     if (starting || busy || availabilityRecovering || !validInputs()) return;
     const task = readTask();
     const scheduled = mode === "primary" && !isFireAtPast(task.fire_at);
-    const blocked = mode === "prepare" ? null : adminBlockedReason() ?? (scheduled ? hangBlockedReason(task) : bookingBlockedReason(task));
+    const blocked = mode === "prepare" ? null : selectionBlockedReason() ?? (scheduled ? hangBlockedReason(task) : bookingBlockedReason(task));
     if (blocked) { toastError("暂时无法开始", blocked); return; }
     starting = true; updateSummary();
     try {

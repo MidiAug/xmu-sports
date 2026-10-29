@@ -17,7 +17,7 @@
 .settings-page .settings-sport-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-page .settings-sport-cell { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; position: relative; min-height: 32px; padding: 6px 12px; border: 1px solid var(--color-line-strong); border-radius: 18px; background: transparent; color: var(--color-ink); font: inherit; box-shadow: none; font-size: 12px; cursor: pointer; }
 .settings-page .settings-sport-cell:hover { border-color: var(--color-accent); }
-.settings-page .settings-sport-cell:disabled { cursor: wait; }
+.settings-page .settings-sport-cell:disabled { cursor: default; opacity: 1; }
 .settings-page .settings-sport-cell.on { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line-strong)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-panel)); }
 .settings-page .settings-sport-cell.on .settings-sport-cell-label { color: var(--color-accent); font-weight: 500; }
 .settings-sport-check { display: flex; color: var(--color-accent); visibility: hidden; }
