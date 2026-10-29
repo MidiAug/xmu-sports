@@ -1,5 +1,36 @@
 # Desktop booking redesign QA — 2026-10-30
 
+## Current follow-up: compact booking layout
+
+The user corrected the first implementation: the title and sport/venue section were too large, sport selection should not require horizontal scrolling, and the two fields should share a row. This correction supersedes the first implementation's large typography and sport rail described in the historical review below.
+
+- Source evidence: attached `codex-clipboard-96779a52-1acc-48cf-971d-3397816f71cb.png`, 1174 × 756 pixels. Its application window was cropped from (57, 27) to (1157, 756), excluding other applications, leaving 1100 × 729 pixels. This is evidence of the reported problems, not a new pixel-copy target.
+- Revised implementation: `artifacts/compact-booking/setup-light-1100-final.png`, 1100 × 760 pixels, CSS viewport 1100 × 760, DPR 1. Full-view comparison: `artifacts/compact-booking/before-after.png`, using a matching 1100 × 729 crop from the implementation; no scaling. Focused comparison: `artifacts/compact-booking/selectors-comparison.png`.
+- State: single booking, light theme, tomorrow October 31, today 07:00 execution. User screenshot has ping-pong at 09:00; offline fixture has badminton at 19:00. These content differences are expected and excluded from fidelity findings.
+- Additional final evidence: `setup-light-minimum-final.png` and `setup-dark-minimum-final.png` at 960 × 600; `sports-open-light-final.png` at 1100 × 760 with five sports. All are under `artifacts/compact-booking/`.
+
+### Follow-up findings and fixes
+
+1. **Resolved P2 — oversized heading and stacked selectors.** Changed the heading from 32px to 24px, tightened page/header spacing, and placed sport and venue controls in one row with aligned 44px controls. Replaced the horizontal sport rail with the existing keyboard-accessible select component, enriched with the same library icons. Reduced confirmation type, spacing and CTA height together to retain hierarchy. Full-view and focused comparisons show the date and time choices substantially higher on the page.
+2. **Resolved P2 — long sport name separated from its icon.** The first five-sport menu capture showed 动感单车室 wrapping below its icon. Grouped the icon and name in one nonwrapping inline element, with badges allowed on a separate line; widened icon-bearing two-column compact menus to 320px. Post-fix evidence: `sports-open-light-final.png`; 3/4/5/8-sport regression checks assert no horizontal overflow and names/icons stay on one line.
+3. **Resolved P2 — selected time disappeared when shrinking the viewport.** A resize from 1100 × 760 to 960 × 600 reduced the visible time rows without adjusting the local scroll position. The choice group now reveals its selected time when its size changes and disconnects that observer when the page is disposed. Post-fix evidence: both minimum-window final captures; regression selects the last time, shrinks the viewport and checks it remains within the time track.
+
+### Current fidelity and validation
+
+- **Typography:** native font stack retained; 24px page title, 14px field labels/body controls, 18px confirmation title and 28–36px time display. Small secondary controls are visually subordinate. Names/icons stay together and date numbers retain clear hierarchy.
+- **Spacing/layout:** sport/venue occupy a 72px-tall labeled row; dates and times remain horizontal grids. Default height permits three time rows, compact height two. At 960 × 600 the primary action ends at approximately y=516 and the lower preferences remain reachable in the first screen. Persistent navigation is unobstructed.
+- **Color/tokens:** existing blue/white/mint and dark navy/mint direction retained. No new competing decorative surfaces; locked and planned states retain their semantic badges and fixed disabled hover appearance.
+- **Assets:** existing generated local brand mark and vendored MingCute SVGs retained, with 22px sport icons in the selector and menu. No rasterized controls or hand-drawn replacements.
+- **Content/interactions:** selected sport and venue are always visible; menu exposes all favorites with keyboard navigation and Escape focus restoration. Time selection and business semantics are unchanged. Source screenshot's overflow is removed rather than hidden by clipping the choices.
+- Frontend unit tests and production build passed. All 11 UI groups passed after the changes, including same-row geometry, long-name layout, selected-time resize visibility, first-screen primary action, disabled states and existing flows. No browser error-level console entries were observed in the final preview. No host code changed; this follow-up did not repeat Rust checks or perform installer/real-account operations.
+- Remaining limits: user screenshot and fixture differ in sport/time and order count; no exact pixel-identity claim. Browser zoom/system scaling and real installed-native rendering were not exhaustively tested.
+
+Current implementation checklist: same-row fields, compact title/spacing, complete sport popup, long names, minimum-window selection/CTA visibility, light/dark capture, keyboard/disabled states and regression checks are complete.
+
+final result: passed
+
+## Historical review: initial redesign
+
 final result: passed
 
 ## Evidence and state
