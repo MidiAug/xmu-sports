@@ -6,6 +6,7 @@ import { mountShellSelect } from "../ui/select";
 import { askConfirm } from "../ui/confirm-ask";
 import { outcomeFromEvent } from "../lib/run-outcome";
 import type { BookingTask } from "../types";
+import { formatMonthDayWeekday } from "../lib/format-human";
 
 export type BookingPlan = { id: string; sport: string; venue: string; start: string; end: string; weekdays: number[]; enabled: boolean; account: string; first_date: string };
 type Attempt = { task: BookingTask; sport: string; account: string; status: string; message: string };
@@ -27,7 +28,7 @@ export async function renderBookingPlans(panel: Element) {
     <p class="msg" id="plans_msg" role="status"></p>
     <div id="plan_editor" hidden></div><div class="plan-list" id="plan_list"></div>
     <section id="plan_results" aria-label="最近执行"></section>
-    <p class="plan-footnote">自动预约需要电脑保持唤醒、联网。关闭到托盘可继续运行；退出或关机后暂停。</p>
+    <p class="plan-footnote">自动预约需要电脑保持唤醒、联网。关闭到托盘可继续运行；退出或关机期间不执行，重新打开后继续。</p>
   </div>`;
   const message = panel.querySelector<HTMLElement>("#plans_msg")!;
   const editor = panel.querySelector<HTMLElement>("#plan_editor")!;
@@ -97,7 +98,7 @@ export async function renderBookingPlans(panel: Element) {
         <label class="plan-enable"><input type="checkbox" data-enable="${r.id}" ${r.enabled ? "checked" : ""}><span>启用</span></label></div>
         <div class="plan-schedule"><strong>${r.start}–${r.end}</strong><span>${weekdaysLabel(r.weekdays)}</span></div>
         <p class="plan-secondary">${next ? `${next.date} 去运动 · ${view.plans.paused ? "恢复后按计划 " : ""}${at(next.fire_at)} 开抢` : "本计划已停用"}</p>
-        <div class="plan-actions"><button type="button" class="btn ghost" data-edit="${r.id}">编辑</button><button type="button" class="btn ghost" data-skip="${r.id}" ${!r.enabled ? "disabled" : ""}>跳过下一次</button>
+        <div class="plan-actions"><button type="button" class="btn ghost" data-edit="${r.id}">编辑</button><button type="button" class="btn ghost" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button>
         <details class="plan-more"><summary>更多</summary><div><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-copy="${r.id}">复制</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
     }).join("");
@@ -113,7 +114,7 @@ export async function renderBookingPlans(panel: Element) {
     });
     list.querySelectorAll<HTMLButtonElement>("[data-skip]").forEach(b => b.onclick = async () => {
       b.disabled = true;
-      try { await invoke("skip_booking_plan", { id: b.dataset.skip }); await load(); } catch (e) { fail(e); b.disabled = false; }
+      try { const date = await invoke<string>("skip_booking_plan", { id: b.dataset.skip }); await load(); message.className = "msg"; message.textContent = `已跳过 ${formatMonthDayWeekday(date)} 的运动预约`; } catch (e) { fail(e); b.disabled = false; }
     });
     for (const [attr, offset] of [["up", -1], ["down", 1]] as const) {
       list.querySelectorAll<HTMLButtonElement>(`[data-${attr}]`).forEach(b => b.onclick = () => { void move(b.dataset[attr]!, view.plans.rules.findIndex(r => r.id === b.dataset[attr]) + offset).catch(() => {}); });

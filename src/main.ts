@@ -67,7 +67,7 @@ void listen<{ armed?: boolean }>("shell-ask-close", (ev) => {
 });
 void listen("shell-plan-exit", async () => {
   closeShellSelects();
-  if (await askConfirm({title:"退出后自动预约将暂停",lead:"长期计划会保留。保持电脑唤醒并留在托盘，才能按时预约。",confirmLabel:"退出应用",cancelLabel:"留在后台"})) await invoke("force_quit_app");
+  if (await askConfirm({title:"退出后自动预约将暂停",lead:"长期计划会保留，下次启动后继续。保持电脑唤醒并留在托盘，才能按时预约。",confirmLabel:"退出应用",cancelLabel:"留在后台"})) await invoke("force_quit_app");
   else await invoke("hide_to_tray");
 });
 void listen<{plans?:boolean}>("shell-update-exit",event=>{closeShellSelects();showUpdateExit(openAppUpdates,Boolean(event.payload?.plans));});

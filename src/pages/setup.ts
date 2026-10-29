@@ -1,5 +1,7 @@
 import { createAvailabilityStore, availabilitySessionCache } from "../lib/availability-store";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { hasBookingPlan, type PlanHints } from "../lib/booking-plan-hints";
 import type { BookingTask, FallbackOrder, SelectOption, ShellPrefs, Sport, Venue } from "../types";
 import {
   favoriteSports,
@@ -352,6 +354,7 @@ export async function renderSetup(panel: Element) {
   }
 
   function syncAvailabilityOptions() {
+    syncSportHints();
     const vn=currentVenue();
     if (!vn) return;
     const keep=slotSelect.getValue();
@@ -393,6 +396,12 @@ export async function renderSetup(panel: Element) {
 
   type SelectApi = ReturnType<typeof mountShellSelect>;
   let sportSelect!: SelectApi;
+  let planHints: PlanHints | undefined;
+  let sportHintsKey = "";
+  const refreshPlanHints = async () => {
+    try { const next = await invoke<PlanHints>("get_booking_plans"); if (scope.current()) { planHints = next; syncSportHints(); } }
+    catch (error) { log.warn("setup", "plan_hints_failed", { err: String(error) }); }
+  };
 
   async function persistVenueSlotPrefs(venue: string) {
     try {
@@ -437,7 +446,15 @@ export async function renderSetup(panel: Element) {
   );
 
   function sportOptions(): SelectOption[] {
-    return selectable.map((s) => ({ value: s.ocr_label, label: s.label }));
+    return selectable.map((s) => ({ value: s.ocr_label, label: s.label,
+      badge: hasBookingPlan(planHints, s.id, targetDate, availabilitySessionCache.account) ? "已计划" : undefined }));
+  }
+
+  function syncSportHints() {
+    const options = sportOptions(), key = JSON.stringify(options);
+    if (key === sportHintsKey) return;
+    sportHintsKey = key;
+    sportSelect.setOptions(options, sportSelect.getValue());
   }
 
   function venueOptions(sp: Sport): SelectOption[] {
@@ -539,6 +556,7 @@ export async function renderSetup(panel: Element) {
   });
 
   function syncDateOptions() {
+    syncSportHints();
     const today = todayISO();
     if (dateOptionsDay !== today) {
       dateOptionsDay = today;
@@ -704,5 +722,7 @@ export async function renderSetup(panel: Element) {
   scope.onDispose(() => window.clearInterval(clock));
   updateSummary();
   scheduleAvailability();
+  void refreshPlanHints();
+  scope.onDispose(await listen("plans-changed", () => { void refreshPlanHints(); }));
   end();
 }

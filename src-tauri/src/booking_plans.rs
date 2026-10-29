@@ -139,6 +139,13 @@ fn fire_at(date: NaiveDate) -> DateTime<FixedOffset> {
         .unwrap()
 }
 
+fn skip_date(rule: &Plan, plans: &Plans, now: DateTime<FixedOffset>) -> NaiveDate {
+    plans.attempts.iter().find(|a| a.status == "queued" && a.task.plan_id.as_deref() == Some(&rule.id)
+        && a.task.target_date > now.date_naive().to_string())
+        .and_then(|a| NaiveDate::parse_from_str(&a.task.target_date, "%Y-%m-%d").ok())
+        .unwrap_or_else(|| next_date(rule, plans, now))
+}
+
 fn task(rule: &Plan, date: NaiveDate) -> crate::BookingTask {
     let catalog = catalog();
     let sport = catalog["sports"]
@@ -175,16 +182,7 @@ pub fn get_booking_plans(app: tauri::AppHandle) -> Result<PlanView, String> {
         .iter()
         .filter(|p| p.enabled)
         .map(|p| {
-            let date = plans
-                .attempts
-                .iter()
-                .find(|a| {
-                    a.task.plan_id.as_deref() == Some(&p.id)
-                        && a.status == "queued"
-                        && a.task.target_date > now.date_naive().to_string()
-                })
-                .and_then(|a| NaiveDate::parse_from_str(&a.task.target_date, "%Y-%m-%d").ok())
-                .unwrap_or_else(|| next_date(p, plans, now));
+            let date = skip_date(p, plans, now);
             json!({"id":p.id,"date":date.to_string(),"fire_at":fire_at(date).to_rfc3339()})
         })
         .collect();
@@ -272,7 +270,7 @@ pub fn save_booking_plans(
 }
 
 #[tauri::command]
-pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<String, String> {
     let state = app.state::<Store>();
     let mut locked = state.0.lock().map_err(|_| "计划状态不可用")?;
     let plans = locked.as_mut().map_err(|e| e.clone())?;
@@ -281,7 +279,7 @@ pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<(), String
         .iter()
         .find(|p| p.id == id)
         .ok_or("计划不存在")?;
-    let date = next_date(rule, plans, china_now());
+    let date = skip_date(rule, plans, china_now());
     let attempt = Attempt {
         task: task(rule, date),
         sport: rule.sport.clone(),
@@ -293,7 +291,7 @@ pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<(), String
     if let Some(queued) = next
         .attempts
         .iter_mut()
-        .find(|a| a.status == "queued" && a.task.plan_id.as_deref() == Some(&id))
+        .find(|a| a.status == "queued" && a.task.plan_id.as_deref() == Some(&id) && a.task.target_date == date.to_string())
     {
         queued.status = "skipped".into();
         queued.message = "已跳过这一次".into();
@@ -304,7 +302,7 @@ pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<(), String
     *plans = next;
     drop(locked);
     changed(&app);
-    Ok(())
+    Ok(date.to_string())
 }
 
 #[tauri::command]
@@ -930,5 +928,27 @@ mod tests {
         let restored: Plans =
             serde_json::from_str(&serde_json::to_string(&plans).unwrap()).unwrap();
         assert!(due_plan(&restored, now).is_none());
+    }
+
+    #[test]
+    fn restart_keeps_enabled_rules_and_pause_preference() {
+        let plans = Plans { rules: vec![catalog_rule()], ..Plans::default() };
+        let restored: Plans = serde_json::from_slice(&serde_json::to_vec(&plans).unwrap()).unwrap();
+        let now = at("2026-10-29T06:59:00+08:00");
+        assert!(due_plan(&restored, now).is_some());
+        let paused = Plans { paused: true, ..restored };
+        let restored: Plans = serde_json::from_slice(&serde_json::to_vec(&paused).unwrap()).unwrap();
+        assert!(due_plan(&restored, now).is_none());
+    }
+
+    #[test]
+    fn skip_date_matches_the_queued_target_then_moves_past_running() {
+        let rule = catalog_rule();
+        let mut plans = Plans { rules: vec![rule.clone()], ..Plans::default() };
+        let now = at("2026-10-29T06:59:00+08:00");
+        freeze_round(&mut plans, now);
+        assert_eq!(skip_date(&rule, &plans, now).to_string(), "2026-10-30");
+        plans.attempts[0].status = "running".into();
+        assert_eq!(skip_date(&rule, &plans, now).to_string(), "2026-10-31");
     }
 }

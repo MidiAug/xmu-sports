@@ -20,6 +20,7 @@ try {
   const context=await browser.newContext({viewport:{width:970,height:815}});
   await context.addInitScript(({rules})=>{
     localStorage.setItem("xmu.booking.mode","plans");
+    localStorage.setItem('xmu-sports.availability.v1',JSON.stringify({version:1,account:'a'.repeat(64),snapshots:[],forced:[],needsLogin:false}));
     window.__calls=[];window.__callbacks={};window.__plans={rules,paused:false,attempts:[]};window.__startup={supported:true,enabled:false,hidden:true};
     window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
     window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:"main"},currentWebview:{label:"main"}},
@@ -29,21 +30,24 @@ try {
         if(command==="get_booking_plans")return {plans:structuredClone(window.__plans),next:window.__plans.rules.filter(r=>r.enabled).map(r=>({id:r.id,date:"2026-10-30",fire_at:"2026-10-29T07:00:00+08:00"})),wechat_running:false};
         if(command==="save_booking_plans"){if(window.__saveError)throw "模拟保存失败";Object.assign(window.__plans,{rules:structuredClone(args.rules),paused:args.paused});return;}
         if(command==="booking_plan_account")return "a".repeat(64);
-        if(command==="skip_booking_plan")return;
+        if(command==="skip_booking_plan")return "2026-10-30";
         if(command==="get_startup")return window.__startup;
         if(command==="set_startup"){window.__startup.enabled=args.enabled;return window.__startup;}
         if(command==="get_shell_prefs")return {favorite_sport_ids:[],venue_slot_prefs:{},autostart_hidden:true};
         if(command==="save_shell_prefs")return;
         if(command==="get_live_status")return {task:null,armed:false,running:false,recent_events:[]};
         if(command==="read_task_raw")return null;
+        if(command==="save_task")return args.task;
         if(command==="list_recent_events" || command==="list_pending_orders")return [];
         if(command==="get_my_orders")return {ok:true,orders:[],fetched_at:new Date().toISOString()};
+        if(command==="get_venue_availability")return {ok:true,state:'availability_ready',...args,account_fingerprint:'a'.repeat(64),fetched_at:new Date().toISOString(),slots:[]};
         if(command.includes("version"))return "0.1.34";
         if(command.includes("listen"))return 1;
         return null;
       }};
   },{rules});
   const page=await context.newPage();const errors=[];page.on("pageerror",e=>errors.push(e.message));
+  await page.clock.install({time:new Date('2026-10-29T12:00:00+08:00')});
   await page.goto(base);
   await page.locator(".plan-card").first().waitFor();
   assert.equal(await page.locator(".plan-card").count(),2);
@@ -73,6 +77,7 @@ try {
   assert.equal(await more.getAttribute('open'),null);
   await page.locator("[data-skip]").first().click();
   await page.waitForFunction(()=>window.__calls.some(c=>c.command==="skip_booking_plan"));
+  await page.getByText('已跳过 10月30日(周五) 的运动预约',{exact:true}).waitFor();
   const before=await page.locator(".plan-card").first().getAttribute("data-plan");
   await page.locator(".plan-card").nth(1).locator("summary").click();
   await page.locator("[data-up]").nth(1).click();
@@ -144,6 +149,26 @@ try {
   await page.locator('#plan_editor').waitFor({state:'hidden'});
   assert.equal(await page.evaluate(()=>window.__plans.paused),true);
   assert.equal(await page.evaluate(()=>window.__plans.rules.at(-1).enabled),false);
+  // Same real single-booking page: badges follow exercise day, not the day of opening.
+  await page.locator('#plans_pause').click();
+  await page.getByText('自动计划已开启',{exact:true}).waitFor();
+  const weekendId=await page.evaluate(id=>window.__plans.rules.find(r=>r.sport===id && r.weekdays.length===2).id,gym.id);
+  await page.locator(`[data-enable="${weekendId}"]`).uncheck();
+  await page.getByRole('tab',{name:'单次预约',exact:true}).click();
+  await page.locator('#sport_host .shell-select-trigger').waitFor();
+  await page.locator('[data-date="2026-10-30"]').click();
+  await page.clock.runFor(1000);
+  await page.waitForFunction(()=>document.querySelector('#sport_host').textContent.includes('已计划'));
+  const gymOption=page.locator(`#sport_host [data-value="${gym.ocr_label}"]`);
+  assert.match(await gymOption.innerText(),/已计划/);
+  assert.equal(await gymOption.isDisabled(),false);
+  await page.locator('#sport_host .shell-select-trigger').click();
+  await page.clock.runFor(2000);
+  assert.equal(await page.locator('#sport_host').evaluate(el=>el.classList.contains('open')),true);
+  await page.screenshot({path:'artifacts/booking-plans/single-planned-dark-narrow.png'});
+  await page.keyboard.press('Escape');
+  await page.locator('[data-date="2026-10-31"]').click();
+  assert.doesNotMatch(await gymOption.innerText(),/已计划/);
   await page.locator('[data-tab="settings"]').click();await page.locator('#startup_enabled:not(:disabled)').waitFor();
   await page.locator('#startup_enabled').check();assert.equal(await page.evaluate(()=>window.__startup.enabled),true);
   await page.locator('#startup_hidden').uncheck();
