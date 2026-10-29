@@ -29,6 +29,8 @@ import { askConfirm } from "./confirm-ask";
 import { mountMyOrders } from "./my-orders";
 import { mountVersionUpdate } from "./version-update";
 import { renderAbout } from "../pages/about";
+import brandMark from "../assets/brand-mark.png";
+import { calendarIcon } from "./sport-icons";
 
 const win = getCurrentWindow();
 let chromeBound = false;
@@ -166,31 +168,29 @@ function mountShell() {
   app.innerHTML = `
     <div class="shell">
       <div class="shell-row">
-        <aside class="nav">
+        <header class="nav app-header" data-tauri-drag-region>
           <div class="nav-brand">
             <div class="nav-brand-text" data-tauri-drag-region>
-              <h1 data-tauri-drag-region>XMU Sports</h1>
-              ${import.meta.env.DEV ? '<span class="dev-chip" data-tauri-drag-region>开发版</span>' : ""}
+              <img class="brand-mark" src="${brandMark}" alt="" draggable="false" />
+              <div data-tauri-drag-region><h1 data-tauri-drag-region>XMU Sports</h1><span class="brand-subtitle" data-tauri-drag-region>厦门大学体育场馆预约${import.meta.env.DEV ? ' <small>开发版</small>' : ""}</span></div>
             </div>
-            <div class="nav-win titlebar-right">${wins}</div>
           </div>
           <nav class="nav-tabs nav-primary" aria-label="主导航">
-            <button type="button" data-tab="setup" class="${tab === "setup" ? "active" : ""}">${SVG.tabSetup}<span class="nav-tab-label">单次预约</span></button>
-            <button type="button" data-tab="plans" class="${tab === "plans" ? "active" : ""}">${SVG.tabGlance}<span class="nav-tab-label">长期计划</span></button>
-            <button type="button" data-tab="live" class="${tab === "live" ? "active" : ""}${
-              runIndicatorOn ? " has-run-dot" : ""
-            }">${SVG.tabLive}<span class="nav-tab-label">运行</span></button>
-            <button type="button" data-tab="history" class="${tab === "history" ? "active" : ""}">${SVG.tabHistory}<span class="nav-tab-label">历史</span></button>
+            <button type="button" data-tab="setup" aria-label="单次预约" class="${tab === "setup" ? "active" : ""}"><span class="nav-tab-label">预约</span></button>
+            <button type="button" data-tab="plans" class="${tab === "plans" ? "active" : ""}"><span class="nav-tab-label">长期计划</span></button>
+            <button type="button" data-tab="history" aria-label="历史" class="${tab === "history" ? "active" : ""}"><span class="nav-tab-label">记录</span></button>
           </nav>
+          <div class="header-actions">
           <section class="my-orders" id="my_orders" aria-label="未核销预约"></section>
-          <nav class="nav-tabs nav-utility" aria-label="应用"><button type="button" data-tab="settings" class="${tab === "settings" ? "active" : ""}">${SVG.tabSettings}<span class="nav-tab-label">设置</span></button></nav>
+          <nav class="nav-tabs nav-utility" aria-label="应用">
+            <button type="button" data-tab="live" aria-label="运行" class="header-progress ${tab === "live" ? "active" : ""}${runIndicatorOn ? " has-run-dot" : ""}">${SVG.tabHistory}<span class="nav-tab-label">运行/进度</span></button>
+            <button type="button" data-tab="settings" aria-label="设置" class="header-settings ${tab === "settings" ? "active" : ""}">${SVG.tabSettings}</button>
+          </nav>
           <div class="nav-foot" id="nav_foot" hidden><span class="nav-version"></span></div>
-        </aside>
+          <div class="titlebar-right">${wins}</div>
+          </div>
+        </header>
         <div class="shell-main">
-          <header class="titlebar">
-            <div class="titlebar-drag" data-tauri-drag-region></div>
-            <div class="titlebar-right">${wins}</div>
-          </header>
           <main class="main">
             <div class="content" id="panel"></div>
           </main>
@@ -206,7 +206,7 @@ function mountShell() {
     setTab("settings");
     void showTab("settings", true);
   });
-  mountMyOrders(app.querySelector<HTMLElement>("#my_orders")!);
+  mountMyOrders(app.querySelector<HTMLElement>("#my_orders")!, { popover: true, icon: calendarIcon });
   if (!dateClockStarted) {
     dateClockStarted = true;
     startTargetDateCalibrationClock(() => {

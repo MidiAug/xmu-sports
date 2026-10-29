@@ -54,7 +54,7 @@ try {
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
   await page.evaluate(() => document.documentElement.dataset.shellTheme = 'dark');
   await page.screenshot({ path: join(output, 'expanded-dark.png') });
-  await page.setViewportSize({ width: 480, height: 720 });
+  await page.setViewportSize({ width: 960, height: 600 });
   const box = await page.locator('.settings-sport-grid').boundingBox();
   for (const button of await buttons.all()) {
     const rect = await button.boundingBox();

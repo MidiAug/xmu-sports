@@ -28,6 +28,9 @@ import {
 } from "../lib/time";
 import { resolvePreferredSlot, slotPrefKey } from "../lib/venue-slot-prefs";
 import { mountShellSelect } from "../ui/select";
+import { mountChoiceGroup } from "../ui/choice-group";
+import { sportIcon, locationIcon } from "../ui/sport-icons";
+import { SVG } from "../ui/icons";
 import { log } from "../lib/log";
 import { mountPage } from "../lib/page-lifecycle";
 import { readSavedTask, saveTaskDraft, flushTask, subscribeTaskSave } from "../lib/task-store";
@@ -118,45 +121,24 @@ export async function renderSetup(panel: Element) {
 
   panel.innerHTML = `
     <div class="page-stack setup-page">
-      <div class="page-heading"><div><h2>单次预约</h2><p>选择运动时间，立即预约或定时执行</p></div></div>
+      <div class="page-heading"><h2>新建预约</h2></div>
       <div class="task-busy-note" id="task_busy_note" ${busy ? "" : "hidden"}>当前任务已锁定，结束后可修改。<button type="button" class="btn ghost" data-tab="live">查看运行</button></div>
+      <div class="setup-workspace">
       <fieldset class="task-fields" id="task_fields" ${busy ? "disabled" : ""}>
       <section class="booking-form-card">
+        <div class="settings-cell booking-sport-section"><p class="settings-cell-title">运动</p><div id="sport_host"></div></div>
+        <div class="settings-cell booking-venue-section"><p class="settings-cell-title">场馆</p><div class="venue-picker">${locationIcon}<div id="venue_host"></div></div></div>
         <div class="booking-date-section">
-          <div class="booking-section-heading"><h3>预约日期</h3><span>北京时间</span></div>
+          <div class="booking-section-heading"><h3>运动日期</h3><span id="date_months"></span></div>
           <div class="booking-date-options" id="date_options" role="group" aria-label="预约日期"></div>
           <p class="booking-date-hint" id="date_hint"></p>
         </div>
-        <div class="settings-group-body task-grid">
-          <div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">运动</p>
-            </div>
-            <div id="sport_host"></div>
-          </div>
-          <div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">场馆</p>
-            </div>
-            <div id="venue_host"></div>
-          </div>
-          <div class="settings-cell">
-            <div class="booking-field-heading">
-              <p class="settings-cell-title">时段</p>
-              <div class="availability-panel" id="availability_panel" aria-live="polite"></div>
-            </div>
-            <div id="slot_host"></div>
-          </div>
-          <div class="settings-cell" id="court_cell">
-            <div class="booking-field-heading">
-              <p class="settings-cell-title">场地</p>
-            </div>
-            <div id="court_host"></div>
-          </div>
+        <div class="settings-cell booking-slot-section">
+          <div class="booking-field-heading"><p class="settings-cell-title">时段</p><div class="availability-panel" id="availability_panel" aria-live="polite"></div></div>
+          <div id="slot_host"></div>
         </div>
-      </section>
-
-      <details class="task-advanced"><summary><strong>高级选项</strong><span>执行时间与备选策略</span></summary>
+        <div class="booking-preferences"><div class="settings-cell" id="court_cell"><p class="settings-cell-title">场地偏好</p><div id="court_host"></div></div>
+      <details class="task-advanced"><summary><strong>更多选项</strong></summary>
       <div class="settings-group">
         <div class="settings-group-body">
           <div class="settings-cell">
@@ -209,9 +191,20 @@ export async function renderSetup(panel: Element) {
         </div>
       </div>
       </details>
+        </div>
+      </section>
       </fieldset>
-      <p class="msg" id="setup_msg"></p>
-      <div class="task-action-bar"><div class="task-action-copy"><span class="task-summary-label">本次预约</span><strong id="task_summary"></strong><p id="task_execution"></p><p id="task_action_reason" role="status"></p><button type="button" class="btn text" id="task_plan_link" data-tab="plans" hidden>查看对应计划</button></div><div class="task-actions"><button type="button" class="btn ghost" id="setup_check">检查登录</button><button type="button" class="btn ghost" id="setup_now">立即预约</button><button type="button" class="btn primary" id="setup_primary">定时预约</button></div></div>
+      <aside class="task-action-bar" aria-label="本次预约">
+        <div class="task-action-copy"><span class="task-summary-label">本次预约</span>
+          <p class="task-summary-date" id="summary_date"></p><strong class="task-summary-time" id="summary_time"></strong>
+          <div class="task-summary-place"><strong id="summary_sport"></strong><p id="summary_venue"></p></div>
+          <strong class="sr-only" id="task_summary"></strong><p id="task_execution">${SVG.tabHistory}<span></span></p><p id="task_action_reason" role="status"></p>
+          <button type="button" class="btn text" id="task_plan_link" data-tab="plans" hidden>查看对应计划</button>
+        </div>
+        <div class="task-actions"><button type="button" class="btn primary" id="setup_primary">${SVG.tabHistory}<span>定时预约</span></button><button type="button" class="btn text" id="setup_check">检查登录</button><button type="button" class="btn text" id="setup_now">立即预约</button></div>
+        <p class="msg" id="setup_msg" role="status"></p>
+      </aside>
+      </div>
     </div>
   `;
 
@@ -427,7 +420,7 @@ export async function renderSetup(panel: Element) {
     scheduleSave();
     scheduleAvailability();
   });
-  const slotSelect = mountShellSelect(
+  const slotSelect = mountChoiceGroup(
     slotHost,
     [],
     "",
@@ -442,9 +435,7 @@ export async function renderSetup(panel: Element) {
       scheduleSave();
       paintAvailability();
     },
-    {
-      columns: true,
-    },
+    { label: "时段", kind: "slot" },
   );
 
   function sportOptions(): SelectOption[] {
@@ -535,11 +526,11 @@ export async function renderSetup(panel: Element) {
     refreshSlots(venueSlotPrefs[prefer]);
   }
 
-  sportSelect = mountShellSelect(sportHost, sportOptions(), defaultSport.ocr_label, (v) => {
+  sportSelect = mountChoiceGroup(sportHost, sportOptions(), defaultSport.ocr_label, (v) => {
     refreshVenues(v);
     scheduleSave();
     scheduleAvailability();
-  }, { columns: selectable.length > 4, matchTrigger: selectable.length <= 4 });
+  }, { label: "运动", kind: "sport", icon: sportIcon });
   venueSelect.setOptions(venueOptions(defaultSport), defaultVenue.ocr_label);
   slotSelect.setOptions(slotOptions(defaultVenue), defaultSlotKey);
   refreshCourts(defaultVenue);
@@ -564,9 +555,10 @@ export async function renderSetup(panel: Element) {
     const today = todayISO();
     if (dateOptionsDay !== today) {
       dateOptionsDay = today;
+      panel.querySelector("#date_months")!.textContent = [...new Set(bookingDateOptions().map(option => `${Number(option.value.slice(5,7))}月`))].join(" / ");
       dateOptionsEl.innerHTML = bookingDateOptions().map(option => `
-        <button type="button" class="booking-date-option" data-date="${option.value}" aria-pressed="false">
-          <span>${option.label}</span><small>${formatMonthDayWeekday(option.value)}</small>
+        <button type="button" class="booking-date-option" data-date="${option.value}" aria-label="${option.label} ${formatMonthDayWeekday(option.value)}" aria-pressed="false">
+          <span class="date-relative">${option.label}</span><strong class="date-number">${option.value.slice(8)}</strong><small><span>${Number(option.value.slice(5,7))}月</span><span>周${"日一二三四五六"[new Date(`${option.value}T00:00:00Z`).getUTCDay()]}</span></small>
         </button>`).join("");
     }
     dateOptionsEl.querySelectorAll<HTMLButtonElement>("[data-date]").forEach(button => {
@@ -671,15 +663,19 @@ export async function renderSetup(panel: Element) {
     const future = !isFireAtPast(task.fire_at);
     const blocked = valid ? (selectionBlockedReason() ?? (future ? hangBlockedReason(task) : bookingBlockedReason(task))) : "请填写有效的预约日期和执行时间";
     panel.querySelector("#task_summary")!.textContent = `${task.sport}　${task.venue}　${formatTargetDateHuman(task.target_date)} ${task.target_time_start}–${task.target_time_end}`;
+    panel.querySelector("#summary_date")!.textContent = `${formatTargetDateHuman(task.target_date)}　周${"日一二三四五六"[new Date(`${task.target_date}T00:00:00Z`).getUTCDay()]}`;
+    panel.querySelector("#summary_time")!.textContent = `${task.target_time_start} – ${task.target_time_end}`;
+    panel.querySelector("#summary_sport")!.textContent = task.sport;
+    panel.querySelector("#summary_venue")!.textContent = task.venue;
     const dayOffset=(Date.parse(`${task.target_date}T00:00:00+08:00`)-Date.parse(`${todayISO()}T00:00:00+08:00`))/86400_000;
     const hint = panel.querySelector("#date_hint")!;
-    hint.textContent = busy ? `已锁定：${formatTargetDateHuman(task.target_date)}` : [0,1].includes(dayOffset) ? "该日期可查询学校实际时段，锁定状态与人数快照见选项" : targetDateHint(new Date(), task.target_date);
+    hint.textContent = busy ? `已锁定：${formatTargetDateHuman(task.target_date)}` : [0,1].includes(dayOffset) ? "" : targetDateHint(new Date(), task.target_date);
     hint.classList.toggle("is-warning", !busy && waitsExtraDay(task.target_date));
     hint.setAttribute("role", "status");
-    panel.querySelector("#task_execution")!.textContent = future ? `定时执行：${formatFireAtHuman(task.fire_at)}（北京时间）` : "执行方式：立即预约";
+    panel.querySelector("#task_execution span")!.textContent = future ? `${formatFireAtHuman(task.fire_at).replace(/ 开抢$/, "")} 定时执行` : "执行方式：立即预约";
     panel.querySelector("#task_action_reason")!.textContent = busy ? "执行配置已锁定，进度可在运行页查看" : blocked ?? "";
     const primary = panel.querySelector<HTMLButtonElement>("#setup_primary")!;
-    primary.textContent = future ? "定时预约" : "立即预约";
+    primary.querySelector("span")!.textContent = future ? "定时预约" : "立即预约";
     primary.disabled = busy || starting || availabilityRecovering || !!blocked;
     const now = panel.querySelector<HTMLButtonElement>("#setup_now")!;
     now.hidden = !future || !!bookingBlockedReason(task);

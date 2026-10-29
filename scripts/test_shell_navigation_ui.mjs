@@ -46,10 +46,10 @@ try {
   await page.screenshot({path:`${output}/attention-light.png`});
   await page.evaluate(()=>{window.__plans.attempts[0].message='提交响应尚未确认，请先核对已有预约。'.repeat(12);window.__emit('plans-changed');});
   await page.waitForFunction(()=>document.querySelector('.plan-attention-details p').textContent.length>120);
-  await page.setViewportSize({width:480,height:520});
+  await page.setViewportSize({width:960,height:600});
   assert.equal(await page.locator('.plan-attention-details').getAttribute('open'),null);
   const narrowPending=await page.locator('[data-resolve]').boundingBox();
-  assert.ok(narrowPending.y+narrowPending.height<=520,'long reasons must not push the pending action off screen');
+  assert.ok(narrowPending.y+narrowPending.height<=600,'long reasons must not push the pending action off screen');
   await page.screenshot({path:`${output}/attention-narrow.png`});
   await page.locator('.plan-attention-details summary').focus();await page.keyboard.press('Enter');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
@@ -67,6 +67,9 @@ try {
   });
   await page.getByRole('button',{name:'单次预约',exact:true}).click();
   await page.locator('#task_plan_link').waitFor({state:'visible'});
+  const dateBounds=await page.locator('.booking-date-option').evaluateAll(buttons=>buttons.map(button=>button.getBoundingClientRect().toJSON()));
+  assert.equal(dateBounds.length,3);
+  assert.ok(dateBounds.every(box=>Math.abs(box.y-dateBounds[0].y)<1),'the three desktop dates must remain in one horizontal row');
   assert.equal(await page.locator('#task_plan_link').getAttribute('data-plan-id'),data.plans.rules[1].id);
   assert.equal(await page.locator('#setup_primary').isDisabled(),true);
   assert.equal(await page.locator('#setup_check').isDisabled(),false);
@@ -102,18 +105,20 @@ try {
   },data.plans);
   for(const theme of ['light','dark']) {
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
-    for(const size of [{width:960,height:720},{width:480,height:520}]) {
+    for(const size of [{width:960,height:720},{width:960,height:600}]) {
       await page.setViewportSize(size);
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
       const card=await page.locator('.plan-card').first().boundingBox();
       await page.screenshot({path:`${output}/plans-${theme}-${size.width}.png`});
       assert.ok(card.y<400,`rules should start before the lower portion of a narrow screen: ${JSON.stringify({size,card})}`);
-      if(size.width===480) {
+      {
         assert.equal(await page.locator('.my-orders-body').isVisible(),false);
         await page.locator('.my-orders-toggle').click();
         assert.equal(await page.locator('.my-orders-body').isVisible(),true);
         assert.equal(await page.locator('.my-order').count(),1);
-        await page.locator('.my-orders-toggle').click();
+        await page.keyboard.press('Escape');
+        assert.equal(await page.locator('.my-orders-popup').isVisible(),false);
+        assert.equal(await page.locator('.my-orders-toggle').evaluate(el=>el===document.activeElement),true);
       }
     }
   }

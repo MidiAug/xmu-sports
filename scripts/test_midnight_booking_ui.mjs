@@ -55,7 +55,6 @@ try {
   assert.equal(await page.locator('#setup_primary').isEnabled(), true, 'today can be scheduled for today 07:00');
   assert.match(await page.locator('#task_execution').innerText(), /今天.*07:00/);
   assert.equal(await page.locator('#setup_now').isVisible(), false);
-  await page.locator('#slot_host .shell-select-trigger').click();
   assert.match(await page.locator('#slot_host [data-value="10:00|11:00"]').innerText(), /已满/);
   assert.doesNotMatch(await page.locator('#slot_host').innerText(), /暂不可约/);
   await page.keyboard.press('Escape');
@@ -72,7 +71,7 @@ try {
   assert.match(await page.locator('#task_execution').innerText(), /明天.*07:00/);
   await page.screenshot({ path: `${output}/extra-day-light.png` });
   await page.evaluate(() => document.documentElement.dataset.shellTheme = 'dark');
-  await page.setViewportSize({ width: 480, height: 800 });
+  await page.setViewportSize({ width: 960, height: 600 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await page.screenshot({ path: `${output}/extra-day-narrow-dark.png` });
   await page.locator('[data-date="2026-10-28"]').click(); await page.clock.runFor(1000);

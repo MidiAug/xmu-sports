@@ -114,7 +114,7 @@ try {
   mkdirSync("artifacts/booking-plans",{recursive:true});
   await page.evaluate(()=>document.documentElement.dataset.shellTheme="light");
   await page.screenshot({path:"artifacts/booking-plans/plans-light.png"});
-  await page.setViewportSize({width:480,height:750});
+  await page.setViewportSize({width:960,height:600});
   await page.evaluate(()=>document.documentElement.dataset.shellTheme="dark");
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.locator(`[data-edit="${rules[0].id}"]`).click();
@@ -153,7 +153,7 @@ try {
   const weekendId=await page.evaluate(id=>window.__plans.rules.find(r=>r.sport===id && r.weekdays.length===2).id,gym.id);
   await page.locator(`[data-enable="${weekendId}"]`).uncheck();
   await page.getByRole('button',{name:'单次预约',exact:true}).click();
-  await page.locator('#sport_host .shell-select-trigger').waitFor();
+  await page.locator('#sport_host .choice-option').first().waitFor();
   await page.locator('[data-date="2026-10-30"]').click();
   await page.clock.runFor(1000);
   await page.waitForFunction(()=>document.querySelector('#sport_host').textContent.includes('已计划'));
@@ -161,15 +161,14 @@ try {
   assert.match(await gymOption.innerText(),/已计划/);
   assert.equal(await gymOption.isDisabled(),true);
   assert.equal(await page.locator('#setup_primary').isDisabled(),true);
-  await page.locator('#sport_host .shell-select-trigger').click();
   await page.clock.runFor(2000);
-  assert.equal(await page.locator('#sport_host').evaluate(el=>el.classList.contains('open')),true);
+  assert.equal(await gymOption.isVisible(),true,'direct choices stay visible');
   const fixedBackground=await gymOption.evaluate(el=>getComputedStyle(el).backgroundColor);
   await gymOption.hover();
   assert.equal(await gymOption.evaluate(el=>getComputedStyle(el).backgroundColor),fixedBackground);
-  const chosen=await page.locator('#sport_host .shell-select-value').innerText();
+  const chosen=await page.locator('#sport_host .choice-option.on').innerText();
   await gymOption.click({force:true});
-  assert.equal(await page.locator('#sport_host .shell-select-value').innerText(),chosen);
+  assert.equal(await page.locator('#sport_host .choice-option.on').innerText(),chosen);
   await page.screenshot({path:'artifacts/booking-plans/single-planned-dark-narrow.png'});
   await page.keyboard.press('Escape');
   await page.locator('[data-date="2026-10-31"]').click();
@@ -208,14 +207,14 @@ try {
     await page.evaluate(ids=>{localStorage.setItem('fixture.favorites',JSON.stringify(ids));localStorage.setItem('xmu.booking.mode','single');},enabled.slice(0,count).map(s=>s.id));
     await page.reload();
     const host=page.locator('#sport_host');
-    await host.locator('.shell-select-trigger').waitFor();
+    await host.locator('.choice-option').first().waitFor();
     await page.clock.runFor(1000);
-    await host.locator('.shell-select-trigger').click();
-    const trigger=await host.locator('.shell-select-trigger').boundingBox();
-    const menu=await host.locator('.shell-select-menu').boundingBox();
-    const columns=await host.locator('.shell-select-menu').evaluate(el=>getComputedStyle(el).getPropertyValue('--select-columns').trim());
-    if(count<=4){assert.ok(Math.abs(menu.width-trigger.width)<=1);assert.equal(columns,'1');}
-    else {assert.ok(menu.width>trigger.width+20);assert.equal(columns,'2');}
+    assert.equal(await host.locator('.choice-option').count(),count);
+    await host.locator('.choice-option:not(:disabled)').last().focus();
+    const last=await host.locator('.choice-option:not(:disabled)').last().boundingBox();
+    const track=await host.boundingBox();
+    assert.ok(last.x>=track.x-1 && last.x+last.width<=track.x+track.width+1,`all selectable sports are keyboard reachable within the rail: ${JSON.stringify({count,last,track})}`);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,count<=4?'light':'dark');
     await page.screenshot({path:`artifacts/booking-plans/sport-menu-${count}.png`});
     await page.keyboard.press('Escape');

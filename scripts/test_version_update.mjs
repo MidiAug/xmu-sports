@@ -31,13 +31,13 @@ const css = readFileSync(join('dist/assets', readdirSync('dist/assets').find(nam
 const fixture = join(output, 'fixture.html');
 const notes = ['## 更新内容', '', '- **修复场次人数显示**', '- 保留凌晨立即执行入口', '', '| 日期 | 执行方式 |', '| --- | --- |', '| 明天 | 今天 07:00 |', '', '```html', '<script>示例代码</script>', '```', '', '[GitHub](https://github.com/MidiAug/xmu-sports)', '[危险链接](javascript:alert(1))', '<script>window.pwned=true</script><img src="https://example.com/tracker.png" onerror="window.pwned=true"><iframe src="https://example.com"></iframe>'].join('\n');
 writeFileSync(fixture, `<!doctype html><html data-shell-theme="light"><meta charset="utf-8"><style>${css}</style>
-<div id="app"><div class="shell"><div class="shell-row"><aside class="nav"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button>运行</button><button>历史</button><button>设置</button></nav><div class="nav-foot"><span class="nav-version">v0.1.29</span></div></aside><div class="shell-main"><div class="titlebar"></div><main class="main"><div class="content" id="panel">预约</div></main></div></div></div></div>
+<div id="app"><div class="shell"><div class="shell-row"><header class="app-header"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button>计划</button><button>记录</button></nav><div class="header-actions"><div class="nav-foot"><span class="nav-version">v0.1.29</span></div></div></header><div class="shell-main"><main class="main"><div class="content" id="panel">预约</div></main></div></div></div></div>
 <script>window.calls=[];window.opened=[];window.releaseNotes=${JSON.stringify(notes).replaceAll('<','\\u003c')};window.mockInvoke=async command=>{calls.push(command);if(command==='check_app_update')return {status:window.releaseStatus||'available',version:'0.2.0',size:10485760,notes:window.releaseNotes};if(command==='download_app_update')return 'synthetic.exe';throw Error('Installation is unavailable in this fixture');};</script>
 <script type="module">import {mountVersionUpdate} from ${JSON.stringify(icon)};import {renderAbout} from ${JSON.stringify(about)};import {checkAppUpdate} from ${JSON.stringify(controller)};import {disposePage} from ${JSON.stringify(lifecycle)};
 const panel=document.querySelector('#panel');window.leave=()=>{disposePage(panel);panel.textContent='预约';};window.openAbout=()=>renderAbout(panel,leave);mountVersionUpdate(document.querySelector('.nav-foot'),openAbout);window.check=checkAppUpdate;window.ready=true;</script>`);
 const browser = await launchBrowser();
 try {
-  const page = await browser.newPage({ viewport: { width: 960, height: 720 } });
+  const page = await browser.newPage({ viewport: { width: 1200, height: 840 } });
   await page.goto(pathToFileURL(fixture).href);
   await page.waitForFunction(() => window.ready);
   assert.equal(await page.locator('.version-update').isVisible(), true);

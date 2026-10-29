@@ -24,7 +24,7 @@ const css=["tokens","shell","forms","pages","overlays","responsive"].map(name=>r
 const browser=await launchBrowser();
 try {
  const page=await browser.newPage({viewport:{width:970,height:815}});
- await page.setContent(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style><div id="app"><div class="shell"><div class="shell-row"><aside class="nav"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button class="active">运行</button><button>历史</button><button>设置</button></nav><section class="my-orders" id="orders" aria-label="未核销预约"></section><div class="nav-foot">v0.1.29</div></aside><div class="shell-main"><header class="titlebar"></header><main class="content"><h2>运行状态</h2><p>查看执行进度与预约结果</p><div class="page-card"><strong>当前任务</strong><p>翔安校区乒乓球室　19:30–21:00</p></div></main></div></div></div></div>`);
+ await page.setContent(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div class="shell"><header class="app-header"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button>计划</button></nav><section class="my-orders" id="orders" aria-label="未核销预约"></section></header><main class="content"><h2>运行状态</h2><p>查看执行进度与预约结果</p></main></div></body></html>`);
  await page.evaluate(async url=>{
   window.__calls=[];window.__toasts=[];window.__now=Date.parse("2026-10-26T12:00:00+08:00");
   Date.now=()=>window.__now;
@@ -52,9 +52,10 @@ try {
    if(command==="cancel_my_order")return new Promise(resolve=>{window.__cancelFinish=()=>{window.__rows=window.__rows.filter(row=>row.details_id!==args.detailsId);resolve({ok:true,state:"cancelled"});};});
    throw new Error(command);
   };
-  (await import(url)).mountMyOrders(document.querySelector("#orders"));
+  (await import(url)).mountMyOrders(document.querySelector("#orders"),{popover:true});
  },moduleUrl);
  await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===2);
+ await page.locator(".my-orders-toggle").click();
  assert.equal(await page.locator("#orders [title]").count(),0,"reservation controls do not add tooltips");
  assert.equal(await page.evaluate(()=>window.__calls.find(call=>call.command==="get_my_orders").args.force),false,"startup can reuse the persistent snapshot");
  assert.match(await page.locator(".my-order").first().innerText(),/思明[\s\S]*明天[\s\S]*07:00/);
@@ -85,14 +86,10 @@ try {
  await page.screenshot({path:"artifacts/sidebar-orders/light.png"});
  await page.evaluate(()=>document.documentElement.dataset.shellTheme="dark");
  await page.screenshot({path:"artifacts/sidebar-orders/dark.png"});
- for(const size of [{width:970,height:480},{width:480,height:720}]) {
+ for(const size of [{width:970,height:600},{width:1100,height:720}]) {
   await page.setViewportSize(size);
-  if(size.width<=720) {
-   assert.equal(await page.locator('.my-orders-toggle').getAttribute('aria-expanded'),'false');
-   assert.equal(await page.locator('.my-orders-body').isVisible(),false);
-   await page.locator('.my-orders-toggle').click();
-   assert.equal(await page.locator('.my-orders-body').isVisible(),true);
-  }
+  assert.equal(await page.locator('.my-orders-popup').isVisible(),true);
+
   for(const button of await page.locator(".order-cancel").all()) {
    await button.scrollIntoViewIfNeeded();
    const bounds=await button.boundingBox();

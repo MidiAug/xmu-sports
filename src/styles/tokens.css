@@ -1,19 +1,24 @@
-﻿:root,
+:root,
 :root[data-shell-theme="dark"] {
   color-scheme: dark;
-  --color-canvas: #191c23;
+  --color-canvas: #111d2e;
+  --color-header: #142236;
+  --color-control: #223249;
+  --color-secondary-ink: #d4e2f6;
+  --color-booking: #163b38;
+  --color-booking-line: #27534e;
   --color-titlebar: #191c23;
   --color-nav-canvas: #15181e;
-  --color-panel: #22262f;
-  --color-panel-2: #2b303a;
+  --color-panel: #1a293e;
+  --color-panel-2: #213249;
   --color-panel-hover: rgba(255, 255, 255, 0.08);
   --color-line: rgba(255, 255, 255, 0.06);
   --color-line-strong: rgba(255, 255, 255, 0.12);
   --color-ink: rgb(249, 250, 251);
   --color-muted: rgb(173, 178, 184);
   --color-accent: #92baff;
-  --color-primary: #3268b9;
-  --color-primary-hover: #3d75ca;
+  --color-primary: #2589ff;
+  --color-primary-hover: #439bff;
   --color-primary-ink: #ffffff;
   --color-danger: #f25a5a;
   --color-warning: #e0ac5a;
@@ -40,6 +45,7 @@
   color: var(--color-ink);
   background: var(--color-canvas);
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -49,7 +55,12 @@
 
 :root[data-shell-theme="light"] {
   color-scheme: light;
-  --color-canvas: #f7f8fb;
+  --color-canvas: #f1f8ff;
+  --color-header: #f9fcff;
+  --color-control: #f3f6fa;
+  --color-secondary-ink: #344a72;
+  --color-booking: #edfcf6;
+  --color-booking-line: #d1eee4;
   --color-titlebar: #f7f8fb;
   --color-nav-canvas: #eef1f6;
   --color-panel: #ffffff;
@@ -57,18 +68,18 @@
   --color-panel-hover: rgba(0, 0, 0, 0.04);
   --color-line: rgba(0, 0, 0, 0.06);
   --color-line-strong: rgba(0, 0, 0, 0.12);
-  --color-ink: rgb(28, 28, 30);
-  --color-muted: rgb(110, 110, 115);
-  --color-accent: #265daf;
-  --color-primary: #285fb6;
-  --color-primary-hover: #204f9a;
+  --color-ink: #0c1936;
+  --color-muted: #63738d;
+  --color-accent: #1268da;
+  --color-primary: #147bfa;
+  --color-primary-hover: #0869df;
   --color-danger: #e11d48;
   --color-warning: #946122;
   --color-ok: #15803d;
   --color-btn-fill: rgb(245, 246, 247);
   --color-btn-fill-hover: rgb(241, 243, 245);
   --color-nav-hover: rgba(0, 0, 0, 0.05);
-  --color-nav-active: rgba(38, 93, 175, 0.09);
+  --color-nav-active: #e2efff;
   --color-tooltip-bg: rgb(55, 55, 58);
   --color-tooltip-ink: rgb(249, 250, 251);
   --shadow-lv3:

@@ -75,7 +75,7 @@ try {
   assert.equal(await action.locator('.update-download-cancel').isVisible(),false);
   for(const theme of ['light','dark']) {
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
-    await page.setViewportSize(theme==='light'?{width:960,height:800}:{width:480,height:750});
+    await page.setViewportSize(theme==='light'?{width:960,height:800}:{width:960,height:600});
     await action.hover();assert.equal(await action.locator('.update-download-cancel').isVisible(),true);
     await page.screenshot({path:`artifacts/about-updates/cancel-hover-${theme}.png`});
   }
@@ -121,13 +121,13 @@ try {
   await page.evaluate(()=>{window.__downloadError='校验失败，已删除';window.__finishDownload();});
   await page.getByRole('button',{name:'重新下载',exact:true}).waitFor();await singleButton();
   assert.match(await page.locator('#update_status').innerText(),/校验失败/);
-  await page.setViewportSize({width:480,height:750});
+  await page.setViewportSize({width:960,height:600});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.evaluate(()=>document.documentElement.dataset.shellTheme='dark');
   await route.locator('.shell-select-trigger').click();
   const menuBox=await route.locator('.shell-select-menu').boundingBox();
   const triggerBox=await route.locator('.shell-select-trigger').boundingBox();
-  assert.ok(Math.abs(menuBox.width-triggerBox.width)<1 && menuBox.x>=0 && menuBox.x+menuBox.width<=480,'narrow popup matches trigger without overflow');
+  assert.ok(Math.abs(menuBox.width-triggerBox.width)<1 && menuBox.x>=0 && menuBox.x+menuBox.width<=960,'minimum desktop popup matches trigger without overflow');
   await page.screenshot({path:'artifacts/about-updates/route-menu-dark.png'});
   await page.keyboard.press('Escape');
   await page.screenshot({path:'artifacts/about-updates/narrow-dark.png'});

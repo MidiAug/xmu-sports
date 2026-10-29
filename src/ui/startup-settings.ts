@@ -5,8 +5,8 @@ import type { PageScope } from "../lib/page-lifecycle";
 type Startup = { supported: boolean; enabled: boolean; hidden: boolean };
 export async function mountStartupSettings(host: HTMLElement, scope: PageScope) {
   host.innerHTML = `<div class="preference-card-heading"><h3>启动与后台</h3><p>保留在后台，自动执行长期计划</p></div>
-    <label class="settings-cell"><div><p class="settings-cell-title">登录 Windows 后启动</p><p class="settings-cell-desc" id="startup_hint">正在读取系统设置</p></div><input type="checkbox" id="startup_enabled" disabled></label>
-    <label class="settings-cell"><div><p class="settings-cell-title">自动启动时进入托盘</p><p class="settings-cell-desc">手动打开应用仍会显示主窗口</p></div><input type="checkbox" id="startup_hidden" disabled></label><p class="msg" id="startup_msg" role="status"></p>`;
+    <label class="settings-cell"><div><p class="settings-cell-title">登录 Windows 后启动</p><p class="settings-cell-desc" id="startup_hint">正在读取系统设置</p></div><span class="switch"><input type="checkbox" id="startup_enabled" disabled></span></label>
+    <label class="settings-cell"><div><p class="settings-cell-title">自动启动时进入托盘</p><p class="settings-cell-desc">手动打开应用仍会显示主窗口</p></div><span class="switch"><input type="checkbox" id="startup_hidden" disabled></span></label><p class="msg" id="startup_msg" role="status"></p>`;
   const enabled = host.querySelector<HTMLInputElement>("#startup_enabled")!;
   const hidden = host.querySelector<HTMLInputElement>("#startup_hidden")!;
   const message = host.querySelector<HTMLElement>("#startup_msg")!;

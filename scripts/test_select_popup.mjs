@@ -25,7 +25,7 @@ try {
   for(const fallback of [false,true]){
     const page=await browser.newPage();
     if(fallback)await page.addInitScript(()=>Object.defineProperty(HTMLElement.prototype,"showPopover",{value:undefined,configurable:true}));
-    for(const [width,height] of [[960,720],[960,520],[480,520],[1280,800]]){
+    for(const [width,height] of [[960,720],[960,600],[1100,640],[1280,800]]){
       await page.setViewportSize({width,height});
       await page.goto(pathToFileURL(fixture).href);await page.waitForFunction(()=>window.ready);
       for(const id of ["slot","venue"]){
@@ -55,10 +55,10 @@ try {
         cases++;
       }
       await page.locator('#slot .shell-select-trigger').click();
-      await page.setViewportSize({width:Math.max(480,width-140),height:Math.max(520,height-80)});
+      await page.setViewportSize({width:Math.max(960,width-140),height:Math.max(600,height-80)});
       if(await page.locator('#slot').evaluate(host=>host.classList.contains('open'))){
         const box=await page.locator('#slot .shell-select-menu').boundingBox();
-        assert.ok(box.x>=0&&box.x+box.width<=Math.max(480,width-140)+1,"resize repositions an open popup");
+        assert.ok(box.x>=0&&box.x+box.width<=Math.max(960,width-140)+1,"resize repositions an open popup");
       }
       await page.evaluate(()=>window.selects.slot.setOptions([{value:'new',label:'新时段'}],'new'));
       assert.equal(await page.locator(':popover-open').count(),0,"updating options closes and releases the popup");

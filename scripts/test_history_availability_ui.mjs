@@ -62,7 +62,7 @@ try {
   await page.clock.runFor(1000);
   const slot=page.locator('#slot_host');
   const court=page.locator('#court_host');
-  const choose=async(host,value)=>{await host.locator('.shell-select-trigger').click();await host.locator(`[data-value="${value}"]`).click();};
+  const choose=async(host,value)=>{if(await host.locator('.shell-select-trigger').count()) await host.locator('.shell-select-trigger').click();await host.locator(`[data-value="${value}"]`).click();};
   assert.equal(await panel.locator('details,strong').count(),0);
   assert.equal(await page.locator('#slot_host [data-value="13:00|14:00"]').evaluate(el=>getComputedStyle(el).cursor),"default");
   const stable=await page.locator('.content').evaluate(el=>{
@@ -74,22 +74,21 @@ try {
   assert.equal(stable.gutter,"stable");assert.equal(stable.before,stable.during);assert.equal(stable.before,stable.after);
 
   assert.equal(await panel.locator('..').getAttribute('class'),"booking-field-heading");
-  const slotBox=await slot.locator('.shell-select-trigger').boundingBox();
+  const slotBox=await slot.boundingBox();
   const courtBox=await court.locator('.shell-select-trigger').boundingBox();
   const refreshBox=await panel.locator('button').boundingBox();
-  assert.ok(Math.abs(slotBox.y-courtBox.y)<1,"Time and court controls stay aligned");
+  assert.ok(courtBox.y>=slotBox.y,"Court preference follows the visible time choices");
   assert.ok(refreshBox.y+refreshBox.height<=slotBox.y,"Refresh shares the time heading row");
   assert.equal((await panel.innerText()).trim(),"刷新");
   assert.match(await panel.locator('button').getAttribute('title'),/09:00:00.*[\s\S]*查询时快照/);
-  assert.match(await slot.locator('.shell-select-value').innerText(),/全部锁定/);
+  assert.match(await slot.locator('.choice-option.on').innerText(),/全部锁定/);
   assert.equal(await slot.locator('[data-value="13:00|14:00"]').isDisabled(),true);
   assert.equal(await slot.locator('[data-value="12:00|13:00"]').isEnabled(),true);
   assert.equal(await slot.locator('[data-value="14:00|15:00"]').isEnabled(),true);
   assert.equal(await court.locator('.shell-select-trigger').isDisabled(),true);
   assert.equal(await page.locator('#setup_primary').isDisabled(),true);
   assert.equal(await page.locator('#setup_check').isEnabled(),true);
-  await slot.locator('.shell-select-trigger').focus();
-  await page.keyboard.press("ArrowDown");
+  await slot.locator('.choice-option:not(:disabled)').first().focus();
   assert.equal(await page.evaluate(()=>document.activeElement?.dataset.value),"14:00|15:00");
   await page.keyboard.press("End");
   assert.equal(await page.evaluate(()=>document.activeElement?.dataset.value),"12:00|13:00");
@@ -118,7 +117,7 @@ try {
     await page.locator('.nav-tabs [data-tab="setup"]').click();await page.clock.runFor(700);
     assert.equal((await panel.locator('[data-refresh-availability]').innerText()).trim(),"刷新");
     assert.equal(await page.evaluate(()=>window.__queries.length),beforeSwitch,"Returning from another tab must not query availability");
-    assert.match(await slot.locator('.shell-select-value').innerText(),/全部锁定/);
+    assert.match(await slot.locator('.choice-option.on').innerText(),/全部锁定/);
     assert.equal(await page.locator('#setup_primary').isDisabled(),true);
   }
   assert.equal(await page.evaluate(()=>window.__tabRefreshing),0,"Tab remount must never flash Refreshing");
@@ -135,14 +134,14 @@ try {
   assert.equal(await page.evaluate(()=>window.__queries.length),0,"A real document reload restores local snapshots without RPC");
   assert.equal(await page.evaluate(()=>window.__loadRefreshing),0,"Reload must not flash Refreshing");
   assert.equal((await panel.locator('[data-refresh-availability]').innerText()).trim(),"刷新");
-  assert.match(await slot.locator('.shell-select-value').innerText(),/全部锁定/);
+  assert.match(await slot.locator('.choice-option.on').innerText(),/全部锁定/);
   const reopened=await page.context().newPage();
   await reopened.clock.install({time:new Date("2026-10-23T10:00:00+08:00")});
   await reopened.goto(process.env.XMU_TEST_BASE_URL ?? "http://127.0.0.1:1421");await reopened.clock.runFor(1000);
   await reopened.locator('[data-date="2026-10-24"]').click();await reopened.clock.runFor(500);
   assert.equal(await reopened.evaluate(()=>window.__queries.length),0,"A new JS environment restores persisted snapshots without querying");
   assert.equal(await reopened.evaluate(()=>window.__loadRefreshing),0);
-  assert.match(await reopened.locator('#slot_host .shell-select-value').innerText(),/全部锁定/);
+  assert.match(await reopened.locator('#slot_host .choice-option.on').innerText(),/全部锁定/);
   await reopened.close();
   console.log("Persistence browser checks passed: document reload and new document, zero availability RPCs and zero Refreshing flashes");
   const noPoll=await page.evaluate(()=>window.__queries.length);
@@ -180,12 +179,16 @@ try {
   const lockedOption=court.locator('[data-value="03"]');
   const colors=el=>{const s=getComputedStyle(el);return [s.backgroundColor,s.color,s.opacity];};
   for(const theme of ['light','dark']) {
+    await page.keyboard.press('Escape');
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+    await court.locator('.shell-select-trigger').click();
+    await court.locator('.shell-select-menu').waitFor({state:'visible'});
     for(const selected of [false,true]) {
       await lockedOption.evaluate((el,selected)=>el.classList.toggle('on',selected),selected);
       await page.mouse.move(950,10);
       const before=await lockedOption.evaluate(colors);
       const bounds=await lockedOption.boundingBox();
+      assert.ok(bounds,`${theme}: locked court remains visible while checking its hover state`);
       await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
       assert.deepEqual(await lockedOption.evaluate(colors),before,`${theme}: locked option hover must not change its appearance, selected=${selected}`);
     }
@@ -217,14 +220,13 @@ try {
   assert.equal(await page.locator('#setup_primary').isEnabled(),true);
   await choose(slot,"12:00|13:00");
   assert.equal(await page.locator('#setup_primary').isEnabled(),true);
-  assert.match(await slot.locator('.shell-select-value').innerText(),/已满/);
+  assert.match(await slot.locator('.choice-option.on').innerText(),/已满/);
   assert.match(await court.locator('[data-value="01"]').innerText(),/已满/);
   assert.equal(await court.locator('[data-value="01"]').isEnabled(),true);
-  await page.setViewportSize({width:550,height:900});
-  await slot.locator('.shell-select-trigger').click();
+  await page.setViewportSize({width:960,height:600});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  const box=await slot.locator('.shell-select-menu').boundingBox();
-  assert.ok(box.x>=0 && box.x+box.width<=550);
+  const box=await slot.boundingBox();
+  assert.ok(box.x>=0 && box.x+box.width<=960);
   await page.screenshot({path:resolve(artifacts,"narrow.png"),fullPage:true});
   await page.keyboard.press('Escape');
   await page.setViewportSize({width:960,height:900});
@@ -241,7 +243,7 @@ try {
   assert.match(await panel.innerText(),/已识别厦大体育首页.*自动滚动/);
   assert.doesNotMatch(await panel.innerText(),/请在微信完成登录确认/);
   await page.screenshot({path:resolve(artifacts,'home-entry-failure.png'),fullPage:true});
-  assert.match(await slot.locator('.shell-select-value').innerText(),/已满/);
+  assert.match(await slot.locator('.choice-option.on').innerText(),/已满/);
   const expiredRequests=await page.evaluate(()=>window.__queries.length);
   await page.locator('.nav-tabs [data-tab="history"]').click();await page.clock.runFor(31000);
   await page.locator('.nav-tabs [data-tab="setup"]').click();await page.clock.runFor(700);
@@ -263,7 +265,7 @@ try {
   await panel.locator('[data-refresh-availability]').click();await page.clock.runFor(300);
   await panel.getByRole('button',{name:'重新登录',exact:true}).click();await page.clock.runFor(300);
   assert.match(await panel.innerText(),/重新登录/);
-  assert.match(await slot.locator('.shell-select-value').innerText(),/已满/);
+  assert.match(await slot.locator('.choice-option.on').innerText(),/已满/);
   await page.evaluate(()=>{window.__authFailure=false;window.__holdLogin=true;});
   const beforeCancel=await page.evaluate(()=>window.__queries.length);
   await panel.getByRole('button',{name:'重新登录',exact:true}).click();await page.clock.runFor(20);
@@ -309,7 +311,7 @@ try {
   await authDetails.locator('summary').click();
   assert.match(await page.locator(".run-card-body").innerText(),/翔安校区羽毛球/);
   await page.screenshot({path:resolve(artifacts,"history.png"),fullPage:true});
-  await page.setViewportSize({width:550,height:900});
+  await page.setViewportSize({width:960,height:600});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
   await page.evaluate(()=>window.__holdHistory=true);
   await page.locator('.nav-tabs [data-tab="live"]').click();

@@ -15,10 +15,10 @@
       {
         "label": "main",
         "title": "XMU Sports",
-        "width": 960,
-        "height": 720,
-        "minWidth": 480,
-        "minHeight": 520,
+        "width": 1100,
+        "height": 760,
+        "minWidth": 960,
+        "minHeight": 600,
         "resizable": true,
         "decorations": false,
         "visible": false

@@ -150,7 +150,7 @@ function emptyAllHtml(): string {
   return `
     <div class="empty history-empty">
       <p class="empty-title">还没有运行记录</p>
-      <p class="empty-desc">这里会列出每次「现在开始」、挂机开抢的结果。去「运行」页操作后即可回看。</p>
+      <p class="empty-desc">单次预约、长期计划与登录检查的执行记录会显示在这里。</p>
     </div>`;
 }
 
@@ -260,8 +260,8 @@ export async function renderHistory(panel: Element) {
   try {
     panel.innerHTML = `
       <div class="page-stack history-page">
+        <div class="page-heading"><h2>活动记录</h2></div>
         <div class="history-summary-group">
-          <p class="settings-group-title">运行摘要</p>
           <div class="history-filter-selects">
             <div id="history_kind_host"></div>
             <div id="history_range_host"></div>
