@@ -6,35 +6,9 @@ const cellsFor = (slot:AvailabilitySlot,court="") => court ? slot.cells.filter(c
 // Outside booking hours the server still supplies real counts with unavailable status.
 const hasQuota = (cell:AvailabilityCell) => ["available", "unavailable"].includes(cell.status)
   && cell.capacity>0 && Number.isFinite(cell.remaining) && cell.remaining>=0;
-// Some sports return numeric IDs, others already include “号场” or a room name.
-const courtNames = (cells:AvailabilityCell[]) => cells.every(cell=>/^\d+$/.test(cell.court))
-  ? `${cells.map(cell=>cell.court).join("、")} 号场地`
-  : cells.map(cell=>/^\d+$/.test(cell.court) ? `${cell.court} 号场地` : cell.court).join("、");
 export function isAdminLocked(slot:AvailabilitySlot,court=""):boolean {
   const cells=cellsFor(slot,court);
   return cells.length>0 && cells.every(cell=>cell.admin_locked);
-}
-export function adminLockLabel(slot:AvailabilitySlot,court=""):string {
-  const cells=cellsFor(slot,court);
-  if (!cells.length) return "未提供场地状态";
-  const locked=cells.filter(cell=>cell.admin_locked);
-  if (locked.length===cells.length) return court ? `${courtNames(cells)}管理员锁定` : "全部场地管理员锁定";
-  if (locked.length) return `部分管理员锁定（${locked.length}/${cells.length}）：${courtNames(locked)}`;
-  return "未发现管理员锁定";
-}
-export function quotaLabel(slot:AvailabilitySlot,court=""):string {
-  const cells=cellsFor(slot,court).filter(cell=>!cell.admin_locked);
-  if (!cells.length) return "名额：无未锁定场地数据";
-  const known=cells.filter(hasQuota);
-  const full=known.filter(cell=>cell.remaining===0);
-  const remaining=known.reduce((sum,cell)=>sum+cell.remaining,0);
-  const fullText=full.length ? `；已满：${courtNames(full)}` : "";
-  if (known.length===cells.length && full.length===cells.length) return `名额已满（查询时）${fullText}`;
-  if (known.length) return `剩余 ${remaining} 名额（查询时${known.length<cells.length ? "，部分场地未知" : ""}）${fullText}`;
-  return "名额状态未知，以学校实时校验为准";
-}
-export function availabilityClass(slot:AvailabilitySlot,court=""):string {
-  return isAdminLocked(slot,court) ? "locked" : "snapshot";
 }
 
 export const courtLabel = (name:string) => /^\d+$/.test(name) ? `${name} 号场地` : name;

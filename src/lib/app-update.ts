@@ -129,7 +129,13 @@ export async function installAppUpdate() {
   if (view.phase !== "downloaded" && !(view.phase === "error" && view.failedAt === "install")) return;
   publish({ phase: "installing", error: undefined });
   try { await invoke("install_app_update"); }
-  catch (e) { const error = String(e); publish({ phase: "error", failedAt: error.includes("重新下载") ? "download" : "install", error, path: error.includes("重新下载") ? undefined : view.path }); }
+  catch (e) {
+    const message = String(e);
+    const redownload = message.startsWith("UPDATE_PACKAGE_INVALID:");
+    publish({ phase: "error", failedAt: redownload ? "download" : "install",
+      error: redownload ? message.slice("UPDATE_PACKAGE_INVALID:".length).trim() : message,
+      path: redownload ? undefined : view.path });
+  }
 }
 export function performAppUpdate() {
   if (view.phase === "downloaded" || (view.phase === "error" && view.failedAt === "install")) return installAppUpdate();

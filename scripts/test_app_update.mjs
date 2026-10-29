@@ -42,9 +42,10 @@ assert.deepEqual({...downloadArgs,downloadId:undefined},{mirror:'ghproxy',automa
 assert.equal(last.phase,'downloaded');assert.equal(last.path,'verified.exe');assert.equal(stopped,2);
 const install=module.performAppUpdate();assert.equal(last.phase,'installing');
 await module.performAppUpdate();assert.equal(installs,1);
-completeInstall.reject('请先结束预约');await install;assert.equal(last.failedAt,'install');
+completeInstall.reject('请先结束预约，之后可重试安装或重新下载');await install;assert.equal(last.failedAt,'install');
 const installRetry=module.performAppUpdate();assert.equal(installs,2);
-completeInstall.reject('安装包已改变，请重新下载');await installRetry;assert.equal(last.failedAt,'download');
+completeInstall.reject('UPDATE_PACKAGE_INVALID: 安装文件已失效');await installRetry;
+assert.equal(last.failedAt,'download');assert.equal(last.error,'安装文件已失效');assert.equal(last.path,undefined);
 const redownload=module.performAppUpdate();await Promise.resolve();assert.equal(downloads,3);completeDownload.resolve('verified-again.exe');await redownload;
 subscribe();const old=last;const again=module.checkAppUpdate();complete({status:'unpublished',version:'',size:0,notes:''});await again;
 assert.equal(last,old,'Disposed page receives no updates');

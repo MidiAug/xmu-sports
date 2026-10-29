@@ -622,10 +622,10 @@ pub async fn install_app_update(app: tauri::AppHandle) -> Result<(), String> {
         let state = state()
             .try_lock()
             .map_err(|_| "正在检查或下载更新，请稍候")?;
-        let download = state.downloaded.as_ref().ok_or("请先下载更新")?;
+        let download = state.downloaded.as_ref().ok_or("UPDATE_PACKAGE_INVALID: 请先下载更新")?;
         // Hold a read-only sharing handle until process creation prevents replacement
         // between revalidation and launch on Windows. Never accepts frontend paths.
-        let _file = verify_downloaded(download)?;
+        let _file = verify_downloaded(download).map_err(|message| format!("UPDATE_PACKAGE_INVALID: {message}"))?;
         std::process::Command::new(&download.path)
             .arg("/UPDATE")
             .spawn()

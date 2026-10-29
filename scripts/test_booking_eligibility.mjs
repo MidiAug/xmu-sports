@@ -26,9 +26,19 @@ const timeSource = readFileSync(new URL("../src/lib/time.ts", import.meta.url), 
 const timeJs = ts.transpileModule(timeSource, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
 const timeUrl = `data:text/javascript;base64,${Buffer.from(timeJs).toString("base64")}`;
 const calibrationSource = readFileSync(new URL("../src/lib/calibrate-target-date.ts", import.meta.url), "utf8");
-const pureFunction = calibrationSource.slice(calibrationSource.indexOf("export function withDefaultTargetDate"), calibrationSource.indexOf("/** ms until"));
-const calibrationJs = ts.transpileModule(`import { plannedFireAt, defaultTargetDateISO, fireHmFromIso, isSelectableTargetDate, localDateISO } from ${JSON.stringify(timeUrl)};\n${pureFunction}`, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
-const { withDefaultTargetDate } = await import(`data:text/javascript;base64,${Buffer.from(calibrationJs).toString("base64")}`);
+let saved = {...today,target_date:"2026-10-12",task_id:"date-test"}, busy = false, running = false, writes = 0;
+globalThis.__dateTest = {
+  invoke:async()=>({armed:busy,running,last_event:{result:"SESSION_EXPIRED"}}),
+  read:async()=>saved,
+  save:next=>{saved=next; writes++;},
+};
+const mocked = calibrationSource
+  .replace('import { invoke } from "@tauri-apps/api/core";', 'const invoke = globalThis.__dateTest.invoke;')
+  .replace('import { log } from "./log";', 'const log = {debug(){},warn(){}};')
+  .replace('from "./time"', `from ${JSON.stringify(timeUrl)}`)
+  .replace('import { readSavedTask, saveTaskDraft, flushTask } from "./task-store";', 'const readSavedTask = globalThis.__dateTest.read; const saveTaskDraft = globalThis.__dateTest.save; const flushTask = async()=>{};');
+const mockedJs = ts.transpileModule(mocked,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
+const {withDefaultTargetDate,calibrateSavedTaskTargetDate:calibrate,msUntilNextDateBoundary:boundary} = await import(`data:text/javascript;base64,${Buffer.from(mockedJs).toString("base64")}`);
 const time = await import(timeUrl);
 assert.equal(time.waitsExtraDay("2026-10-29", new Date("2026-10-27T00:00:00+08:00")), true);
 assert.match(time.targetDateHint(new Date("2026-10-27T06:59:59+08:00"), "2026-10-29"), /明天 07:00.*今天 07:00.*多等一天/);
@@ -89,20 +99,7 @@ try {
   }
 } finally { if (oldZone === undefined) delete process.env.TZ; else process.env.TZ = oldZone; }
 
-let saved = {...today,target_date:"2026-10-12",task_id:"date-test"}, busy = false, running = false, writes = 0;
-globalThis.__dateTest = {
-  invoke:async()=>({armed:busy,running,last_event:{result:"SESSION_EXPIRED"}}),
-  read:async()=>saved,
-  save:next=>{saved=next; writes++;},
-};
 try {
-  const mocked = calibrationSource
-    .replace('import { invoke } from "@tauri-apps/api/core";', 'const invoke = globalThis.__dateTest.invoke;')
-    .replace('import { log } from "./log";', 'const log = {debug(){},warn(){}};')
-    .replace('from "./time"', `from ${JSON.stringify(timeUrl)}`)
-    .replace('import { readSavedTask, saveTaskDraft, flushTask } from "./task-store";', 'const readSavedTask = globalThis.__dateTest.read; const saveTaskDraft = globalThis.__dateTest.save; const flushTask = async()=>{};');
-  const mockedJs = ts.transpileModule(mocked,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
-  const {calibrateSavedTaskTargetDate:calibrate,msUntilNextDateBoundary:boundary} = await import(`data:text/javascript;base64,${Buffer.from(mockedJs).toString("base64")}`);
   assert.equal(await calibrate(new Date("2026-10-13T20:00:00+08:00")),true);
   assert.equal(saved.target_date,"2026-10-15","expired target falls back to the next release day");
   saved={...saved,target_date:"2026-10-14",fire_at:"2026-10-13T07:00:00+08:00"}; const count=writes;
