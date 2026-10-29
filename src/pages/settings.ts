@@ -14,6 +14,7 @@ import { SVG } from "../ui/icons";
 import { mountShellSelect } from "../ui/select";
 import { mountPage } from "../lib/page-lifecycle";
 import { updatePrefs } from "../lib/prefs-store";
+import { mountStartupSettings } from "../ui/startup-settings";
 import { renderAbout } from "./about";
 
 function themeCubesHtml(): string {
@@ -102,6 +103,7 @@ export async function renderSettings(panel: Element) {
             <div id="close_mode_host"></div>
           </div>
       </section>
+      <section class="preference-card" id="startup_settings"></section>
       <section class="preference-card settings-favorites" aria-labelledby="favorite_sports_title">
         <div class="settings-favorites-header"><div><h3 id="favorite_sports_title">常用运动</h3><p id="favorite_sports_summary"></p></div><button type="button" class="favorite-edit" aria-expanded="false" aria-controls="favorite_sports_body">编辑<span aria-hidden="true">›</span></button></div>
         <div id="favorite_sports_body" hidden>
@@ -134,6 +136,7 @@ export async function renderSettings(panel: Element) {
       <p class="msg" id="settings_msg"></p>
     </div>
   `;
+  void mountStartupSettings(panel.querySelector<HTMLElement>("#startup_settings")!, scope);
   const summary = panel.querySelector<HTMLElement>("#favorite_sports_summary")!;
   const paintSummary = () => { summary.textContent = sports.filter(s => favoriteIds.has(s.id)).map(s => s.label).join("、"); };
   paintSummary();

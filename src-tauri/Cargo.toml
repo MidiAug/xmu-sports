@@ -52,6 +52,9 @@ windows = { version = "0.61", features = [
     "Win32_System_SystemInformation",
     "Win32_Storage_FileSystem",
 ] }
+winreg = "0.55.0"
+tauri-plugin-single-instance = "=2.4.0"
+tauri-plugin-notification = "=2.3.3"
 
 [lib]
 name = "xmu_sports_lib"

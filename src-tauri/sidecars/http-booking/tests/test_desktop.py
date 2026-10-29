@@ -49,7 +49,8 @@ def test_desktop_reuses_authenticated_booking_client_for_pending_guard(monkeypat
     monkeypatch.setattr(desktop, "discover_entry", lambda: EntryTicket({"uid": "1234"}, Path("fake")))
     monkeypatch.setattr(desktop, "CaptchaSolver", lambda: SimpleNamespace(warm=lambda: None, solve=lambda _: "abcd"))
     guarded = []
-    def guard(client, candidate, account):
+    def guard(client, candidate, account, sport_day=False):
+        assert sport_day is False
         assert calls.count("login") == 1
         assert "captcha" not in calls and "addOrder" not in calls
         guarded.append(client)

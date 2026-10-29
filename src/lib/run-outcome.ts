@@ -39,6 +39,7 @@ const CODE_ZH: Record<string, { kind: OutcomeKind; title: string; detail: string
   CAPTCHA_UNREADABLE: {kind: "error", title: "验证码识别未完成", detail: "已达到识别次数上限，请查看执行记录"},
   CAPTCHA_REJECTED: {kind: "error", title: "验证码未通过", detail: "学校未接受验证码；每个候选最多尝试 3 次（含首次），请查看执行记录"},
   FALLBACKS_EXHAUSTED: {kind: "error", title: "备选场次均不可约", detail: "已按设置检查候选时段"},
+  SPORT_DAY_ALREADY_BOOKED: {kind: "info", title: "当天这项运动已有预约", detail: "已跳过本次计划，没有重复下单"},
   ACCOUNT_LIMIT: {kind: "error", title: "账号预约次数受限", detail: "学校不允许本次预约"},
   SESSION_EXPIRED: {kind: "error", title: "体育登录已失效", detail: "请在电脑微信重新授权，再执行原任务"},
   NATIVE_TOKEN_REQUIRED: {kind: "error", title: "当前登录模式尚不兼容", detail: "当前会话使用新版登录接口，请导出诊断日志"},

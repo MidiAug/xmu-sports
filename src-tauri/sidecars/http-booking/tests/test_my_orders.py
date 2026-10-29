@@ -317,3 +317,26 @@ def test_empty_orders_are_cached_for_normal_window(cache_env):
     clock[0] = datetime.fromisoformat("2026-10-27T22:29:59+08:00")
     assert orders.execute({"action":"my_orders"})["cached"]
     assert len(instances) == 1
+
+
+def test_plan_deduplicates_sport_day_across_venues_and_times():
+    from desktop import guard_sport_day
+    from xmu_http.client import Target
+    fake = Fake()
+    target = Target(sport="乒乓球", venue="另一个馆", date="2026-10-27", time="07:00", end="08:00")
+    with pytest.raises(BookingError) as error:
+        guard_sport_day(fake, target)
+    assert error.value.code == "SPORT_DAY_ALREADY_BOOKED"
+    assert all(path in {orders.LIST, orders.DETAIL} for path, _ in fake.calls)
+    guard_sport_day(Fake(), Target(sport="健身", venue="另一个馆", date="2026-10-27", time="07:00", end="08:00"))
+    guard_sport_day(Fake(), Target(sport="乒乓球", venue="另一个馆", date="2026-10-28", time="07:00", end="08:00"))
+
+
+def test_plan_never_assumes_no_order_when_pagination_is_incomplete():
+    from desktop import guard_sport_day
+    from xmu_http.client import Target
+    rows = [order(i, audit_status="2") for i in range(1, 11)]
+    with pytest.raises(BookingError) as error:
+        guard_sport_day(Fake(pages={"1": rows, "2": rows}),
+                        Target(sport="健身", venue="馆", date="2026-10-27", time="07:00", end="08:00"))
+    assert error.value.code == "ORDER_LIST_INCOMPLETE"

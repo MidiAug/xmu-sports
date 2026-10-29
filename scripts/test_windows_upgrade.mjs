@@ -30,6 +30,7 @@ const result=join(root,"result.ini");
 const lines=[
   "Unicode true",'!include "LogicLib.nsh"','!include "Win\\COM.nsh"','!include "Win\\Propkey.nsh"',
   `!include "${resolve("src-tauri/target/release/nsis/x64/utils.nsh")}"`,
+  `!define XMU_STARTUP_RUN_KEY "${registry}\\Run"`, `!define XMU_STARTUP_APPROVED_KEY "${registry}\\Approved"`,
   `!include "${resolve("src-tauri/windows/hooks.nsh")}"`,`!addplugindir "${join(nsis,"Plugins/x86-unicode/additional")}"`,
   'Name "XMU installer decision test"',`OutFile "${join(root,"upgrade-decision-test.exe")}"`,
   "RequestExecutionLevel user","SilentInstall silent",'!define PRODUCTNAME "XMU Sports"','!define INTERNALNAME "xmu-sports"','!define MAINBINARYNAME "xmu-sports"','!define BUNDLEID "local.xmu.sports"',`!define VERSION "${config.version}"`,
@@ -62,7 +63,16 @@ lines.push('!insertmacro XMU_REMOVE_OBSOLETE_COMPONENTS',`StrCpy $INSTDIR "${joi
 for(const file of ["xmu-sports.exe","ocr/personal.txt","http-booking/_internal/personal.txt"]){const path=join(root,"unowned-resources",file);mkdirSync(resolve(path,".."),{recursive:true});writeFileSync(path,"keep");}
 lines.push('!insertmacro XMU_REMOVE_OBSOLETE_COMPONENTS',`StrCpy $INSTDIR "${join(root,"partial-install")}"`);
 for(const file of ["xmu-sports.exe","http-booking/xmu-http-booking.exe"]){const path=join(root,"partial-install",file);mkdirSync(resolve(path,".."),{recursive:true});writeFileSync(path,"partial install");}
-lines.push('!insertmacro XMU_REMOVE_OBSOLETE_COMPONENTS',`WriteINIStr "${result}" "cleanup" "completed" "1"`,"SectionEnd");
+lines.push('!insertmacro XMU_REMOVE_OBSOLETE_COMPONENTS',`WriteINIStr "${result}" "cleanup" "completed" "1"`);
+const startupPath=join(root,"startup path with spaces");
+lines.push(`StrCpy $INSTDIR "${startupPath}"`,
+ '!insertmacro XMU_UPDATE_STARTUP','ReadRegStr $R8 HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"',`WriteINIStr "${result}" "startup" "fresh" $R8`,
+ 'WriteRegStr HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}" "old-path"','!insertmacro XMU_UPDATE_STARTUP',
+ 'ReadRegStr $R8 HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"',`WriteINIStr "${result}" "startup" "upgraded" $R8`,
+ '!insertmacro XMU_REMOVE_STARTUP','ReadRegStr $R8 HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"',`WriteINIStr "${result}" "startup" "removed" $R8`,
+ 'WriteRegStr HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}" "other-installation"','!insertmacro XMU_REMOVE_STARTUP',
+ 'ReadRegStr $R8 HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"',`WriteINIStr "${result}" "startup" "unowned" $R8`,
+ `DeleteRegKey HKCU "${registry}"`,"SectionEnd");
 const source=join(root,"upgrade-decision-test.nsi");writeFileSync(source,lines.join("\n"));
 execFileSync(join(nsis,"makensis.exe"),["/V2",source],{stdio:"pipe",windowsHide:true});
 execFileSync(join(root,"upgrade-decision-test.exe"),[],{stdio:"pipe",windowsHide:true});
@@ -70,6 +80,10 @@ const bytes=readFileSync(result);
 const ini=bytes.toString(bytes[0]===0xff&&bytes[1]===0xfe?"utf16le":"utf8");
 const value=(section,key)=>ini.match(new RegExp(`\\[${section}\\]([\\s\\S]*?)(?=\\[|$)`))?.[1].match(new RegExp(`^${key}=(.*)$`,"m"))?.[1].trim();
 assert.equal(value("fresh","inplace"),"0");
+assert.equal(value("startup","fresh"),"");
+assert.equal(value("startup","upgraded"),`"${join(startupPath,"xmu-sports.exe")}" --autostart`);
+assert.equal(value("startup","removed"),"");
+assert.equal(value("startup","unowned"),"other-installation");
 assert.equal(value("cleanup","completed"),"1","repair tolerates an already missing obsolete directory");
 for(const kind of ["upgrade","repair"]){assert.equal(value(kind,"inplace"),"1");assert.equal(value(kind,"update"),"1");}
 assert.equal(value("downgrade","inplace"),"0");

@@ -13,6 +13,8 @@ use tauri::webview::PageLoadEvent;
 use tauri::{Emitter, Manager, State, WindowEvent};
 
 mod atomic_fs;
+mod startup;
+mod booking_plans;
 mod updates;
 mod booking_eligibility;
 mod task_config;
@@ -65,6 +67,8 @@ pub fn login_minimized_check_only(output:&std::path::Path)->Result<(),String> {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct BookingTask {
     pub task_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_id: Option<String>,
     #[serde(default)]
     pub revision: u64,
     pub sport: String,
@@ -169,6 +173,8 @@ pub struct ShellPrefs {
     /// 可用环境变量 `XMU_SPORTS_DETAILED_DIAG=0|1` 覆盖。
     #[serde(default)]
     pub detailed_diagnostics: bool,
+    #[serde(default = "default_true")]
+    pub autostart_hidden: bool,
 }
 
 fn default_true() -> bool {
@@ -184,6 +190,7 @@ impl Default for ShellPrefs {
             favorite_sport_ids: Vec::new(),
             venue_slot_prefs: std::collections::HashMap::new(),
             detailed_diagnostics: false,
+            autostart_hidden: true,
         }
     }
 }
@@ -655,6 +662,7 @@ fn spawn_task_with_schedule(
                 finish.flush_ok
             );
         }
+        booking_plans::finish(&app, &task, &outcome);
         if let Some(state) = app.try_state::<AppState>() {
             state.stopping.store(false, Ordering::SeqCst);
             state.native_running.store(false, Ordering::SeqCst);
@@ -723,7 +731,7 @@ fn start_arm_waiter(app: tauri::AppHandle, gen: u64, fire_at: String) {
                             account_fingerprint: arm.account_fingerprint.clone() })));
                 match result {
                     Ok(_) => log::info!(target: "arm", "[{}] task_id={} fire_at={}", if http { "prepare_start" } else { "fire" }, task_id, deadline),
-                    Err(e) => { let _ = clear_arm_file(); log::error!(target: "arm", "[fire_failed] err={e}"); },
+                    Err(e) => { if let Some(task)=arm.task.as_ref() {booking_plans::finish(&app,task,&Err(e.clone()));} let _ = clear_arm_file(); log::error!(target: "arm", "[fire_failed] err={e}"); },
                 }
                 sync_run_badge(&app, &state);
                 let _ = app.emit("arm-changed", ());
@@ -743,10 +751,17 @@ fn scheduled_run_active(app: &tauri::AppHandle, run_gen: u64, arm_gen: u64) -> b
 
 fn resume_arm_if_needed(app: &tauri::AppHandle) {
     let arm = load_arm();
+    if arm.task.as_ref().is_some_and(|task|task.plan_id.is_some()) && !booking_plans::enabled(app) {
+        let _=clear_arm_file();
+        return;
+    }
     if !arm.armed {
         return;
     }
-    let Ok(Some(task)) = read_task() else {
+    let restored = if arm.task.as_ref().is_some_and(|task|task.plan_id.is_some()) {
+        Ok(arm.task.clone())
+    } else { read_task() };
+    let Ok(Some(task)) = restored else {
         let _ = clear_arm_file();
         log::warn!(target: "arm", "[resume_cleared] reason=no_task");
         return;
@@ -959,6 +974,7 @@ async fn recheck_order(app:tauri::AppHandle,request_ref:String)->Result<Value,St
 fn arm_hang(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     let _guard = state.task_gate.lock().map_err(|_| "任务状态不可用")?;
     if availability::recovering() || my_orders::mutating() {return Err("登录或订单操作进行中，请稍候".into());}
+    if load_arm().armed {return Err("已有定时预约，请先停止本轮或取消定时".into());}
     let task = read_task()?.ok_or_else(|| "请先在任务页配置预约目标".to_string())?;
     let fire = parse_fire_at(&task.fire_at)?;
     let now = Local::now().fixed_offset();
@@ -990,6 +1006,9 @@ fn arm_hang(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String,
 #[tauri::command]
 fn disarm_hang(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     let _guard = state.task_gate.lock().map_err(|_| "任务状态不可用")?;
+    if load_arm().task.as_ref().is_some_and(|t|t.plan_id.is_some()) || state.active_task.lock().map_err(|_|"任务状态不可用")?.as_ref().is_some_and(|t|t.plan_id.is_some()) && child_running(&state) {
+        booking_plans::stop_round(&app)?;
+    }
     state.arm_gen.fetch_add(1, Ordering::SeqCst);
     clear_arm_file()?;
     kill_child(&state);
@@ -1107,7 +1126,14 @@ pub fn run() {
     let log_file_stem = format!("xmu-sports-{log_stamp}");
     let log_session_file = format!("{log_file_stem}.log");
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(not(debug_assertions))]
+    let builder = builder
+        .plugin(tauri_plugin_single_instance::init(|app,args,_| {
+            if !args.iter().any(|arg|arg=="--autostart") {tray::show_main(app);}
+        }));
+    builder
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         // timezone_strategy 会覆盖 format，故 format 必须写在其后
         .plugin(
@@ -1188,6 +1214,8 @@ pub fn run() {
                     t_tray.elapsed().as_millis()
                 );
             }
+            booking_plans::start(app.handle());
+            startup::show_if_foreground(app.handle());
             let t_arm = Instant::now();
             resume_arm_if_needed(app.handle());
             log::debug!(
@@ -1279,7 +1307,7 @@ pub fn run() {
                 if prefs.close_to_tray {
                     api.prevent_close();
                     let _ = window.hide();
-                } else if updates::has_update() {
+                } else if updates::has_update() || booking_plans::enabled(window.app_handle()) {
                     api.prevent_close();
                     tray::request_update_quit(window.app_handle());
                 }
@@ -1287,6 +1315,14 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            startup::get_startup,
+            startup::set_startup,
+            booking_plans::get_booking_plans,
+            booking_plans::save_booking_plans,
+            booking_plans::skip_booking_plan,
+            booking_plans::resolve_booking_plan,
+            booking_plans::stop_booking_round,
+            booking_plans::booking_plan_account,
             updates::check_app_update,
             updates::download_app_update,
             updates::cancel_app_update_download,

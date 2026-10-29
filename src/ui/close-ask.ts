@@ -52,7 +52,7 @@ async function applyCloseChoice(
   }
   hideCloseAsk();
   if (toTray) await invoke("hide_to_tray");
-  else await invoke("quit_app");
+  else await invoke(disarm ? "force_quit_app" : "quit_app");
 }
 
 export function showCloseAsk(busy = false) {
@@ -77,7 +77,7 @@ export function showCloseAsk(busy = false) {
   function paint() {
     const title = busy ? "挂机进行中" : "关闭窗口";
     const lead = busy
-      ? "当前有挂机或执行任务。最小化到托盘可继续等待开抢；退出将取消挂机并结束进程。"
+      ? "当前有挂机或执行任务。最小化到托盘可继续运行；退出会停止本轮，后台自动预约也将暂停。"
       : "挂机开抢时建议最小化到托盘，避免误关进程。";
     const quitLabel = busy ? "退出并取消挂机" : "退出应用";
     const rememberBlock = busy

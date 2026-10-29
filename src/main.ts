@@ -11,7 +11,8 @@ import { showUpdateExit } from "./ui/update-exit";
 import { showCloseAsk } from "./ui/close-ask";
 import { preloadHistory } from "./pages/history";
 import { renderLive } from "./pages/live";
-import { renderSetup } from "./pages/setup";
+import { renderBooking as renderSetup } from "./pages/booking";
+import { askConfirm } from "./ui/confirm-ask";
 import { closeShellSelects } from "./ui/select";
 import { getVersion } from "@tauri-apps/api/app";
 import { startAutoAppUpdate } from "./lib/app-update";
@@ -64,7 +65,12 @@ void listen<{ armed?: boolean }>("shell-ask-close", (ev) => {
   log.info("shell", "ask_close", { armed: Boolean(ev.payload?.armed) });
   showCloseAsk(Boolean(ev.payload?.armed));
 });
-void listen("shell-update-exit",()=>{closeShellSelects();showUpdateExit(openAppUpdates);});
+void listen("shell-plan-exit", async () => {
+  closeShellSelects();
+  if (await askConfirm({title:"退出后自动预约将暂停",lead:"长期计划会保留。保持电脑唤醒并留在托盘，才能按时预约。",confirmLabel:"退出应用",cancelLabel:"留在后台"})) await invoke("force_quit_app");
+  else await invoke("hide_to_tray");
+});
+void listen<{plans?:boolean}>("shell-update-exit",event=>{closeShellSelects();showUpdateExit(openAppUpdates,Boolean(event.payload?.plans));});
 void listen("arm-changed", () => {
   log.debug("arm", "arm_changed");
   refreshLiveStatusOnly();
@@ -76,6 +82,7 @@ void listen("arm-changed", () => {
     }
   });
 });
+void listen("plans-changed", () => { if (tab === "live") refreshLiveStatusOnly(); });
 void listen("run-changed", () => {
   log.debug("live", "run_changed");
   refreshLiveStatusOnly();

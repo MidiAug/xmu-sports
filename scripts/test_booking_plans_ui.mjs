@@ -1,0 +1,112 @@
+// Offline Tauri boundary fixture. Never checks a real account or starts a worker.
+import assert from "node:assert/strict";
+import { readFileSync, mkdirSync } from "node:fs";
+import { createRequire } from "node:module";
+import { join } from "node:path";
+const require=createRequire(import.meta.url);
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE ?? join(process.env.USERPROFILE,".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"));
+const base=process.env.XMU_TEST_BASE_URL;
+assert.ok(base,"Set XMU_TEST_BASE_URL to an isolated running Vite fixture server");
+const {sports}=JSON.parse(readFileSync("src/catalog/venues.json","utf8"));
+const gym=sports.find(s=>s.label.includes("健身"));
+const other=sports.find(s=>s.enabled!==false && s.id!==gym.id);
+const plan=(sport,id)=>({id,sport:sport.id,venue:sport.venues[0].id,start:sport.venues[0].time_slots[0].start,end:sport.venues[0].time_slots[0].end,weekdays:[1,2,3,4,5,6,7],enabled:true,account:"a".repeat(64),first_date:"2026-10-30"});
+const rules=[plan(gym,"123e4567-e89b-42d3-a456-426614174000"),plan(other,"123e4567-e89b-42d3-a456-426614174001")];
+const gymSlot=gym.venues[0].time_slots.find(s=>s.start==="16:30" && s.end==="18:00");
+if(gymSlot)Object.assign(rules[0],gymSlot);
+const browser=await chromium.launch({headless:true,channel:"msedge"});
+try {
+  const context=await browser.newContext({viewport:{width:970,height:815}});
+  await context.addInitScript(({rules})=>{
+    localStorage.setItem("xmu.booking.mode","plans");
+    window.__calls=[];window.__callbacks={};window.__plans={rules,paused:false,attempts:[]};window.__startup={supported:true,enabled:false,hidden:true};
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__={unregisterListener(){}};
+    window.__TAURI_INTERNALS__={metadata:{currentWindow:{label:"main"},currentWebview:{label:"main"}},
+      transformCallback:fn=>{const id=Math.random();window.__callbacks[id]=fn;return id;},unregisterCallback:id=>delete window.__callbacks[id],
+      invoke:async(command,args)=>{
+        window.__calls.push({command,args});
+        if(command==="get_booking_plans")return {plans:structuredClone(window.__plans),next:window.__plans.rules.filter(r=>r.enabled).map(r=>({id:r.id,date:"2026-10-30",fire_at:"2026-10-29T07:00:00+08:00"})),wechat_running:false};
+        if(command==="save_booking_plans"){if(window.__saveError)throw "模拟保存失败";Object.assign(window.__plans,{rules:structuredClone(args.rules),paused:args.paused});return;}
+        if(command==="booking_plan_account")return "a".repeat(64);
+        if(command==="skip_booking_plan")return;
+        if(command==="get_startup")return window.__startup;
+        if(command==="set_startup"){window.__startup.enabled=args.enabled;return window.__startup;}
+        if(command==="get_shell_prefs")return {favorite_sport_ids:[],venue_slot_prefs:{},autostart_hidden:true};
+        if(command==="save_shell_prefs")return;
+        if(command==="get_live_status")return {task:null,armed:false,running:false,recent_events:[]};
+        if(command==="read_task_raw")return null;
+        if(command==="list_recent_events" || command==="list_pending_orders")return [];
+        if(command==="get_my_orders")return {ok:true,orders:[],fetched_at:new Date().toISOString()};
+        if(command.includes("version"))return "0.1.34";
+        if(command.includes("listen"))return 1;
+        return null;
+      }};
+  },{rules});
+  const page=await context.newPage();const errors=[];page.on("pageerror",e=>errors.push(e.message));
+  await page.goto(base);
+  await page.locator(".plan-card").first().waitFor();
+  assert.equal(await page.locator(".plan-card").count(),2);
+  assert.match(await page.locator("#plans_health").innerText(),/微信未检测到运行.*会话/);
+  assert.match(await page.locator(".plan-card").first().innerText(),/每天/);
+  await page.locator("#plans_pause").click();await page.getByText("自动计划已暂停",{exact:true}).waitFor();
+  await page.locator("#plans_pause").click();await page.getByText("自动计划已开启",{exact:true}).waitFor();
+  await page.locator("[data-skip]").first().click();
+  await page.waitForFunction(()=>window.__calls.some(c=>c.command==="skip_booking_plan"));
+  const before=await page.locator(".plan-card").first().getAttribute("data-plan");
+  await page.locator(".plan-card").nth(1).locator("summary").click();
+  await page.locator("[data-up]").nth(1).click();
+  await page.waitForFunction(id=>document.querySelector(".plan-card").dataset.plan!==id,before);
+  assert.equal(await page.locator(".plan-card").first().getAttribute("data-plan"),rules[1].id);
+  await page.locator(`[data-edit="${rules[0].id}"]`).click();
+  await page.getByRole("button",{name:"周末",exact:true}).click();
+  assert.equal(await page.locator('[data-day][aria-pressed="true"]').count(),2);
+  await page.getByRole("button",{name:"每天",exact:true}).click();
+  assert.equal(await page.locator('[data-day][aria-pressed="true"]').count(),7);
+  await page.locator('[data-day="1"]').click();
+  assert.equal(await page.locator('[data-day][aria-pressed="true"]').count(),6);
+  await page.locator('#plan_cancel').click();
+  assert.equal(await page.locator('#plan_editor').isVisible(),false);
+  // The same real editor submits the selected weekdays to the host boundary.
+  await page.locator(`[data-edit="${rules[0].id}"]`).click();
+  await page.getByRole("button",{name:"工作日",exact:true}).click();
+  await page.locator('#plan_editor [type="submit"]').click();
+  await page.waitForFunction(()=>window.__plans.rules.some(r=>r.weekdays.length===5));
+  await page.locator('#plan_editor').waitFor({state:"hidden"});
+  assert.deepEqual(await page.evaluate(id=>window.__plans.rules.find(r=>r.id===id).weekdays,rules[0].id),[1,2,3,4,5]);
+  mkdirSync("artifacts/booking-plans",{recursive:true});
+  await page.evaluate(()=>document.documentElement.dataset.shellTheme="light");
+  await page.screenshot({path:"artifacts/booking-plans/plans-light.png"});
+  await page.setViewportSize({width:480,height:750});
+  await page.evaluate(()=>document.documentElement.dataset.shellTheme="dark");
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.locator(`[data-edit="${rules[0].id}"]`).click();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.locator('[data-day="1"]').focus();await page.keyboard.press("Space");
+  assert.equal(await page.locator('[data-day="1"]').getAttribute("aria-pressed"),"false");
+  await page.screenshot({path:"artifacts/booking-plans/editor-dark-narrow.png"});
+  await page.locator('#plan_cancel').click();
+  await page.locator('#plan_add').click();
+  await page.locator('#plan_sport .shell-select-trigger').click();
+  await page.getByRole('option',{name:gym.label,exact:true}).click();
+  await page.getByRole('button',{name:'周末',exact:true}).click();
+  await page.locator('#plan_editor [type="submit"]').click();
+  await page.waitForFunction(()=>window.__plans.rules.length===3);
+  await page.locator('#plan_editor').waitFor({state:'hidden'});
+  assert.ok((await page.evaluate(()=>window.__calls)).some(c=>c.command==='booking_plan_account'));
+  await page.locator('#plan_add').click();
+  await page.locator('#plan_sport .shell-select-trigger').click();
+  await page.getByRole('option',{name:gym.label,exact:true}).click();
+  await page.locator('#plan_editor [type="submit"]').click();
+  await page.waitForFunction(()=>document.querySelector('#plan_form_msg').textContent.includes('已有计划'));
+  assert.equal(await page.evaluate(()=>window.__plans.rules.length),3);
+  await page.locator('#plan_cancel').click();
+  await page.locator('[data-tab="settings"]').click();await page.locator('#startup_enabled:not(:disabled)').waitFor();
+  await page.locator('#startup_enabled').check();assert.equal(await page.evaluate(()=>window.__startup.enabled),true);
+  await page.locator('#startup_hidden').uncheck();
+  await page.waitForFunction(()=>window.__calls.some(c=>c.command==="save_shell_prefs" && c.args.prefs.autostart_hidden===false));
+  await page.screenshot({path:"artifacts/booking-plans/startup-dark-narrow.png"});
+  const calls=await page.evaluate(()=>window.__calls);
+  assert.equal(calls.some(c=>["start_http_run","arm_hang","launch_xmu_miniprogram"].includes(c.command)),false);
+  assert.deepEqual(errors,[]);
+  console.log("Booking plans UI passed: recurrence editor, weekdays, pause, skip, priority, keyboard, light/dark/narrow, startup IPC; no booking commands");
+} finally {await browser.close();}

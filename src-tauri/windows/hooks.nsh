@@ -1,6 +1,28 @@
 ; xmu-sports NSIS hooks — paired with windows/installer.nsi
 ; App data and install identity stay at xmu-sports when display branding changes.
 
+!ifndef XMU_STARTUP_RUN_KEY
+!define XMU_STARTUP_RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
+!endif
+!ifndef XMU_STARTUP_APPROVED_KEY
+!define XMU_STARTUP_APPROVED_KEY "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+!endif
+
+!macro XMU_UPDATE_STARTUP
+  ReadRegStr $R8 HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"
+  ${If} "$R8" != ""
+    WriteRegStr HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}" '$\"$INSTDIR\${MAINBINARYNAME}.exe$\" --autostart'
+  ${EndIf}
+!macroend
+
+!macro XMU_REMOVE_STARTUP
+  ReadRegStr $R8 HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"
+  ${If} "$R8" == '$\"$INSTDIR\${MAINBINARYNAME}.exe$\" --autostart'
+    DeleteRegValue HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"
+    DeleteRegValue HKCU "${XMU_STARTUP_APPROVED_KEY}" "${PRODUCTNAME}"
+  ${EndIf}
+!macroend
+
 !macro XMU_RENAME_SHORTCUT directory previous_name
 !if "${PRODUCTNAME}" != "${previous_name}"
   Push $R8
@@ -50,6 +72,8 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; Preserve an existing opt-in when the installation folder changes.
+  !insertmacro XMU_UPDATE_STARTUP
   ; After migrating off the legacy install root, drop only orphaned program files.
   ; Never RmDir the data tree (rapidocr / captcha / tasks / runs / logs).
   StrCpy $R8 "$LOCALAPPDATA\${INTERNALNAME}"
@@ -62,4 +86,8 @@
   !insertmacro XMU_MIGRATE_SHORTCUT "$SMPROGRAMS"
   !insertmacro XMU_MIGRATE_SHORTCUT "$SMPROGRAMS\$AppStartMenuFolder"
   !insertmacro XMU_MIGRATE_SHORTCUT "$DESKTOP"
+!macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  !insertmacro XMU_REMOVE_STARTUP
 !macroend

@@ -29,6 +29,7 @@ export type Sport = {
 
 export type BookingTask = {
   task_id: string;
+  plan_id?: string;
   revision?: number;
   sport: string;
   venue: string;
@@ -85,6 +86,7 @@ export type ShellPrefs = {
   venue_slot_prefs?: Record<string, string>;
   /** When true, observations keep full OCR hits (may include WeChat UI text). */
   detailed_diagnostics?: boolean;
+  autostart_hidden?: boolean;
 };
 
 export type WechatGlance = {

@@ -41,7 +41,7 @@ def emit(kind, **value):
     print(PREFIX + json.dumps({"kind": kind, "rpc_id":RPC_ID, "elapsed_ms": int((time.monotonic() - STARTED) * 1000), **value}, ensure_ascii=False), flush=True)
 
 
-def guard_unknown(client, target, account):
+def guard_unknown(client, target, account, sport_day=False):
     """A new run ID must not bypass an earlier uncertain send on this venue/day."""
     for path in (data_root() / "requests").glob("*.json"):
         try:
@@ -51,7 +51,8 @@ def guard_unknown(client, target, account):
         if previous.get("account_fingerprint") not in (None, account):
             continue
         original = previous.get("target") or {}
-        if any(original.get(field) != getattr(target, field) for field in ("sport", "venue", "date")):
+        fields = ("sport", "date") if sport_day else ("sport", "venue", "date")
+        if any(original.get(field) != getattr(target, field) for field in fields):
             continue
         uncertain = previous.get("state") in ("unknown", "started")
         accepted_unverified = previous.get("state") == "submitted" and not previous.get("verified")
@@ -62,6 +63,14 @@ def guard_unknown(client, target, account):
                 write_json(path, previous)
             else:
                 raise BookingError("RESULT_UNCONFIRMED", "该场馆目标日有提交结果未确认；查单仍未找到匹配记录，已停止本次预约")
+
+
+def guard_sport_day(client, target):
+    from xmu_http.orders import active_rows
+    from xmu_http.client import same_name
+    if any(row["date"] == target.date and same_name(row["sport"], target.sport)
+           for row in active_rows(client)):
+        raise BookingError("SPORT_DAY_ALREADY_BOOKED", "当天这项运动已有预约，未重复提交")
 
 
 def task_target(task):
@@ -159,7 +168,9 @@ def execute(payload, cancelled, runtime=None):
     def before_commit(client, candidate):
         # Run on the same authenticated session used for captcha and submission.
         # The earlier extra client/login was immediately closed and discarded.
-        guard_unknown(client, candidate, account)
+        guard_unknown(client, candidate, account, sport_day=bool(task.get("plan_id")))
+        if task.get("plan_id"):
+            guard_sport_day(client, candidate)
     if task.get("allow_time_fallback"):
         def discover_fallbacks():
             if cancelled.is_set():

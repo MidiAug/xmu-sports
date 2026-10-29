@@ -16,7 +16,7 @@ import {
 } from "../lib/calibrate-target-date";
 import { log } from "../lib/log";
 import { SVG, winButtonsHtml } from "./icons";
-import { renderSetup } from "../pages/setup";
+import { renderBooking as renderSetup } from "../pages/booking";
 import { renderLive } from "../pages/live";
 import { renderHistory } from "../pages/history";
 import { renderSettings } from "../pages/settings";

@@ -1,3 +1,4 @@
+import { mountPlanQueue } from "../ui/plan-queue";
 import { invoke } from "@tauri-apps/api/core";
 import type { BookingTask, LiveStatus, RunEvent, WechatProbe } from "../types";
 import { ingestLiveStatus } from "../lib/run-feedback";
@@ -311,6 +312,7 @@ function paintLiveBody(
   patchHtml(panel, `
     <div class="page-stack live-page">
       <div class="page-heading"><div><h2>运行状态</h2><p>查看执行进度与预约结果</p></div><button type="button" class="btn ghost" data-tab="setup">${busy ? "查看配置" : "修改预约"}</button></div>
+      <section id="live_plan_queue" class="live-plan-queue"></section>
       ${outcomeBlock}
       ${envRowHtml(wxText, wxRunning)}
       ${executionBlock}
@@ -320,6 +322,8 @@ function paintLiveBody(
     </div>
     ${stopping ? '<p class="task-busy-note" role="status">正在停止，请等待已发送请求的结果确认。</p>' : ""}
   `);
+  const queueHost=panel.querySelector<HTMLElement>("#live_plan_queue");
+  if (queueHost) void mountPlanQueue(queueHost,()=>!opts?.scope || opts.scope.current());
   const pendingHost=panel.querySelector<HTMLElement>("#pending_order_checks");
   if (pendingHost) void mountOrderRecheck(pendingHost,busy,()=>!opts?.scope || opts.scope.current());
   if (stopping) {
