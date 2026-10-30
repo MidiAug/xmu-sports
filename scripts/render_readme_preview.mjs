@@ -1,26 +1,56 @@
-import { mkdirSync, copyFileSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
+import assert from "node:assert/strict";
+import {mkdirSync, readFileSync, copyFileSync} from "node:fs";
+import {resolve} from "node:path";
+import {preview} from "vite";
+import {launchBrowser} from "./lib/browser.mjs";
+import {installShellFixture} from "./fixtures/tauri-shell.js";
+import {shellData} from "./fixtures/shell-data.mjs";
 
-// Every screen is rendered from test fixtures. Never connects to the desktop host.
-const output=resolve('.github/assets');
-const staging=resolve('artifacts/readme-demo');
-mkdirSync(output,{recursive:true});
-const result=spawnSync(process.execPath,['scripts/test_history_availability_ui.mjs'],{
-  stdio:'inherit',env:{...process.env,XMU_UI_ARTIFACTS:staging}
-});
-if(result.status!==0) throw new Error('Demo rendering failed; no README images replaced');
-copyFileSync(resolve(staging,'partial.png'),resolve(output,'booking-demo.png'));
-copyFileSync(resolve(staging,'history.png'),resolve(output,'history-demo.png'));
-writeFileSync(resolve(output,'hero.svg'),`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
-<title id="title">XMU Sports</title><desc id="desc">A clear view of your next booking. Windows desktop app.</desc>
-<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#f0f5ff"/><stop offset="1" stop-color="#fafaf7"/></linearGradient></defs>
-<rect width="1200" height="320" rx="24" fill="url(#bg)"/>
-<g font-family="Segoe UI,Arial,sans-serif"><text x="64" y="78" font-size="13" letter-spacing="3" fill="#617391">WINDOWS DESKTOP</text><text x="62" y="151" font-size="56" font-weight="650" fill="#172b49">XMU Sports</text><text x="65" y="197" font-size="21" fill="#536783">A clear view of your next booking.</text>
-<g font-size="13" fill="#49617e"><rect x="64" y="239" width="88" height="30" rx="15" fill="#e5ecf6"/><text x="85" y="259">Tauri 2</text><rect x="163" y="239" width="85" height="30" rx="15" fill="#e5ecf6"/><text x="184" y="259">Rust</text><rect x="259" y="239" width="126" height="30" rx="15" fill="#e5ecf6"/><text x="279" y="259">TypeScript</text></g></g>
-<g transform="translate(760,52)"><rect x="0" y="0" width="354" height="216" rx="18" fill="#fff" stroke="#dce5ef"/><path d="M0 44H354" stroke="#e9edf3"/><circle cx="24" cy="22" r="4" fill="#b2c2d5"/><circle cx="39" cy="22" r="4" fill="#d0dae6"/><circle cx="54" cy="22" r="4" fill="#e0e6ed"/>
-<rect x="24" y="70" width="200" height="12" rx="6" fill="#dfe8f5"/><rect x="24" y="95" width="142" height="8" rx="4" fill="#edf1f6"/>
-<g fill="#f1f5fa" stroke="#e1e8f2"><rect x="24" y="126" width="92" height="36" rx="8"/><rect x="128" y="126" width="92" height="36" rx="8"/><rect x="232" y="126" width="98" height="36" rx="8"/></g>
-<path d="M34 189H229" stroke="#e8edf4" stroke-width="6" stroke-linecap="round"/><path d="m292 185 7 7 13-15" stroke="#659e85" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-</g></svg>\n`);
-console.log('README images generated entirely from code and synthetic data');
+// Render the production frontend with synthetic IPC data, never the desktop host.
+// Run npm run build first. Captures share a fixed clock and window size.
+const output=resolve(".github/assets"), staging=resolve("artifacts/readme-demo");
+mkdirSync(staging,{recursive:true});
+const {version}=JSON.parse(readFileSync("package.json","utf8"));
+const {sports}=JSON.parse(readFileSync("src/catalog/venues.json","utf8"));
+const sport=sports.find(s=>s.label==="羽毛球"),venue=sport.venues[0];
+const task={task_id:"readme-demo",sport:sport.ocr_label,venue:venue.ocr_label,target_date:"2026-10-31",fire_at:"2026-10-30T07:00:00+08:00",target_time_start:"19:00",target_time_end:"20:00",executor:"http",revision:0,allow_time_fallback:false,time_fallback_order:"down_then_up"};
+const target={sport:task.sport,venue:task.venue,date:task.target_date,time:task.target_time_start,end:task.target_time_end};
+const phases=["authenticating","checking_orders","captcha","querying_slots","server_precheck","submitting","verifying_order"];
+const events=[{ts:"2026-10-30T07:00:00+08:00",task_id:task.task_id,run_id:"readme-run",action:"spawn"},...phases.map((phase,i)=>({ts:`2026-10-30T07:00:${String(i+1).padStart(2,"0")}+08:00`,task_id:task.task_id,run_id:"readme-run",action:"http_phase",result:phase,http:{phase,target}})),{ts:"2026-10-30T07:00:09+08:00",task_id:task.task_id,run_id:"readme-run",action:"done",result:"http_verified",http:{verified:true,target,court:"03",message:"预约成功"}}];
+const data={...shellData(),mode:"single",version,task,events,live:{task,running:false,armed:false,recent_events:events,last_event:events.at(-1)}};
+data.orders=[{order_id:"demo-order",details_id:"demo-detail",sport:task.sport,venue:task.venue,court:"03",date:task.target_date,start:task.target_time_start,end:task.target_time_end,can_cancel:true}];
+data.availabilitySlots=venue.time_slots.map((slot,i)=>({...slot,cells:["01","02","03","04"].map((court,j)=>({court,admin_locked:i===0,status:i===0?"locked":"available",remaining:i===0||j===0?0:1,capacity:1,reason:i===0?"课程使用":""}))}));
+const server=await preview({preview:{host:"127.0.0.1",port:1451,strictPort:false}});
+const browser=await launchBrowser();
+try {
+  const context=await browser.newContext({viewport:{width:1100,height:760},deviceScaleFactor:1,reducedMotion:"reduce"});
+  await context.addInitScript(installShellFixture,data);
+  const page=await context.newPage(),errors=[];
+  page.on("pageerror",e=>errors.push(e.message));
+  await page.clock.install({time:new Date("2026-10-30T12:00:00+08:00")});
+  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
+  const capture=async(name,selector)=>{
+    await page.locator(selector).first().waitFor();
+    await page.setViewportSize({width:1100,height:760});
+    await page.clock.runFor(500);
+    const height=await page.locator(".content").evaluate(el=>Math.max(760,el.scrollHeight+56));
+    await page.setViewportSize({width:1100,height});
+    await page.locator(".content").evaluate(el=>el.scrollTop=0);
+    await page.clock.runFor(1500);
+    await page.mouse.move(1095,755);
+    await page.screenshot({path:resolve(staging,`${name}-demo.png`)});
+  };
+  await capture("booking","#slot_host .choice-option");
+  await page.locator('.nav-primary [data-tab="plans"]').click();
+  await capture("plans",".plan-card");
+  await page.locator('.nav-primary [data-tab="live"]').click();
+  await capture("progress",".booking-execution.success");
+  await page.locator('.nav-primary [data-tab="history"]').click();
+  await page.locator(".run-card-head").first().click();
+  await capture("history",".run-card-body:not([hidden])");
+  assert.deepEqual(errors,[]);
+  assert.equal(await page.evaluate(()=>window.__calls.some(c=>["start_http_run","arm_hang","launch_xmu_miniprogram","reauthenticate_availability","cancel_my_order"].includes(c.command))),false);
+  mkdirSync(output,{recursive:true});
+  for(const name of ["booking","plans","progress","history"]) copyFileSync(resolve(staging,`${name}-demo.png`),resolve(output,`${name}-demo.png`));
+  console.log(`README previews rendered from the ${version} production frontend and synthetic data`);
+} finally {await browser.close();await new Promise(resolve=>server.httpServer.close(resolve));}

@@ -27,7 +27,7 @@
 
 ## 生成公开示意图
 
-先运行 `npm run build`，在另一个终端启动 `npm run preview -- --host 127.0.0.1 --port 1421`，然后执行 `node scripts/render_readme_preview.mjs`。可用 `XMU_TEST_BASE_URL` 指定其他本地端口；Playwright 依赖按前述 `PLAYWRIGHT_MODULE` 配置。
+先运行 `npm run build`，再执行 `node scripts/render_readme_preview.mjs`。脚本自行启动隔离的生产预览服务器，使用模拟IPC数据和固定时钟生成预约、计划、进度与记录四张截图，不连接桌面宿主或学校接口。默认使用本机Edge；可设置 `XMU_TEST_BROWSER=chromium` 并先安装Playwright Chromium。
 
 脚本通过假 Tauri 边界和固定示例数据渲染页面，并进行交互验收，再将图片写入 `.github/assets/`。不会访问桌面宿主、微信或学校接口。不要用真实账号截图替换这些公开示意图。
 

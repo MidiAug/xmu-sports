@@ -68,7 +68,7 @@ export function installShellFixture(data) {
         return structuredClone(window.__pendingOrders??[]);
       }
       if (command === "probe_wechat") return {running:true};
-      if (command === "plugin:app|version") return "0.1.34";
+      if (command === "plugin:app|version") return data.version ?? "0.1.34";
       if (command === "plugin:event|listen") {const id=++serial;listeners.set(id,args);return id;}
       if (command === "plugin:event|unlisten") {listeners.delete(args.eventId);return;}
       return null;
