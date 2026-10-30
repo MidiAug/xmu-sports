@@ -61,8 +61,11 @@
 .booking-preferences { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; padding-top:20px; border-top:1px solid var(--color-line); }
 .booking-preferences #court_cell { flex-direction:row; align-items:center; gap:12px; }
 .booking-preferences .settings-cell-title { color:var(--color-muted); font-size:12px; font-weight:400; white-space:nowrap; }
-#court_host { width:148px; min-width:0; }
-#court_host .shell-select-trigger { width:100%; min-height:32px; height:32px; background:transparent; border:0; padding:0 4px; font-size:13px; }
+#court_host { width:166px; min-width:0; }
+#court_host .shell-select-trigger { width:100%; min-height:36px; height:36px; background:var(--color-control); border:1px solid var(--color-line); border-radius:10px; padding:0 12px; font-size:13px; }
+#court_host .shell-select-option-main { flex-wrap:nowrap; gap:6px; white-space:nowrap; }
+#court_host .shell-select-option { gap:4px; padding:7px 8px; font-size:13px; }
+#court_host .shell-select-badge { padding:1px 4px; font-size:10px; }
 .task-advanced { border:0; background:transparent; padding:0; margin:0 0 0 auto; min-width:0; }
 .task-advanced > summary { display:flex; gap:6px; padding:6px 0; font-size:12px; color:var(--color-muted); }
 .task-advanced > summary strong { font-weight:400; }

@@ -74,12 +74,17 @@ for(const code of ["SUBMIT_UNKNOWN","RESULT_UNCONFIRMED","ORDER_RECHECK_UNCONFIR
   assert.equal(pending.kind,"info");assert.match(pending.title,/待确认/);assert.doesNotMatch(pending.title,/失败/);
   assert.equal(human.formatStepLine({action:"fail",result:code}),"查单待确认");
 }
-const {groupEventsIntoRuns}=await import(compile(read("src/lib/run-groups.ts").replace('"./run-outcome"',JSON.stringify(outcomeUrl))));
+const {groupEventsIntoRuns,historyOutcomeKind}=await import(compile(read("src/lib/run-groups.ts").replace('"./run-outcome"',JSON.stringify(outcomeUrl))));
 const event=(run,action,seconds)=>({task_id:"task",run_id:run,ts:`2026-10-15T07:00:0${seconds}+08:00`,action,result:action==="done"?"http_prepared":action});
 const runs=groupEventsIntoRuns([event("a","spawn",0),event("b","spawn",1),event("a","click_failed",2),event("b","done",3),event("a","done",4)]);
 assert.equal(runs.length,2,"interleaved runs and recovered step failures stay grouped by run_id");
 assert.equal(runs[0].runId,"a"); assert.equal(runs[0].events.length,3);
 assert.equal(runs[1].runId,"b");
+assert.equal(historyOutcomeKind(runs[0]),'info','a successful preflight belongs to Other history');
+for(const [result,kind] of [['http_auth_ready','info'],['http_prepared','info'],['http_verified','success']]) {
+  const run=groupEventsIntoRuns([{...event('classification','done',0),result}])[0];
+  assert.equal(historyOutcomeKind(run),kind);
+}
 console.log("UI reliability checks passed: serialized saves, retry, page ownership, 4 timezones, interleaved run history");
 let preferences={close_to_tray:true,favorite_sport_ids:["pingpong"],venue_slot_prefs:{existing:"18:00|19:30"}};
 globalThis.__prefsInvoke=async(command,args)=>{

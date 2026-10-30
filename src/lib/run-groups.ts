@@ -11,6 +11,12 @@ export type RunSummary = {
   endedAt: string;
 };
 
+/** Successful checks are informational history, rather than booked orders. */
+export function historyOutcomeKind(run: RunSummary): RunOutcome["kind"] {
+  return ["http_auth_ready", "http_prepared"].includes(run.events.at(-1)?.result ?? "")
+    ? "info" : run.outcome?.kind ?? "info";
+}
+
 function isTerminalAction(action: string): boolean {
   return (
     action === "done" ||

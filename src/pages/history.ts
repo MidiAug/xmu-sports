@@ -5,8 +5,7 @@ import {
 } from "../lib/collapse-step-cycles";
 import { historyStages, historyTargetParts } from "../lib/history-steps";
 import { formatEventTimeHuman, formatMonthDayWeekday, pageLabelZh } from "../lib/format-human";
-import { groupEventsIntoRuns, type RunSummary } from "../lib/run-groups";
-import type { OutcomeKind } from "../lib/run-outcome";
+import { groupEventsIntoRuns, historyOutcomeKind, type RunSummary } from "../lib/run-groups";
 import { askConfirm } from "../ui/confirm-ask";
 import { mountShellSelect } from "../ui/select";
 import { toastError, toastSuccess } from "../ui/toast";
@@ -93,7 +92,7 @@ function matchesRange(ts: string, range: RangeFilter, now: Date): boolean {
 
 function matchesKind(run: RunSummary, kind: KindFilter): boolean {
   if (kind === "all") return true;
-  const k = (run.outcome?.kind ?? "info") as OutcomeKind;
+  const k = historyOutcomeKind(run);
   if (kind === "success") return k === "success";
   if (kind === "error") return k === "error";
   return k === "info" || k === "warn";
@@ -108,7 +107,7 @@ function filterRuns(runs: RunSummary[], f: HistoryFilters, now = new Date()): Ru
 function cardHtml(run: RunSummary, index: number): string {
   const o = run.outcome;
   const title = o?.title ?? "运行记录";
-  const kind = o?.kind ?? "info";
+  const kind = historyOutcomeKind(run);
   const when = formatEventTimeHuman(run.endedAt);
   const page = o?.pageId ? pageLabelZh(o.pageId) : null;
   const metaSafe = page ? `${when}  ${page}` : when;

@@ -484,7 +484,7 @@ export async function renderSetup(panel: Element) {
       preferredCourt = value;
       scheduleSave();
       paintAvailability();
-    }, { compact: true });
+    }, { compact: true, minMenuWidth: 380 });
 
   function currentVenue(): Venue | undefined {
     const sp = findSport(sportSelect.getValue());

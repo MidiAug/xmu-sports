@@ -28,6 +28,7 @@ try {
       data.task={task_id:'draft',sport:'健身房',venue:'翔安校区健身房',target_date:'2026-11-01',target_time_start:'16:30',target_time_end:'18:00',executor:'http',revision:0,allow_time_fallback:false,time_fallback_order:'down_then_up'};
       const authEvents=[{ts:'2026-10-30T11:59:30+08:00',task_id:'auth-demo',run_id:'auth-demo',action:'auth_check',result:'auth_check_started'},
         {ts:'2026-10-30T11:59:55+08:00',task_id:'auth-demo',run_id:'auth-demo',action:'done',result:'http_auth_ready',http:{message:'体育登录已就绪，未提交预约'}}];
+      data.events=authEvents;
       data.live={task:data.task,operation:'auth',recent_events:authEvents,last_event:authEvents.at(-1)};
     }
     const context=await browser.newContext({viewport:{width:1100,height:760}});
@@ -35,16 +36,24 @@ try {
     const page=await context.newPage();
     await page.clock.install({time:new Date(scenario==='running'?'2026-10-30T07:00:05+08:00':'2026-10-30T12:00:00+08:00')});
     await page.goto(base);
-    for(const tab of ['running','auth'].includes(scenario)?['live']:['live','history','settings']) {
+    for(const tab of scenario==='running'?['live']:scenario==='auth'?['live','history']:['live','history','settings']) {
       await page.locator(`.app-header [data-tab="${tab}"]`).click();
       await page.locator(`.${tab==='history'?'history':tab==='live'?'live':'settings'}-page`).waitFor();
       await page.locator('.content').evaluate(el=>el.scrollTop=0);
       if(tab==='history'&&!empty) await page.locator('.run-card').first().waitFor();
-      if(scenario==='auth') {
+      if(scenario==='auth' && tab==='live') {
         await page.locator('.booking-auth').waitFor();
         assert.equal(await page.locator('.booking-target').count(),0,'login-only check does not invent a booking target');
         assert.equal(await page.locator('.booking-track').count(),0,'login result needs no booking stepper');
         assert.equal(await page.locator('#live_single_context .live-draft-place').innerText(),'翔安校区健身房');
+      }
+      if(scenario==='auth' && tab==='history') {
+        await page.locator('#history_kind_host .shell-select-trigger').click();
+        await page.getByRole('option',{name:'成功',exact:true}).click();
+        assert.equal(await page.locator('.run-card').count(),0,'login probe is not a successful booking');
+        await page.locator('#history_kind_host .shell-select-trigger').click();
+        await page.getByRole('option',{name:'其他',exact:true}).click();
+        assert.equal(await page.locator('.run-card').count(),1,'login probe is in Other');
       }
       for(const theme of ['light','dark']) {
         await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);

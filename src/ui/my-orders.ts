@@ -59,7 +59,7 @@ export function mountMyOrders(host:HTMLElement, options: { popover?: boolean; ic
   let rows:Order[] = [], account = "", lastSuccess = 0, lastAttempt = -Infinity;
   let loading = false, recovering = false, confirming = false, cancelling = false, loginRequired = false, known = false, busy = true, message = "";
   let queued = false;
-  let expanded = false;
+  let expanded = false, refreshFeedback = false;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
   const clearCloseTimer = () => { clearTimeout(closeTimer); closeTimer = undefined; };
   const setExpanded = (value: boolean) => {
@@ -80,11 +80,12 @@ export function mountMyOrders(host:HTMLElement, options: { popover?: boolean; ic
     const visibleStatus = !loading && !recovering
       ? loginRequired ? message || "登录状态已失效，点击右侧按钮重新登录" : busy && known ? "预约进行中，暂停更新" : message
       : "";
-    const refreshLabel = recovering ? "正在重新登录" : loading ? "正在更新预约" : loginRequired ? "重新登录并刷新预约" : "刷新我的预约";
+    const spinning = loading || recovering || refreshFeedback;
+    const refreshLabel = recovering ? "正在重新登录" : loading || refreshFeedback ? "正在更新预约" : loginRequired ? "重新登录并刷新预约" : "刷新我的预约";
     const liveStatus = recovering ? "正在恢复微信登录" : loading ? "正在更新预约" : visibleStatus || "预约列表已更新";
     const collapsedLabel = loginRequired ? "需登录" : loading || recovering ? "更新中" : failures ? "查看状态" : "展开";
     host.classList.toggle("is-expanded", expanded);
-    host.innerHTML = `${options.popover ? `<button type="button" class="my-orders-toggle header-orders-button" aria-expanded="${expanded}" aria-controls="my_orders_popup">${options.icon ?? ""}<span>我的预约</span><span class="orders-count${loading || recovering ? " is-loading" : ""}"${loading || recovering ? ` aria-label="${refreshLabel}"` : ""}>${loading || recovering ? refreshIcon : loginRequired ? "需登录" : failures ? "!" : rows.length}</span></button><div class="my-orders-popup" id="my_orders_popup" ${expanded ? "" : "hidden"}>` : ""}<div class="my-orders-head"><h2>我的预约${rows.length ? `<span>${rows.length}</span>` : ""}</h2>${!options.popover ? `<button type="button" class="my-orders-toggle" aria-expanded="${expanded}" aria-controls="my_orders_body">我的预约${rows.length ? ` ${rows.length}` : ""}<span>${expanded ? "收起" : collapsedLabel}</span></button>` : ""}<button type="button" class="order-icon ${loading || recovering ? "is-loading" : ""}" data-orders-refresh aria-label="${refreshLabel}" aria-busy="${loading || recovering}" ${disabled ? "disabled" : ""}>${refreshIcon}</button></div>
+    host.innerHTML = `${options.popover ? `<button type="button" class="my-orders-toggle header-orders-button" aria-expanded="${expanded}" aria-controls="my_orders_popup">${options.icon ?? ""}<span>我的预约</span><span class="orders-count${spinning ? " is-loading" : ""}"${spinning ? ` aria-label="${refreshLabel}"` : ""}>${spinning ? refreshIcon : loginRequired ? "需登录" : failures ? "!" : rows.length}</span></button><div class="my-orders-popup" id="my_orders_popup" ${expanded ? "" : "hidden"}>` : ""}<div class="my-orders-head"><h2>我的预约${rows.length ? `<span>${rows.length}</span>` : ""}</h2>${!options.popover ? `<button type="button" class="my-orders-toggle" aria-expanded="${expanded}" aria-controls="my_orders_body">我的预约${rows.length ? ` ${rows.length}` : ""}<span>${expanded ? "收起" : collapsedLabel}</span></button>` : ""}<button type="button" class="order-icon ${spinning ? "is-loading" : ""}" data-orders-refresh aria-label="${refreshLabel}" aria-busy="${loading || recovering}" ${disabled ? "disabled" : ""}>${refreshIcon}</button></div>
       <div class="my-orders-body" id="my_orders_body">${visibleStatus ? `<p class="my-orders-status" role="status">${escape(visibleStatus)}</p>` : `<span class="sr-only" role="status" aria-live="polite">${escape(liveStatus)}</span>`}
       <div class="my-orders-list">${rows.map((row,index) => {const place=orderPlace(row);const cancellable=orderCanCancel(row);const cancelReason=!cancellable ? (Date.parse(`${row.date}T${row.start}:00+08:00`)-Date.now()<=3600000 ? "开始前1小时内不可取消" : "此预约暂不可取消") : "";return `<article class="my-order"><div class="my-order-head"><span class="my-order-name">${escape(place.name)}</span><button type="button" class="order-cancel" data-order-cancel="${index}" aria-label="${escape(`取消预约：${label(row)}`)}" ${disabled || loginRequired || !cancellable ? "disabled" : ""}>${options.popover ? "取消预约" : cancelIcon}</button></div><p class="my-order-time"><span class="my-order-day">${escape(orderDay(row.date))}</span><strong>${escape(row.start)}–${escape(row.end)}</strong></p>${place.court ? `<p class="my-order-court">${escape(place.court)}</p>` : ""}${cancelReason ? `<p class="my-order-cancel-reason">${cancelReason}</p>` : ""}</article>`;}).join("")}</div></div>${options.popover ? "</div>" : ""}`;
     host.querySelector<HTMLButtonElement>(".my-orders-toggle")!.onclick = event => {
@@ -128,9 +129,14 @@ export function mountMyOrders(host:HTMLElement, options: { popover?: boolean; ic
     if (!manual && queued) { force=true;queued=false; }
     if (!manual && !force && (orderSnapshotFresh(lastSuccess) || Date.now()<retryAt)) return;
     if (!force && Date.now()-lastAttempt < (manual ? 10000 : 60000)) {
+      if (manual) { if (failures) toastError("请稍后再刷新"); else toastSuccess("预约刚刚已更新"); }
       return;
     }
     let recoverAfterRefresh=false;
+    if (manual) {
+      refreshFeedback = true;
+      window.setTimeout(() => { refreshFeedback = false; if (host.isConnected) paint(); }, 600);
+    }
     loading = true; lastAttempt = Date.now(); message = ""; paint();
     try {
       const result = await invoke<OrdersResult>("get_my_orders",{force:manual || force});

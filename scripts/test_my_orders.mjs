@@ -168,6 +168,7 @@ try {
  const initial=await queries();
  await page.getByRole("button",{name:"刷新我的预约",exact:true}).click();
  assert.equal(await queries(),initial,"10s manual cooldown");
+ assert.ok((await page.evaluate(()=>window.__toasts)).some(args=>args[0]==='预约刚刚已更新'),'cooldown click has visible feedback');
  await page.evaluate(()=>{window.__now+=11000;window.__hold=true;});
  await page.getByRole("button",{name:"刷新我的预约",exact:true}).click();
  assert.ok(await page.locator("[data-orders-refresh]").isDisabled());
@@ -185,6 +186,10 @@ try {
  assert.equal(await queries(),initial+1,"single flight");
  await page.evaluate(()=>{window.__hold=false;window.__finish();});
  await page.waitForFunction(()=>!document.querySelector("[data-orders-refresh]").disabled);
+ await page.evaluate(()=>window.__now+=11000);
+ await page.getByRole('button',{name:'刷新我的预约',exact:true}).click();
+ assert.equal(await page.locator('[data-orders-refresh]').evaluate(el=>el.classList.contains('is-loading')),true,'fast response still shows visible refresh feedback');
+ await page.waitForFunction(()=>!document.querySelector('[data-orders-refresh]').classList.contains('is-loading'));
  const cancelBounds=await page.locator(".order-cancel").first().boundingBox();
  await page.mouse.move(cancelBounds.x+cancelBounds.width/2,cancelBounds.y+cancelBounds.height/2);
  await page.mouse.down();
