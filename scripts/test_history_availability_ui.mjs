@@ -80,7 +80,8 @@ try {
   assert.ok(courtBox.y>=slotBox.y,"Court preference follows the visible time choices");
   assert.ok(refreshBox.y+refreshBox.height<=slotBox.y,"Refresh shares the time heading row");
   assert.equal((await panel.innerText()).trim(),"刷新");
-  assert.match(await panel.locator('button').getAttribute('title'),/09:00:00.*[\s\S]*查询时快照/);
+  assert.equal(await panel.locator('button').getAttribute('title'),null);
+  assert.equal(await panel.locator('button').getAttribute('data-tooltip'),'更新于 09:00');
   assert.match(await slot.locator('.choice-option.on').innerText(),/全部锁定/);
   assert.equal(await slot.locator('[data-value="13:00|14:00"]').isDisabled(),true);
   assert.equal(await slot.locator('[data-value="12:00|13:00"]').isEnabled(),true);

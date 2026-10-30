@@ -263,9 +263,10 @@ export async function renderSetup(panel: Element) {
       : current?.can_choose===false ? current.notice || "学校查询时提示未开放预约。" : "";
     const label=availabilityRecovering ? "登录中" : availabilityLoading ? "刷新中" : availabilityNeedsLogin ? "重新登录" : availabilityError ? "重试" : "刷新";
     availabilityHost.innerHTML=`<button type="button" class="btn ghost" aria-label="${label==='刷新' ? '刷新场次状态' : label}" data-refresh-availability ${availabilityLoading || availabilityRecovering || busy ? "disabled" : ""}>${label}</button>${availabilityRecovering ? '<button type="button" class="btn ghost" data-cancel-availability-login>取消</button>' : ""}${warning ? `<p class="availability-warning" role="status">${escape(warning)}</p>` : ""}`;
-    availabilityHost.querySelector<HTMLButtonElement>("[data-refresh-availability]")!.title = current?.fetched_at
-      ? `获取时间：${current.fetched_at}；查询时快照，学校状态可能变化，可手动刷新`
-      : "重新读取学校场次状态";
+    const refreshedAt = current?.fetched_at ? new Date(current.fetched_at) : null;
+    if (refreshedAt && Number.isFinite(refreshedAt.getTime())) {
+      availabilityHost.querySelector<HTMLElement>("[data-refresh-availability]")!.dataset.tooltip = `更新于 ${refreshedAt.toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai", hour: "2-digit", minute: "2-digit" })}`;
+    }
     availabilityHost.querySelector<HTMLButtonElement>("[data-refresh-availability]")?.addEventListener("click",()=>{void (availabilityNeedsLogin ? restoreAvailabilityLogin() : loadAvailability(true));});
     availabilityHost.querySelector<HTMLButtonElement>("[data-cancel-availability-login]")?.addEventListener("click",()=>{
       cancelAvailabilityLogin(); availabilityGeneration++; paintAvailability(); updateSummary();

@@ -55,7 +55,7 @@
 .booking-date-hint:empty { display:none; }
 .booking-slot-section { margin-bottom:18px !important; }
 .booking-field-heading { min-height:22px; }
-.availability-panel .btn { border:0; background:transparent; padding:0 2px; color:var(--color-muted); font-size:12px; }
+.availability-panel .btn { border:0; background:transparent; padding:0 10px; border-radius:8px; color:var(--color-muted); font-size:12px; }
 .choice-group--slot { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; padding:2px; margin:-2px; }
 .choice-group--slot .choice-option { flex-wrap:wrap; gap:2px 6px; padding:8px 7px; min-height:40px; font-size:14px; font-variant-numeric:tabular-nums; }
 .booking-preferences { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:12px; padding-top:20px; border-top:1px solid var(--color-line); }

@@ -69,7 +69,7 @@
 .about-identity p { margin: 0; color: var(--color-muted); font-size: 12px; }
 .about-page { --about-control-width:132px; }
 .about-layout { display:flex; flex-direction:column; gap:0; width:100%; max-width:760px; margin:0 auto; }
-.about-layout .about-identity { display:flex; align-items:center; justify-content:center; gap:20px; width:100%; padding:16px 0 32px; text-align:left; }
+.about-layout .about-identity { display:flex; align-items:center; justify-content:center; gap:20px; width:100%; padding:clamp(48px, 10vh, 100px) 0 48px; text-align:left; }
 .about-layout .about-mark { width:96px; height:64px; object-fit:cover; margin:0; }
 .about-layout .about-identity h3 { font-size:27px; margin:0 0 7px; }
 .about-layout .about-footnote { margin:22px 0 0; font-size:11px; line-height:1.9; color:var(--color-muted); }

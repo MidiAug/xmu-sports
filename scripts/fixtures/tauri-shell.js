@@ -24,6 +24,7 @@ export function installShellFixture(data) {
     async invoke(command,args) {
       window.__calls.push({command,args});
       if (["start_http_run","arm_hang","launch_xmu_miniprogram","reauthenticate_availability","cancel_my_order","set_startup"].includes(command)) throw new Error(`Fixture forbids ${command}`);
+      if (command === "booking_plan_account") return data.account ?? "a".repeat(64);
       if (command === "get_booking_plans") {
         if(window.__plansError) throw new Error(window.__plansError);
         return {plans:structuredClone(window.__plans),next:window.__next.filter(n=>window.__plans.rules.some(r=>r.id===n.id&&r.enabled)),wechat_running:true};

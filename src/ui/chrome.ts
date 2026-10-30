@@ -28,6 +28,7 @@ import { askConfirm } from "./confirm-ask";
 import { mountMyOrders } from "./my-orders";
 import { mountSettingsUpdateIndicator } from "./version-update";
 import { renderAbout } from "../pages/about";
+import { mountTooltips } from "./tooltip";
 import brandMark from "../assets/brand-mark.png";
 import { calendarIcon } from "./sport-icons";
 
@@ -174,7 +175,7 @@ function mountShell() {
           <div class="header-drag-space" aria-hidden="true"></div>
           <div class="header-actions">
           <section class="my-orders" id="my_orders" aria-label="未核销预约"></section>
-          <nav class="nav-tabs nav-utility" aria-label="应用"><button type="button" data-tab="settings" aria-label="设置" class="header-settings ${tab === "settings" ? "active" : ""}">${SVG.tabSettings}</button></nav>
+          <nav class="nav-tabs nav-utility" aria-label="应用"><button type="button" data-tab="settings" aria-label="设置" data-tooltip="" class="header-settings ${tab === "settings" ? "active" : ""}">${SVG.tabSettings}</button></nav>
           <div class="titlebar-right">${wins}</div>
           </div>
         </header>
@@ -204,6 +205,7 @@ export function render() {
   const end = log.time("chrome", "render_mount");
   const firstMount = !app.querySelector(".shell");
   if (firstMount) {
+    mountTooltips();
     mountShell();
   } else {
     updateNavActive();

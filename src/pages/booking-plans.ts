@@ -9,6 +9,7 @@ import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, type BookingPlan, type 
 import { bookingPlans } from "../lib/booking-plans-store";
 import { SVG } from "../ui/icons";
 import { sportIcon } from "../ui/sport-icons";
+import { availabilitySessionCache } from "../lib/availability-store";
 import { patchHtml } from "../ui/patch-html";
 
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -116,7 +117,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
         <div class="plan-week-strip" aria-label="重复星期：${weekdaysLabel(r.weekdays)}">${days.map((day, i) => `<span data-selected="${r.weekdays.includes(i + 1)}" aria-hidden="true">${day}</span>`).join("")}</div>
         <div class="plan-dates">${next ? `<div><span>下次运动</span><strong>${formatMonthDayWeekday(next.date)}</strong></div><div><span>${view.plans.paused ? "恢复后按计划开抢" : "自动开抢"}</span><strong>${escape(formatEventTimeHuman(next.fire_at))}</strong></div>` : `<div><span>本计划已停用</span><strong>启用后继续安排</strong></div>`}</div>
         <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}">${SVG.edit}<span>编辑</span></button>
-        <details class="plan-more"><summary aria-label="更多操作">${SVG.more}</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
+        <details class="plan-more"><summary data-tooltip="更多" aria-label="更多操作">${SVG.more}</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
     }).join(""));
     list.querySelectorAll<HTMLInputElement>("[data-enable]").forEach(box => {
@@ -175,6 +176,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     let sport = enabledSports.find(s => s.id === existing?.sport) ?? enabledSports[0];
     let venue = sport.venues.find(v => v.id === existing?.venue) ?? sport.venues[0];
     let selected = new Set(existing?.weekdays ?? [1, 2, 3, 4, 5, 6, 7]);
+    let editorAccount = existing?.account ?? availabilitySessionCache.account;
     let slot = existing ? `${existing.start}|${existing.end}` : `${venue.time_slots[0].start}|${venue.time_slots[0].end}`;
     editor.innerHTML = `<form class="plan-editor"><div class="plan-editor-main"><h3>${existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
       <fieldset><legend>去运动的星期</legend><div class="plan-presets"><button type="button" data-days="1,2,3,4,5,6,7">每天</button><button type="button" data-days="1,2,3,4,5">工作日</button><button type="button" data-days="6,7">周末</button></div><div class="plan-weekdays">${days.map((d, i) => `<button type="button" data-day="${i + 1}" aria-label="周${d}" aria-pressed="${selected.has(i + 1)}">${d}</button>`).join("")}</div></fieldset>
@@ -187,9 +189,16 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     const preview = () => {
       editor.querySelectorAll<HTMLButtonElement>("[data-day]").forEach(b => b.setAttribute("aria-pressed", String(selected.has(Number(b.dataset.day)))));
       editor.querySelectorAll<HTMLButtonElement>("[data-days]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.days!.split(",").map(Number).every(d => selected.has(d)) && b.dataset.days!.split(",").length === selected.size)));
+      slotSelect.setOptions(slots(), slot);
       editor.querySelector("#plan_preview")!.textContent = selected.size ? `${weekdaysLabel([...selected].sort((a, b) => a - b))} · ${slot.replace("|", "–")}` : "至少选择一天";
     };
-    const slots = () => venue.time_slots.map(t => ({ value: `${t.start}|${t.end}`, label: `${t.start}–${t.end}` }));
+    const slots = () => venue.time_slots.map(t => {
+      const account = editorAccount;
+      const arranged = (existing?.enabled ?? true) && !!account && view.plans.rules.some(r =>
+        r.id !== existing?.id && r.enabled && r.account === account && r.sport === sport.id
+        && r.weekdays.some(day => selected.has(day)) && r.start < t.end && t.start < r.end);
+      return { value: `${t.start}|${t.end}`, label: `${t.start}–${t.end}`, badge: arranged ? "已编排" : undefined, disabled: arranged };
+    });
     const slotSelect = mountShellSelect(editor.querySelector<HTMLElement>("#plan_slot")!, slots(), slot, value => { slot = value; preview(); });
     const changeVenue = () => { slot = slots()[0].value; slotSelect.setOptions(slots(), slot); preview(); };
     const venueSelect = mountShellSelect(editor.querySelector<HTMLElement>("#plan_venue")!, sport.venues.map(v => ({ value: v.id, label: v.label })), venue.id, value => { venue = sport.venues.find(v => v.id === value)!; changeVenue(); });
@@ -222,8 +231,14 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
         rules.splice(index < 0 ? rules.length : index, 0, rule);
         await save(rules);
         if (scope.current()) { close(); await load(); }
-      } catch (e) { if (scope.current()) { formMessage.textContent = String(e); editor.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.disabled = false); } }
+      } catch (e) { if (scope.current()) { formMessage.textContent = String(e); editor.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.disabled = false); preview(); } }
     };
+    if (!existing) {
+      const form = editor.querySelector("form")!;
+      void invoke<string>("booking_plan_account").then(account => {
+        if (scope.current() && form.isConnected) { editorAccount = account; preview(); }
+      }).catch(() => { /* Saving retains the explicit login check and error. */ });
+    }
     preview(); editor.scrollIntoView({ block: "nearest" }); editor.querySelector<HTMLElement>(".shell-select-trigger")?.focus();
   }
 
