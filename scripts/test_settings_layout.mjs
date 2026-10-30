@@ -27,13 +27,17 @@ try {
   const diagnosticBox=await page.locator('.settings-diagnostics').boundingBox();
   const aboutBox=await page.locator('.settings-about-entry').boundingBox();
   assert.ok(Math.abs(diagnosticBox.height-aboutBox.height)<1,'bottom settings cards share a height');
+  assert.ok(Math.abs(diagnosticBox.height-(await card.boundingBox()).height)<1,'diagnostics matches the compact favorites row');
+  const actions=await page.locator('.settings-diagnostic-actions').boundingBox();
+  const copy=await page.locator('.settings-diagnostic-copy').boundingBox();
+  assert.ok(actions.x>=copy.x+copy.width,'diagnostic actions stay to the right of the heading');
   assert.equal(await page.locator('#startup_settings .settings-cell').last().evaluate(el=>getComputedStyle(el).borderBottomWidth),'0px');
   const arrow=await page.locator('.settings-about-entry > span svg').boundingBox();
   const arrowTile=await page.locator('.settings-about-entry > span').boundingBox();
   assert.ok(Math.abs(arrow.y+arrow.height/2-arrowTile.y-arrowTile.height/2)<1,'about arrow is centered in its tile');
   for(const id of ['diag_export_btn','diag_open_logs_btn']) {
     const bounds=await page.locator(`#${id}`).boundingBox();
-    assert.ok(bounds.width>=120 && bounds.height>=38,'diagnostic actions have a comfortable click target');
+    assert.ok(bounds.width>=96 && bounds.height>=38,'diagnostic actions have a comfortable click target');
   }
   await page.locator('#diag_export_btn').click();
   await page.getByText('已导出到下载：diagnostic-fixture.zip',{exact:true}).waitFor();

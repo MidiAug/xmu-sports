@@ -105,7 +105,6 @@
 .btn.primary:hover:not(:disabled) { background:var(--color-primary-hover); }
 .shell-select-trigger { border-color:var(--color-line); background:var(--color-control); }
 @media(max-width:1080px) {
- .content { padding:26px 24px 32px; }
  .setup-workspace { grid-template-columns:minmax(0,1.6fr) minmax(290px,1fr); gap:18px; }
  .booking-form-card { padding:22px; } .task-action-bar { padding:24px; }
  .booking-location-row { gap:12px; }
@@ -115,7 +114,7 @@
  .task-action-copy .task-summary-time { font-size:30px; }
 }
 @media(max-height:740px) {
- .content { padding-top:22px; } .setup-page { gap:16px; }
+ .setup-page { gap:16px; }
  .booking-date-section { margin:18px 0; padding-top:18px; } .booking-date-option { min-height:62px; }
  .booking-slot-section { margin-bottom:18px !important; } .booking-preferences { padding-top:16px; }
  .task-action-bar { padding-top:24px; } .task-action-copy .task-summary-date { margin-top:22px; }

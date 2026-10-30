@@ -68,6 +68,18 @@
 .about-identity h3 { margin: 0 0 7px; font-size: 23px; font-weight: 600; letter-spacing: -.5px; }
 .about-identity p { margin: 0; color: var(--color-muted); font-size: 12px; }
 .about-page { --about-control-width:132px; }
+.about-layout { display:grid; grid-template-columns:260px minmax(0,1fr); gap:22px; align-items:start; }
+.about-layout .about-identity { padding:36px 24px 28px; background:var(--color-booking); border:1px solid var(--color-booking-line); border-radius:20px; }
+.about-layout .about-mark { width:88px; height:88px; margin:0 auto 24px; }
+.about-layout .about-identity h3 { font-size:25px; margin-bottom:8px; }
+.about-layout .about-footnote { margin:32px 0 0; font-size:11px; line-height:1.9; color:var(--color-muted); }
+.about-main { display:grid; gap:18px; min-width:0; }
+.about-main .about-section { padding:26px; border-color:var(--color-line); border-radius:18px; }
+.about-main .about-row h3 { font-size:17px; font-weight:600; }
+.about-main .about-row p { margin-top:9px; font-size:12px; }
+.about-main .about-update-button,.about-main #about_repository { height:40px; border-radius:10px; font-size:13px; }
+.about-main .about-download-route { padding-top:20px; margin-top:24px; border-top:1px solid var(--color-line); }
+.about-main .about-download-route .shell-select-trigger { height:38px; background:var(--color-control); border-radius:10px; }
 .about-update-button, #about_repository, .about-download-route .shell-select { width:var(--about-control-width); min-width:var(--about-control-width); flex:none; }
 .about-update-button { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .about-update-button[data-phase="downloading"] { opacity: 1; background: linear-gradient(to right, color-mix(in srgb, var(--color-accent) 12%, var(--color-panel)) var(--update-progress), var(--color-panel) var(--update-progress)); }

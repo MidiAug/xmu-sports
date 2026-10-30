@@ -14,9 +14,9 @@ export async function renderAbout(panel: Element, back: () => void) {
   try { version = `版本 ${await getVersion()}`; } catch { /* Browser preview. */ }
   if (!scope.current()) return;
   panel.closest<HTMLElement>(".content")?.scrollTo({ top: 0 });
-  panel.innerHTML = `<div class="page-stack settings-page about-page">
+  panel.innerHTML = `<div class="page-stack about-page">
     <div class="about-navigation"><button class="about-back" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>返回</span></button></div>
-    <header class="about-identity"><img class="about-mark" src="${appIcon}" width="64" height="64" alt="XMU Sports 图标"><h3>XMU Sports</h3><p id="about_version"></p></header>
+    <div class="about-layout"><header class="about-identity"><img class="about-mark" src="${appIcon}" width="64" height="64" alt="XMU Sports 图标"><h3>XMU Sports</h3><p id="about_version"></p><p class="about-footnote">独立开源项目<br>与厦大体育无官方关联</p></header><div class="about-main">
     <section class="preference-card about-section" aria-labelledby="update_title">
       <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">${updateHint}</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
       <div class="about-download-route"><label id="update_route_label">下载线路</label><div id="update_route" aria-labelledby="update_route_label"></div></div>
@@ -25,7 +25,7 @@ export async function renderAbout(panel: Element, back: () => void) {
       </div>
     </section>
     <section class="preference-card about-section" aria-labelledby="repository_title"><div class="about-row"><div><h3 id="repository_title">开源项目</h3><p>MidiAug / xmu-sports</p></div><button class="btn ghost" id="about_repository" type="button">GitHub ↗</button></div></section>
-    <p class="about-footnote">在本机为本人或已授权账号预约场馆<br>独立开源项目，与厦大体育无官方关联</p>
+    </div></div>
     <p class="msg" id="about_message" role="status"></p>
   </div>`;
   const query = <T extends HTMLElement = HTMLElement>(selector: string) => panel.querySelector<T>(selector)!;

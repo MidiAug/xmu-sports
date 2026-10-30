@@ -36,9 +36,10 @@ try {
     const page=await context.newPage();
     await page.clock.install({time:new Date(scenario==='running'?'2026-10-30T07:00:05+08:00':'2026-10-30T12:00:00+08:00')});
     await page.goto(base);
-    for(const tab of scenario==='running'?['live']:scenario==='auth'?['live','history']:['live','history','settings']) {
-      await page.locator(`.app-header [data-tab="${tab}"]`).click();
-      await page.locator(`.${tab==='history'?'history':tab==='live'?'live':'settings'}-page`).waitFor();
+    for(const tab of scenario==='running'?['live']:scenario==='auth'?['live','history']:['live','history','settings','about']) {
+      if(tab==='about') await page.locator('.settings-about-entry').click();
+      else await page.locator(`.app-header [data-tab="${tab}"]`).click();
+      await page.locator(`.${tab==='about'?'about':tab==='history'?'history':tab==='live'?'live':'settings'}-page`).waitFor();
       await page.locator('.content').evaluate(el=>el.scrollTop=0);
       if(tab==='history'&&!empty) await page.locator('.run-card').first().waitFor();
       if(scenario==='auth' && tab==='live') {

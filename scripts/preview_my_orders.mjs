@@ -46,7 +46,7 @@ try {
   await page.evaluate(()=>{document.documentElement.dataset.shellTheme='light';window.__holdOrders=true;});
   await page.clock.runFor(11000);
   await page.locator('[data-orders-refresh]').click();
-  await page.locator('.orders-count.is-loading svg').waitFor();
+  await page.locator('.order-icon.is-loading svg').waitFor();
   await page.screenshot({path:'artifacts/my-orders-preview/home-refreshing.png',animations:'disabled'});
   await page.evaluate(()=>{window.__holdOrders=false;window.__finishOrders();});
   assert.equal(await page.evaluate(()=>window.__calls.some(c=>['start_http_run','arm_hang','cancel_my_order','reauthenticate_availability'].includes(c.command))),false);

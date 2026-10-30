@@ -14,6 +14,20 @@ try {
   const page=await context.newPage();
   await page.clock.install({time:new Date('2026-10-30T12:00:00+08:00')});
   await page.goto(base);
+  await page.locator('.plans-page').waitFor();
+  for(const size of [{width:1079,height:739},{width:1081,height:741}]) {
+    await page.setViewportSize(size);
+    await page.locator('.content').evaluate(el=>el.scrollTop=0);
+    const origin=await page.locator('.page-heading h2').boundingBox();
+    const brand=await page.locator('.nav-brand').boundingBox();
+    assert.ok(Math.abs(origin.x-28)<1 && Math.abs(origin.y-84)<1,'page title does not jump across former layout breakpoints');
+    await page.locator('.content').evaluate(el=>{const spacer=document.createElement('div');spacer.id='scrollbar_fixture';spacer.style.height='2000px';el.append(spacer);});
+    const overflow=await page.locator('.page-heading h2').boundingBox();
+    assert.deepEqual(await page.locator('.nav-brand').boundingBox(),brand,'content scrollbar does not move the header');
+    assert.ok(Math.abs(overflow.x-origin.x)<1 && Math.abs(overflow.y-origin.y)<1,'scrollbar appearance preserves title position');
+    await page.locator('#scrollbar_fixture').evaluate(el=>el.remove());
+    assert.equal((await page.locator('.page-heading h2').boundingBox()).x,origin.x);
+  }
   for(const size of [{width:1100,height:760},{width:960,height:600},{width:1440,height:900}]) {
     await page.setViewportSize(size);
     let origin;

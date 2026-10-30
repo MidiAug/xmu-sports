@@ -170,12 +170,14 @@ try {
  assert.equal(await queries(),initial,"10s manual cooldown");
  assert.ok((await page.evaluate(()=>window.__toasts)).some(args=>args[0]==='预约刚刚已更新'),'cooldown click has visible feedback');
  await page.evaluate(()=>{window.__now+=11000;window.__hold=true;});
+ const entryWidth=(await page.locator('.my-orders-toggle').boundingBox()).width;
+ const entryCount=await page.locator('.orders-count').innerText();
  await page.getByRole("button",{name:"刷新我的预约",exact:true}).click();
  assert.ok(await page.locator("[data-orders-refresh]").isDisabled());
  assert.ok(await page.locator("[data-orders-refresh]").evaluate(el=>el.classList.contains("is-loading")));
- assert.equal(await page.locator('.orders-count.is-loading svg').count(),1,'count badge becomes the refresh spinner');
- assert.equal(await page.locator('.orders-count').innerText(),'');
- assert.equal(await page.locator('.orders-count svg').evaluate(el=>getComputedStyle(el).animationName),'order-refresh-spin');
+ assert.equal(await page.locator('.orders-count svg').count(),0,'header count stays still while popup refresh spins');
+ assert.equal(await page.locator('.orders-count').innerText(),entryCount);
+ assert.equal((await page.locator('.my-orders-toggle').boundingBox()).width,entryWidth);
  assert.equal(await page.locator(".my-orders-status").count(),0,"refresh progress is shown on the button, not another row");
  assert.equal(await page.locator("[data-orders-refresh]").getAttribute("aria-label"),"正在更新预约");
  assert.deepEqual(await page.locator("[data-orders-refresh]").evaluate(el=>{
