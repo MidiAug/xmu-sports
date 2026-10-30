@@ -20,6 +20,8 @@ pub struct Plan {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Attempt {
+    #[serde(default)]
+    pub reversible_skip: bool,
     pub task: crate::BookingTask,
     pub sport: String,
     pub account: String,
@@ -61,10 +63,20 @@ fn load() -> Result<Plans, String> {
     if !path.exists() {
         return Ok(Plans::default());
     }
-    let plans: Plans = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
+    let mut plans: Plans = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
         .map_err(|e| format!("长期计划读取失败，原文件已保留：{e}"))?;
     validate(&plans.rules)?;
+    migrate_skips(&mut plans);
     Ok(plans)
+}
+
+fn migrate_skips(plans: &mut Plans) {
+    // Older files used this marker only for explicit user skips, never reconciled orders or round stops.
+    for attempt in &mut plans.attempts {
+        if attempt.status == "skipped" && attempt.message == "已跳过这一次" {
+            attempt.reversible_skip = true;
+        }
+    }
 }
 
 fn catalog() -> Value {
@@ -302,6 +314,7 @@ pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<String, St
         .ok_or("计划不存在")?;
     let date = skip_date(rule, plans, china_now());
     let attempt = Attempt {
+        reversible_skip: true,
         task: task(rule, date),
         sport: rule.sport.clone(),
         account: rule.account.clone(),
@@ -315,6 +328,7 @@ pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<String, St
         .find(|a| a.status == "queued" && a.task.plan_id.as_deref() == Some(&id) && a.task.target_date == date.to_string())
     {
         queued.status = "skipped".into();
+        queued.reversible_skip = true;
         queued.message = "已跳过这一次".into();
     } else {
         next.attempts.push(attempt);
@@ -324,6 +338,40 @@ pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<String, St
     drop(locked);
     changed(&app);
     Ok(date.to_string())
+}
+
+#[tauri::command]
+pub fn restore_booking_plan(app: tauri::AppHandle, id: String, date: String) -> Result<(), String> {
+    let state = app.state::<Store>();
+    let mut locked = state.0.lock().map_err(|_| "计划状态不可用")?;
+    let plans = locked.as_mut().map_err(|e| e.clone())?;
+    let mut next = plans.clone();
+    restore_skip(&mut next, &id, &date, china_now())?;
+    persist(&next)?;
+    *plans = next;
+    drop(locked);
+    changed(&app);
+    Ok(())
+}
+
+fn restore_skip(plans: &mut Plans, id: &str, date: &str, now: DateTime<FixedOffset>) -> Result<(), String> {
+    let day = NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| "运动日期无效")?;
+    if fire_at(day) <= now { return Err("本次开抢时间已过，无法恢复".into()); }
+    let rule = plans.rules.iter().find(|p| p.id == id).ok_or("计划已删除，无法恢复")?;
+    let index = plans.attempts.iter().position(|a| a.task.plan_id.as_deref() == Some(id)
+        && a.task.target_date == date && a.status == "skipped" && a.reversible_skip)
+        .ok_or("本次记录不是可恢复的主动跳过")?;
+    let skipped = &plans.attempts[index];
+    if skipped.account != rule.account || skipped.sport != rule.sport
+        || !rule.weekdays.contains(&day.weekday().number_from_monday()) || date < rule.first_date.as_str() {
+        return Err("计划已变更，该运动日不再适用".into());
+    }
+    if plans.attempts.iter().enumerate().any(|(i, a)| i != index && a.account == rule.account
+        && a.sport == rule.sport && a.task.target_date == date) {
+        return Err("该运动日已有其他执行记录，不能恢复".into());
+    }
+    plans.attempts.remove(index);
+    Ok(())
 }
 
 #[tauri::command]
@@ -510,6 +558,7 @@ pub fn stop_round(app: &tauri::AppHandle) -> Result<(), String> {
     for rule in &plans.rules {
         if rule.enabled && next_date(rule, plans, now) == date {
             next.attempts.push(Attempt {
+                reversible_skip: false,
                 task: task(rule, date),
                 sport: rule.sport.clone(),
                 account: rule.account.clone(),
@@ -565,6 +614,7 @@ fn freeze_round(plans: &mut Plans, now: DateTime<FixedOffset>) {
             .iter()
             .filter(|p| p.enabled && next_date(p, plans, now) == date)
             .map(|p| Attempt {
+                reversible_skip: false,
                 task: task(p, date),
                 sport: p.sport.clone(),
                 account: p.account.clone(),
@@ -781,13 +831,56 @@ mod tests {
         plans.rules[0].enabled = false;
         assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
         plans.rules[0].enabled = true;
-        plans.attempts.push(Attempt { task: task(&p, NaiveDate::from_ymd_opt(2026, 11, 1).unwrap()), sport:p.sport.clone(), account:p.account.clone(), status:"unconfirmed".into(), message:String::new() });
+        plans.attempts.push(Attempt { reversible_skip: false, task: task(&p, NaiveDate::from_ymd_opt(2026, 11, 1).unwrap()), sport:p.sport.clone(), account:p.account.clone(), status:"unconfirmed".into(), message:String::new() });
         assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
         plans.attempts[0].status = "queued".into();
         plans.rules.clear();
         assert!(has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")), "frozen queue remains active without rules");
         plans.attempts[0].status = "skipped".into();
         assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+    }
+
+    #[test]
+    fn restore_explicit_skip_returns_only_that_occurrence() {
+        let rule = catalog_rule();
+        let date = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let now = at("2026-10-29T06:30:00+08:00");
+        let skipped = Attempt { reversible_skip: true, task:task(&rule,date), sport:rule.sport.clone(), account:rule.account.clone(), status:"skipped".into(), message:String::new() };
+        let mut plans = Plans { rules:vec![rule.clone()], attempts:vec![skipped.clone()], paused:true, ..Plans::default() };
+        assert_ne!(next_date(&rule, &plans, now), date);
+        restore_skip(&mut plans, &rule.id, "2026-10-30", now).unwrap();
+        assert_eq!(next_date(&rule, &plans, now), date);
+        assert!(plans.paused, "restoring does not resume globally paused plans");
+        assert!(plans.rules[0].enabled);
+        assert!(plans.attempts.is_empty());
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now).is_err());
+        plans.attempts.push(skipped.clone());
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", at("2026-10-29T07:00:00+08:00")).is_err());
+        plans.attempts[0].reversible_skip = false;
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now).is_err(), "reconciled and round-stopped records cannot be restored");
+        plans.attempts[0] = skipped.clone();
+        plans.rules[0].account = "b".repeat(64);
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now).is_err());
+        plans.rules[0] = rule.clone();
+        plans.attempts.push(Attempt { status:"unconfirmed".into(), reversible_skip:false, ..skipped });
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now).is_err(), "another order record must never be erased");
+        assert_eq!(plans.attempts.len(),2);
+    }
+
+    #[test]
+    fn legacy_skip_migration_preserves_non_user_skips() {
+        let rule = catalog_rule();
+        let date = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
+        let mut plans = Plans { attempts:["已跳过这一次", "已人工核对，本项不再自动补约", "已停止本轮"].into_iter().map(|message| Attempt {
+            reversible_skip:false, task:task(&rule,date), sport:rule.sport.clone(), account:rule.account.clone(), status:"skipped".into(), message:message.into()
+        }).collect(), ..Plans::default() };
+        migrate_skips(&mut plans);
+        assert_eq!(plans.attempts.iter().map(|a|a.reversible_skip).collect::<Vec<_>>(),vec![true,false,false]);
+        let mut json = serde_json::to_value(&plans).unwrap();
+        json["attempts"][0].as_object_mut().unwrap().remove("reversible_skip");
+        let mut loaded:Plans = serde_json::from_value(json).unwrap();
+        migrate_skips(&mut loaded);
+        assert!(loaded.attempts[0].reversible_skip);
     }
 
     #[test]
@@ -815,6 +908,7 @@ mod tests {
         let task=serde_json::from_value(json!({"task_id":"old","sport":"健身","venue":"另一场馆","target_date":"2026-10-30","fire_at":"2026-10-29T07:00:00+08:00","target_time_start":"16:30","target_time_end":"18:00"})).unwrap();
         let mut plans = Plans::default();
         plans.attempts.push(Attempt {
+            reversible_skip: false,
             task,
             sport: p.sport.clone(),
             account: p.account.clone(),
@@ -877,6 +971,7 @@ mod tests {
         assert!(due_plan(&plans, at("2026-10-29T06:58:59+08:00")).is_none());
         assert_eq!(due_plan(&plans, now).unwrap().0.id, first.id);
         plans.attempts.push(Attempt {
+            reversible_skip: false,
             task: task(&first, next_date(&first, &plans, now)),
             sport: first.sport.clone(),
             account: first.account.clone(),
@@ -912,6 +1007,7 @@ mod tests {
         ] {
             let mut plans = Plans::default();
             plans.attempts.push(Attempt {
+                reversible_skip: false,
                 task: task.clone(),
                 sport: p.sport.clone(),
                 account: p.account.clone(),

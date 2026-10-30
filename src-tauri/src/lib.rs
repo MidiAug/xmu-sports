@@ -1319,6 +1319,7 @@ pub fn run() {
             booking_plans::get_booking_plans,
             booking_plans::save_booking_plans,
             booking_plans::skip_booking_plan,
+            booking_plans::restore_booking_plan,
             booking_plans::resolve_booking_plan,
             booking_plans::stop_booking_round,
             booking_plans::booking_plan_account,

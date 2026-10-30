@@ -145,6 +145,13 @@
 .queue-skip { margin-left:auto; padding:5px 8px; border:1px solid var(--color-line); border-radius:7px; background:transparent; color:var(--color-secondary-ink); font:inherit; cursor:pointer; }
 .queue-skip:hover:not(:disabled) { background:var(--color-control); color:var(--color-accent); }
 .queue-skip:disabled { color:var(--color-muted); cursor:default; }
+.plan-skipped-date { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-radius:10px; background:var(--color-control); font-size:12px; }
+.plan-skipped-date > div { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
+.plan-skipped-date span { color:var(--color-muted); }
+.plan-skipped-date strong { font-size:12px; font-weight:500; }
+.plan-skipped-date button { flex:none; border:0; border-radius:6px; padding:5px 6px; background:transparent; color:var(--color-accent); font:inherit; cursor:pointer; }
+.plan-skipped-date button:hover:not(:disabled) { background:var(--color-panel-hover); }
+.plan-skipped-date button:disabled { color:var(--color-muted); cursor:default; }
 
 .live-page > #pending_order_checks:empty { display:none; }
 .live-page .plan-queue-overview { padding:20px 24px; }

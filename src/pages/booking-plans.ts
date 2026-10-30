@@ -5,12 +5,13 @@ import { mountShellSelect } from "../ui/select";
 import { askConfirm } from "../ui/confirm-ask";
 import { outcomeFromEvent } from "../lib/run-outcome";
 import { formatEventTimeHuman, formatMonthDayWeekday } from "../lib/format-human";
-import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, type BookingPlan, type BookingPlansView } from "../lib/booking-plans";
+import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, restorablePlanSkips, type BookingPlan, type BookingPlansView } from "../lib/booking-plans";
 import { bookingPlans } from "../lib/booking-plans-store";
 import { SVG } from "../ui/icons";
 import { sportIcon } from "../ui/sport-icons";
 import { availabilitySessionCache } from "../lib/availability-store";
 import { patchHtml } from "../ui/patch-html";
+import { skipPlanOnce, restorePlanSkip } from "../ui/plan-skip";
 
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export async function renderBookingPlans(panel: Element, options?: { focusPlanId?: string }) {
@@ -117,6 +118,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
         <div class="plan-schedule"><strong>${r.start}<span class="plan-time-divider">–</span>${r.end}</strong><span>${weekdaysLabel(r.weekdays)}</span></div>
         <div class="plan-week-strip" aria-label="重复星期：${weekdaysLabel(r.weekdays)}">${days.map((day, i) => `<span data-selected="${r.weekdays.includes(i + 1)}" aria-hidden="true">${day}</span>`).join("")}</div>
         <div class="plan-dates">${next ? `<div><span>下次运动</span><strong>${formatMonthDayWeekday(next.date)}</strong></div><div><span>${view.plans.paused ? "恢复后按计划开抢" : "自动开抢"}</span><strong>${escape(formatEventTimeHuman(next.fire_at))}</strong></div>` : `<div><span>本计划已停用</span><strong>启用后继续安排</strong></div>`}</div>
+        ${restorablePlanSkips(view, r).map(a => `<div class="plan-skipped-date"><div><span>已跳过</span><strong>${formatMonthDayWeekday(a.task.target_date)}</strong></div><button type="button" data-restore-plan="${r.id}" data-restore-date="${escape(a.task.target_date)}">恢复本次</button></div>`).join("")}
         <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}" aria-label="编辑计划" data-tooltip="编辑">${SVG.edit}</button>
         <details class="plan-more"><summary data-tooltip="更多" aria-label="更多操作">${SVG.more}</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
@@ -136,7 +138,12 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     });
     list.querySelectorAll<HTMLButtonElement>("[data-skip]").forEach(b => b.onclick = async () => {
       b.disabled = true;
-      try { const date = await invoke<string>("skip_booking_plan", { id: b.dataset.skip }); await load(true); message.className = "msg"; message.textContent = `已跳过 ${formatMonthDayWeekday(date)} 的运动预约`; } catch (e) { fail(e); b.disabled = false; }
+      try { await skipPlanOnce(b.dataset.skip!); } catch (e) { fail(e); b.disabled = false; }
+    });
+    list.querySelectorAll<HTMLButtonElement>("[data-restore-plan]").forEach(button => button.onclick = async () => {
+      button.disabled = true;
+      try { await restorePlanSkip(button.dataset.restorePlan!, button.dataset.restoreDate!); }
+      catch (error) { fail(error); button.disabled = false; }
     });
     for (const [attr, offset] of [["up", -1], ["down", 1]] as const) {
       list.querySelectorAll<HTMLButtonElement>(`[data-${attr}]`).forEach(b => b.onclick = () => { void move(b.dataset[attr]!, view.plans.rules.findIndex(r => r.id === b.dataset[attr]) + offset).catch(() => {}); });

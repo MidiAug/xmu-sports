@@ -5,7 +5,7 @@ export type BookingPlan = {
   weekdays: number[]; enabled: boolean; account: string; first_date: string;
 };
 export type BookingPlanAttempt = {
-  task: BookingTask; sport: string; account: string; status: string; message: string;
+  task: BookingTask; sport: string; account: string; status: string; message: string; reversible_skip?: boolean;
 };
 export type BookingPlansView = {
   plans: { rules: BookingPlan[]; paused: boolean; attempts: BookingPlanAttempt[] };
@@ -13,6 +13,13 @@ export type BookingPlansView = {
   wechat_running: boolean;
 };
 export const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
+export function restorablePlanSkips(view: BookingPlansView, rule: BookingPlan, now = Date.now()) {
+  return view.plans.attempts.filter(a => a.status === "skipped" && a.reversible_skip
+    && a.task.plan_id === rule.id && a.account === rule.account && a.sport === rule.sport
+    && Date.parse(a.task.fire_at) > now && a.task.target_date >= rule.first_date
+    && rule.weekdays.includes(new Date(`${a.task.target_date}T12:00:00+08:00`).getUTCDay() || 7))
+    .sort((a, b) => a.task.target_date.localeCompare(b.task.target_date));
+}
 export function weekdaysLabel(values: number[]) {
   if (values.length === 7) return "每天";
   if (values.join() === "1,2,3,4,5") return "工作日";

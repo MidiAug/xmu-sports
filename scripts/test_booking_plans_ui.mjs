@@ -102,7 +102,8 @@ try {
   await more.locator('summary').click();
   await page.locator("[data-skip]").first().click();
   await page.waitForFunction(()=>window.__calls.some(c=>c.command==="skip_booking_plan"));
-  await page.getByText('已跳过 10月30日(周五) 的运动预约',{exact:true}).waitFor();
+  await page.locator('.toast').filter({hasText:'已跳过本次'}).getByRole('button',{name:'撤销',exact:true}).waitFor();
+  await page.locator('.toast-text').filter({hasText:'10月30日(周五) 的运动预约'}).waitFor();
   const before=await page.locator(".plan-card").first().getAttribute("data-plan");
   await page.locator(".plan-card").nth(1).locator("summary").click();
   await page.locator("[data-up]").nth(1).click();

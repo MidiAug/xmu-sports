@@ -1,4 +1,4 @@
-import { toastError, toastSuccess } from "./toast";
+import { toastError } from "./toast";
 import { invoke } from "@tauri-apps/api/core";
 import type { LiveStatus } from "../types";
 import { sports } from "../lib/catalog";
@@ -8,7 +8,7 @@ import { nextPlanRound, type BookingPlansView } from "../lib/booking-plans";
 import { patchHtml } from "./patch-html";
 import { sportIcon } from "./sport-icons";
 import { SVG } from "./icons";
-import { bookingPlans } from "../lib/booking-plans-store";
+import { skipPlanOnce } from "./plan-skip";
 
 export function renderPlanQueue(host: HTMLElement, view: BookingPlansView | undefined, status?: LiveStatus | null): boolean {
   const content = document.createElement("div");
@@ -70,9 +70,7 @@ export function renderPlanQueue(host: HTMLElement, view: BookingPlansView | unde
     button.onclick = async () => {
       button.disabled = true;
       try {
-        const date = await invoke<string>("skip_booking_plan", { id: button.dataset.skipPlan });
-        toastSuccess("已跳过本次", `${formatMonthDayWeekday(date)} 的运动预约`);
-        await bookingPlans.read(true).catch(error => toastError("计划暂未更新", String(error)));
+        await skipPlanOnce(button.dataset.skipPlan!);
       } catch (error) { toastError("跳过失败", String(error)); button.disabled = false; }
     };
   });

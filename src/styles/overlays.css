@@ -152,6 +152,10 @@
   color: var(--color-ink);
 }
 
+.toast-action { flex:none; align-self:center; padding:6px 10px; border:1px solid var(--color-line-strong); border-radius:7px; background:var(--color-control); color:var(--color-accent); font:inherit; font-size:12px; cursor:pointer; }
+.toast-action:hover:not(:disabled) { background:var(--color-panel-hover); }
+.toast-action:disabled { color:var(--color-muted); cursor:default; }
+
 .toast-success {
   border-color: color-mix(in srgb, var(--color-ok) 45%, var(--color-line-strong));
 }

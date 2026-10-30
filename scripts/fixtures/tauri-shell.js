@@ -36,10 +36,18 @@ export function installShellFixture(data) {
         if (!next) throw new Error("Fixture has no next occurrence");
         const date=next.date;
         const rule=window.__plans.rules.find(r=>r.id===args.id);
-        window.__plans.attempts.push({task:{task_id:`skipped-${args.id}`,plan_id:args.id,target_date:date},sport:rule.sport,account:rule.account,status:"skipped",message:"已跳过这一次"});
+        window.__plans.attempts.push({task:{task_id:`skipped-${args.id}-${date}`,plan_id:args.id,target_date:date,fire_at:next.fire_at,sport:rule.sport},sport:rule.sport,account:rule.account,status:"skipped",message:"已跳过这一次",reversible_skip:true});
         // Return a later host preview; scheduling itself is covered by Rust tests.
         next.date="2026-11-08";next.fire_at="2026-11-07T07:00:00+08:00";
         window.__emit("plans-changed");return date;
+      }
+      if (command === "restore_booking_plan") {
+        if (window.__restoreError) throw new Error(window.__restoreError);
+        const index=window.__plans.attempts.findIndex(a=>a.reversible_skip&&a.task.plan_id===args.id&&a.task.target_date===args.date);
+        if (index<0) throw new Error("No reversible skip");
+        const [restored]=window.__plans.attempts.splice(index,1);
+        Object.assign(window.__next.find(n=>n.id===args.id),{date:args.date,fire_at:restored.task.fire_at});
+        window.__emit("plans-changed");return;
       }
       if (command === "resolve_booking_plan") {window.__plans.attempts.find(a=>a.task.task_id===args.taskId).status="skipped";window.__emit("plans-changed");return;}
       if (command === "get_live_status") return structuredClone(window.__live);

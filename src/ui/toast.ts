@@ -8,6 +8,7 @@ export type ToastOpts = {
   body?: string;
   /** ms；省略则按 kind 默认 */
   durationMs?: number;
+  action?: { label: string; run: () => Promise<void> };
 };
 
 const DEFAULT_MS: Record<ToastKind, number> = {
@@ -26,6 +27,7 @@ type Entry = {
   durationMs: number;
   timer: number;
   paused: boolean;
+  acting: boolean;
 };
 
 let host: HTMLElement | null = null;
@@ -56,6 +58,7 @@ function clearTimer(entry: Entry) {
 
 function scheduleDismiss(entry: Entry, ms: number) {
   clearTimer(entry);
+  if (entry.acting) return;
   entry.timer = window.setTimeout(() => dismiss(entry.id), ms);
 }
 
@@ -72,7 +75,7 @@ export function toast(opts: ToastOpts): void {
   const key = dedupeKey(opts);
   const now = Date.now();
   const last = recentKeys.get(key);
-  if (last != null && now - last < DEDUPE_MS) return;
+  if (!opts.action && last != null && now - last < DEDUPE_MS) return;
   recentKeys.set(key, now);
 
   const root = ensureHost();
@@ -97,15 +100,31 @@ export function toast(opts: ToastOpts): void {
   if (textEl && opts.body) textEl.textContent = opts.body;
   el.querySelector(".toast-close")!.addEventListener("click", () => dismiss(id));
 
-  const entry: Entry = { id, el, durationMs, timer: 0, paused: false };
+  const entry: Entry = { id, el, durationMs, timer: 0, paused: false, acting: false };
+  if (opts.action) {
+    const action = document.createElement("button");
+    action.type = "button"; action.className = "toast-action"; action.textContent = opts.action.label;
+    action.onclick = async () => {
+      action.disabled = true; entry.acting = true; clearTimer(entry);
+      try { await opts.action!.run(); dismiss(id); }
+      catch (error) { entry.acting = false; toastError("操作失败", String(error)); action.disabled = false; }
+    };
+    el.insertBefore(action, el.querySelector(".toast-close"));
+  }
   el.addEventListener("mouseenter", () => {
     entry.paused = true;
     clearTimer(entry);
   });
   el.addEventListener("mouseleave", () => {
+    if (el.contains(document.activeElement)) return;
     if (!entry.paused) return;
     entry.paused = false;
     scheduleDismiss(entry, Math.min(entry.durationMs, 2500));
+  });
+  el.addEventListener("focusin", () => { entry.paused = true; clearTimer(entry); });
+  el.addEventListener("focusout", event => {
+    if (event.relatedTarget instanceof Node && el.contains(event.relatedTarget)) return;
+    if (!el.matches(":hover")) { entry.paused = false; scheduleDismiss(entry, Math.min(entry.durationMs, 2500)); }
   });
 
   root.appendChild(el);
