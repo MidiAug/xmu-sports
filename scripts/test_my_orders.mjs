@@ -55,7 +55,14 @@ try {
   (await import(url)).mountMyOrders(document.querySelector("#orders"),{popover:true});
  },moduleUrl);
  await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===2);
- await page.locator(".my-orders-toggle").click();
+ await page.locator(".my-orders-toggle").hover();
+ await page.locator('.my-orders-popup').waitFor({state:'visible'});
+ await page.locator('.my-orders-popup h2').hover();
+ assert.equal(await page.locator('.my-orders-popup').isVisible(),true,'pointer can move into the card');
+ await page.locator('.content h2').hover();
+ await page.locator('.my-orders-popup').waitFor({state:'hidden'});
+ await page.locator('.my-orders-toggle').focus();await page.keyboard.press('Enter');
+ await page.locator('.my-orders-popup').waitFor({state:'visible'});
  assert.equal(await page.locator("#orders [title]").count(),0,"reservation controls do not add tooltips");
  assert.equal(await page.evaluate(()=>window.__calls.find(call=>call.command==="get_my_orders").args.force),false,"startup can reuse the persistent snapshot");
  assert.match(await page.locator(".my-order").first().innerText(),/思明[\s\S]*明天[\s\S]*07:00/);

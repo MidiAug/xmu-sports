@@ -60,6 +60,15 @@ export function mountMyOrders(host:HTMLElement, options: { popover?: boolean; ic
   let loading = false, recovering = false, confirming = false, cancelling = false, loginRequired = false, known = false, busy = true, message = "";
   let queued = false;
   let expanded = false;
+  let closeTimer: ReturnType<typeof setTimeout> | undefined;
+  const clearCloseTimer = () => { clearTimeout(closeTimer); closeTimer = undefined; };
+  const setExpanded = (value: boolean) => {
+    clearCloseTimer();
+    expanded = value;
+    host.classList.toggle("is-expanded", value);
+    host.querySelector<HTMLElement>(".my-orders-popup")?.toggleAttribute("hidden", !value);
+    host.querySelector(".my-orders-toggle")?.setAttribute("aria-expanded", String(value));
+  };
   let changedAt = 0, dirty = false, failures = 0, retryAt = 0;
   const label = (row:Order) => `${row.venue}${row.court ? `、${row.court}` : ""}，${row.date} ${row.start}–${row.end}`;
   let paintedPolicy="";
@@ -79,11 +88,11 @@ export function mountMyOrders(host:HTMLElement, options: { popover?: boolean; ic
       <div class="my-orders-body" id="my_orders_body">${visibleStatus ? `<p class="my-orders-status" role="status">${escape(visibleStatus)}</p>` : `<span class="sr-only" role="status" aria-live="polite">${escape(liveStatus)}</span>`}
       <div class="my-orders-list">${rows.map((row,index) => {const place=orderPlace(row);const cancellable=orderCanCancel(row);const cancelReason=!cancellable ? (Date.parse(`${row.date}T${row.start}:00+08:00`)-Date.now()<=3600000 ? "开始前1小时内不可取消" : "此预约暂不可取消") : "";return `<article class="my-order"><div class="my-order-head"><span class="my-order-name">${escape(place.name)}</span><button type="button" class="order-cancel" data-order-cancel="${index}" aria-label="${escape(`取消预约：${label(row)}`)}" ${disabled || loginRequired || !cancellable ? "disabled" : ""}>${options.popover ? "取消预约" : cancelIcon}</button></div><p class="my-order-time"><span class="my-order-day">${escape(orderDay(row.date))}</span><strong>${escape(row.start)}–${escape(row.end)}</strong></p>${place.court ? `<p class="my-order-court">${escape(place.court)}</p>` : ""}${cancelReason ? `<p class="my-order-cancel-reason">${cancelReason}</p>` : ""}</article>`;}).join("")}</div></div>${options.popover ? "</div>" : ""}`;
     host.querySelector<HTMLButtonElement>(".my-orders-toggle")!.onclick = event => {
+      if (options.popover) { setExpanded(true); return; }
       expanded = !expanded; host.classList.toggle("is-expanded", expanded);
       const button = event.currentTarget as HTMLButtonElement;
       button.setAttribute("aria-expanded", String(expanded));
-      if (options.popover) host.querySelector<HTMLElement>(".my-orders-popup")!.hidden = !expanded;
-      else button.querySelector("span")!.textContent = expanded ? "收起" : collapsedLabel;
+      button.querySelector("span")!.textContent = expanded ? "收起" : collapsedLabel;
     };
     host.querySelector<HTMLButtonElement>("[data-orders-refresh]")!.onclick = () => void refresh(true);
     host.querySelectorAll<HTMLButtonElement>("[data-order-cancel]").forEach(button => {
@@ -91,11 +100,19 @@ export function mountMyOrders(host:HTMLElement, options: { popover?: boolean; ic
     });
   }
   if (options.popover) {
-    const close = () => {
-      expanded = false; host.classList.remove("is-expanded");
-      host.querySelector<HTMLElement>(".my-orders-popup")?.setAttribute("hidden", "");
-      host.querySelector(".my-orders-toggle")?.setAttribute("aria-expanded", "false");
-    };
+    const close = () => setExpanded(false);
+    host.addEventListener("pointerenter", event => { if (event.pointerType === "mouse") setExpanded(true); });
+    host.addEventListener("pointerleave", event => {
+      if (event.pointerType !== "mouse") return;
+      clearCloseTimer();
+      // Allow the pointer to cross the space between the header and its card.
+      closeTimer = setTimeout(() => {
+        if (!confirming && !cancelling && !host.querySelector(".my-orders-popup")?.contains(document.activeElement)) close();
+      }, 220);
+    });
+    host.addEventListener("focusout", event => {
+      if (event.relatedTarget && !host.contains(event.relatedTarget as Node) && !host.matches(":hover") && !confirming && !cancelling) close();
+    });
     document.addEventListener("click", event => { if (expanded && !event.composedPath().includes(host)) close(); });
     host.addEventListener("keydown", event => {
       if (event.key === "Escape" && expanded) {
