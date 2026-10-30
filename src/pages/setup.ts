@@ -557,24 +557,35 @@ export async function renderSetup(panel: Element) {
 
   function syncDateOptions() {
     const today = todayISO();
+    const options = bookingDateOptions();
+    const sport = findSport(sportSelect.getValue())?.id ?? "";
+    const arranged = (date: string) => hasBookingPlan(planHints, sport, date, availabilitySessionCache.account);
+    const previousDate = targetDate;
+    if (!busy && !starting && isSelectableTargetDate(targetDate) && arranged(targetDate)) {
+      const available = options.filter(option => !arranged(option.value));
+      const next = available.find(option => option.value > targetDate) ?? available.at(-1);
+      if (next) targetDate = next.value;
+    }
     if (dateOptionsDay !== today) {
       dateOptionsDay = today;
-      panel.querySelector("#date_months")!.textContent = [...new Set(bookingDateOptions().map(option => `${Number(option.value.slice(5,7))}月`))].join(" / ");
-      dateOptionsEl.innerHTML = bookingDateOptions().map(option => `
+      panel.querySelector("#date_months")!.textContent = [...new Set(options.map(option => `${Number(option.value.slice(5,7))}月`))].join(" / ");
+      dateOptionsEl.innerHTML = options.map(option => `
         <button type="button" class="booking-date-option" data-date="${option.value}" aria-label="${option.label} ${formatMonthDayWeekday(option.value)}" aria-pressed="false">
-          <span class="date-relative">${option.label}</span><strong class="date-number">${option.value.slice(8)}</strong><small><span>${Number(option.value.slice(5,7))}月</span><span>周${"日一二三四五六"[new Date(`${option.value}T00:00:00Z`).getUTCDay()]}</span></small><span class="date-plan-badge" hidden>已编排</span>
+          <span class="date-heading"><span class="date-relative">${option.label}</span><span class="date-plan-badge" hidden>已编排</span></span>
+          <span class="date-body"><span class="date-calendar"><span class="date-month">${Number(option.value.slice(5,7))}月</span><strong class="date-number">${Number(option.value.slice(8))}</strong><span class="date-unit">日</span></span><span class="date-weekday">周${"日一二三四五六"[new Date(`${option.value}T00:00:00Z`).getUTCDay()]}</span></span>
         </button>`).join("");
     }
     dateOptionsEl.querySelectorAll<HTMLButtonElement>("[data-date]").forEach(button => {
-      const selected = button.dataset.date === targetDate;
-      const arranged = hasBookingPlan(planHints, findSport(sportSelect.getValue())?.id ?? "", button.dataset.date!, availabilitySessionCache.account);
-      button.disabled = arranged;
-      button.querySelector<HTMLElement>(".date-plan-badge")!.hidden = !arranged;
-      const option = bookingDateOptions().find(option => option.value === button.dataset.date)!;
-      button.setAttribute("aria-label", `${option.label} ${formatMonthDayWeekday(option.value)}${arranged ? "，已编排" : ""}`);
+      const planned = arranged(button.dataset.date!);
+      const selected = !planned && button.dataset.date === targetDate;
+      button.disabled = planned;
+      button.querySelector<HTMLElement>(".date-plan-badge")!.hidden = !planned;
+      const option = options.find(option => option.value === button.dataset.date)!;
+      button.setAttribute("aria-label", `${option.label} ${formatMonthDayWeekday(option.value)}${planned ? "，已编排" : ""}`);
       button.classList.toggle("on", selected);
       button.setAttribute("aria-pressed", String(selected));
     });
+    return previousDate !== targetDate;
   }
 
   function syncFirePrevState() {
@@ -656,12 +667,12 @@ export async function renderSetup(panel: Element) {
   }
 
   function updateSummary() {
+    const dateChanged = syncDateOptions();
     const conflict = bookingPlanConflict(planHints, findSport(sportSelect.getValue())?.id ?? "", targetDate, availabilitySessionCache.account);
     const planLink = panel.querySelector<HTMLButtonElement>("#task_plan_link")!;
     planLink.hidden = !conflict;
     if (conflict?.ruleId) planLink.dataset.planId = conflict.ruleId;
     else delete planLink.dataset.planId;
-    syncDateOptions();
     const valid = validInputs();
     if (!valid) {
       panel.querySelector("#task_action_reason")!.textContent = "请填写有效的预约日期和执行时间";
@@ -694,6 +705,10 @@ export async function renderSetup(panel: Element) {
     check.disabled = busy || starting || availabilityRecovering || !valid;
     panel.querySelector<HTMLFieldSetElement>("#task_fields")!.disabled = busy || starting;
     panel.querySelector<HTMLElement>("#task_busy_note")!.hidden = !busy;
+    if (dateChanged) {
+      saveTaskDraft(task);
+      scheduleAvailability();
+    }
   }
 
   async function start(mode: "primary" | "now" | "prepare") {

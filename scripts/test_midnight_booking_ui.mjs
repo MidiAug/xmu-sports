@@ -112,7 +112,7 @@ try {
     await rollover.locator(`[data-date="${target}"]`).click(); await rollover.clock.runFor(300);
     await rollover.clock.runFor(2200);
     await rollover.locator(`[data-date="${target}"][aria-pressed="true"]`).waitFor();
-    assert.equal(await rollover.locator(`[data-date="${target}"] > .date-relative`).innerText(), relative);
+    assert.equal(await rollover.locator(`[data-date="${target}"] .date-relative`).innerText(), relative);
     assert.equal(await rollover.locator('[data-date="2026-10-27"]').count(), 0, 'old today leaves the range');
     assert.equal(await rollover.locator('[data-date="2026-10-30"]').count(), 1, 'new day-after-tomorrow appears');
     assert.equal(await rollover.locator('#setup_primary').innerText(), '定时预约');

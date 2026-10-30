@@ -52,6 +52,8 @@ try {
   const nine=page.locator('#plan_slot [data-value="09:00|10:30"]');
   assert.equal(await nine.isDisabled(),true,'existing 09:00 ping-pong plan blocks creating the same slot');
   assert.match(await nine.innerText(),/已编排/);
+  assert.equal(await nine.getAttribute('aria-selected'),'false','new plan automatically skips occupied 09:00');
+  assert.doesNotMatch(await page.locator('#plan_slot .shell-select-trigger').innerText(),/09:00/);
   await page.keyboard.press('Escape');
   await page.locator('#plan_cancel').click();
   await page.locator('[data-edit]').first().click();
@@ -109,6 +111,11 @@ try {
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
     await page.clock.runFor(250);
     await page.screenshot({path:`artifacts/ui-details/planned-dates-${theme}.png`});
+    await page.locator('.booking-date-options').screenshot({path:`artifacts/ui-details/date-cards-${theme}.png`});
+    await page.setViewportSize({width:1100,height:760});
+    assert.deepEqual(await page.locator('.booking-date-option').evaluateAll(cards=>cards.map(card=>card.getBoundingClientRect().height)),[80,80,80]);
+    await page.screenshot({path:`artifacts/ui-details/planned-dates-${theme}-1100.png`});
+    await page.setViewportSize({width:960,height:600});
   }
   await page.evaluate(()=>{window.__plans.paused=true;window.__emit('plans-changed');});
   await page.waitForFunction(()=>!document.querySelector('[data-date="2026-11-01"]').disabled);
@@ -116,8 +123,33 @@ try {
   assert.equal(await later.getAttribute('aria-pressed'),'true');
   await page.evaluate(()=>{window.__plans.paused=false;window.__emit('plans-changed');});
   await page.waitForFunction(()=>document.querySelector('[data-date="2026-11-01"]').disabled);
-  assert.equal(await later.getAttribute('aria-pressed'),'true','restoring keeps the saved actual date');
+  assert.equal(await later.getAttribute('aria-pressed'),'false','restoring automatically avoids the planned date');
+  assert.equal(await tomorrow.getAttribute('aria-pressed'),'true');
+  assert.equal(await page.locator('#setup_primary').isEnabled(),true);
+  const heights=await page.locator('.booking-date-option').evaluateAll(cards=>cards.map(card=>card.getBoundingClientRect().height));
+  assert.deepEqual(heights,[80,80,80],'planned and available cards have identical fixed heights');
+  await page.evaluate(()=>{window.__plans.rules[1].weekdays=[6];window.__emit('plans-changed');});
+  await page.waitForFunction(()=>document.querySelector('[data-date="2026-11-01"]').getAttribute('aria-pressed')==='true');
+  await page.clock.runFor(1000);
+  assert.equal(await page.evaluate(()=>window.__task.target_date),'2026-11-01','plan edits update the persisted draft date');
+  assert.match(await page.locator('#summary_date').innerText(),/后天/);
+  await page.evaluate(()=>{window.__live={...window.__live,task:window.__task,armed:true,fire_at:window.__task.fire_at};window.__emit('run-changed');});
+  await page.waitForFunction(()=>document.querySelector('#task_fields').disabled);
+  await page.evaluate(()=>{window.__plans.rules[1].weekdays=[7];window.__emit('plans-changed');});
+  await page.waitForFunction(()=>document.querySelector('[data-date="2026-11-01"]').disabled);
+  assert.match(await page.locator('#summary_date').innerText(),/后天/,'armed tasks retain the original date');
+  assert.equal(await page.evaluate(()=>window.__task.target_date),'2026-11-01');
+  await page.evaluate(()=>{window.__live.armed=false;window.__emit('run-changed');});
+  await page.waitForFunction(()=>document.querySelector('[data-date="2026-10-31"]').getAttribute('aria-pressed')==='true');
+  await page.evaluate(()=>{window.__plans.rules[1].weekdays=[5,6,7];window.__emit('plans-changed');});
+  await page.waitForFunction(()=>[...document.querySelectorAll('.booking-date-option')].every(button=>button.disabled));
+  assert.equal(await page.locator('.booking-date-option.on').count(),0);
   assert.equal(await page.locator('#setup_primary').isDisabled(),true);
+  await page.evaluate(()=>{window.__plans.paused=true;window.__emit('plans-changed');});
+  await page.waitForFunction(()=>[...document.querySelectorAll('.booking-date-option')].every(button=>!button.disabled));
+  assert.equal(await tomorrow.getAttribute('aria-pressed'),'true');
+  assert.deepEqual(await page.locator('.booking-date-option').evaluateAll(cards=>cards.map(card=>card.getBoundingClientRect().height)),heights,'pause does not resize the date row');
+  await page.evaluate(()=>{window.__plans.paused=false;window.__emit('plans-changed');});
   await page.evaluate(()=>{
     window.__next[1]={...window.__next[0],id:window.__plans.rules[1].id};window.__emit('plans-changed');
   });
@@ -158,5 +190,5 @@ try {
   await page.locator('#live_draft_edit').click();
   await page.locator('.setup-page').waitFor();
   assert.equal(await page.evaluate(()=>window.__calls.some(c=>['start_http_run','arm_hang','cancel_my_order'].includes(c.command))),false);
-  console.log('UI details passed: arranged slots/dates, pause/resume, specific round sports, equal closed cards, stable expansion, inline edit and right-aligned WeChat; offline fixture only');
+  console.log('UI details passed: default slot avoidance, live date reconciliation, fixed date cards, pause/resume, frozen target preservation and progress layout; offline fixture only');
 } finally {await browser.close();await server.close();}

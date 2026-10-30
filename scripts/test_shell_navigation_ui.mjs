@@ -94,6 +94,7 @@ try {
   await page.locator('#task_plan_link').waitFor({state:'visible'});
   const dateBounds=await page.locator('.booking-date-option').evaluateAll(buttons=>buttons.map(button=>button.getBoundingClientRect().toJSON()));
   assert.equal(dateBounds.length,3);
+  assert.equal(await page.locator('.booking-date-option.on').count(),0,'all planned dates have no selected option');
   assert.ok(dateBounds.every(box=>Math.abs(box.y-dateBounds[0].y)<1),'the three desktop dates must remain in one horizontal row');
   assert.equal(await page.locator('#task_plan_link').getAttribute('data-plan-id'),data.plans.rules[1].id);
   assert.equal(await page.locator('#setup_primary').isDisabled(),true);

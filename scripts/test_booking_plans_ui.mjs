@@ -191,7 +191,9 @@ try {
   const arrangedDate=page.locator('[data-date="2026-10-30"]');
   await page.waitForFunction(()=>document.querySelector('[data-date="2026-10-30"]').disabled);
   assert.match(await arrangedDate.innerText(),/已编排/);
-  assert.equal(await page.locator('#setup_primary').isDisabled(),true);
+  assert.equal(await arrangedDate.getAttribute('aria-pressed'),'false');
+  assert.equal(await page.locator('[data-date="2026-10-31"]').getAttribute('aria-pressed'),'true');
+  assert.equal(await page.locator('#setup_primary').isEnabled(),true);
   const fixedBackground=await arrangedDate.evaluate(el=>getComputedStyle(el).backgroundColor);
   await arrangedDate.hover();
   assert.equal(await arrangedDate.evaluate(el=>getComputedStyle(el).backgroundColor),fixedBackground);

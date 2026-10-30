@@ -90,7 +90,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       message.textContent = "";
       await load(true);
     } catch (e) { fail(e); throw e; }
-    finally { saving = false; add.removeAttribute("aria-disabled"); pause.removeAttribute("aria-disabled"); add.disabled = editing; pause.disabled = view.plans.paused && view.plans.attempts.some(a => a.status === "unconfirmed"); }
+    finally { saving = false; add.removeAttribute("aria-disabled"); pause.removeAttribute("aria-disabled"); add.disabled = editing; pause.disabled = view.plans.paused && view.plans.attempts.some(a => a.status === "unconfirmed"); updateEditorStatus?.(); }
   };
 
   const move = async (id: string, to: number) => {
@@ -185,13 +185,19 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     updateEditorStatus = () => {
       editor.querySelector<HTMLElement>("#plan_paused_hint")!.hidden = !view.plans.paused;
       editor.querySelector<HTMLButtonElement>('[type="submit"]')!.textContent = existing || view.plans.paused ? "保存计划" : "保存并启用";
+      preview();
     };
-    updateEditorStatus();
     const preview = () => {
       editor.querySelectorAll<HTMLButtonElement>("[data-day]").forEach(b => b.setAttribute("aria-pressed", String(selected.has(Number(b.dataset.day)))));
       editor.querySelectorAll<HTMLButtonElement>("[data-days]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.days!.split(",").map(Number).every(d => selected.has(d)) && b.dataset.days!.split(",").length === selected.size)));
-      slotSelect.setOptions(slots(), slot);
-      editor.querySelector("#plan_preview")!.textContent = selected.size ? `${weekdaysLabel([...selected].sort((a, b) => a - b))} · ${slot.replace("|", "–")}` : "至少选择一天";
+      const options = slots();
+      if (!options.some(option => option.value === slot && !option.disabled)) {
+        slot = options.find(option => !option.disabled)?.value ?? slot;
+      }
+      const unavailable = options.find(option => option.value === slot)?.disabled;
+      slotSelect.setOptions(options, slot);
+      editor.querySelector<HTMLButtonElement>('[type="submit"]')!.disabled = saving || !selected.size || !!unavailable;
+      editor.querySelector("#plan_preview")!.textContent = !selected.size ? "至少选择一天" : unavailable ? "时段均已编排，请调整星期" : `${weekdaysLabel([...selected].sort((a, b) => a - b))} · ${slot.replace("|", "–")}`;
     };
     const slots = () => venue.time_slots.map(t => {
       const account = editorAccount;
@@ -240,7 +246,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
         if (scope.current() && form.isConnected) { editorAccount = account; preview(); }
       }).catch(() => { /* Saving retains the explicit login check and error. */ });
     }
-    preview(); editor.scrollIntoView({ block: "nearest" }); editor.querySelector<HTMLElement>(".shell-select-trigger")?.focus();
+    updateEditorStatus(); editor.scrollIntoView({ block: "nearest" }); editor.querySelector<HTMLElement>(".shell-select-trigger")?.focus();
   }
 
   add.onclick = () => openEditor();
