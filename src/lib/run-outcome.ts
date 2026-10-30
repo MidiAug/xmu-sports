@@ -14,7 +14,10 @@ export type RunOutcome = {
   ts: string | null;
 };
 
+const MINIPROGRAM_OPEN_GUIDE = "请先在电脑微信手动打开“厦大体育”，点击右上角“更多”→“添加到桌面”，完成后回到本应用重试；未提交预约。";
+
 const CODE_ZH: Record<string, { kind: OutcomeKind; title: string; detail: string }> = {
+  MINIPROGRAM_LAUNCH_FAILED: {kind:"error",title:"厦大体育小程序打开失败",detail:MINIPROGRAM_OPEN_GUIDE},
   API_REJECTED: {kind:"error",title:"学校接口拒绝请求",detail:"查看运行过程中的失败阶段和学校返回的原因"},
   http_order_rechecked: {kind:"success",title:"查单已确认原预约",detail:"原账号与实际提交场次匹配，未重复下单"},
   ORDER_RECHECK_UNCONFIRMED: {kind:"info",title:"原预约仍待确认",detail:"只读查单未完成或未找到匹配记录，未重复下单"},
@@ -278,8 +281,9 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
       LOGIN_FOCUS_REQUIRED: "小程序未能保持在前台",
       UIA_PIN_UNAVAILABLE: "小程序置顶准备失败",
       UIA_STADIUM_NAVIGATION_TIMEOUT: "场馆预约页面未打开",
-      MINIPROGRAM_NOT_VISIBLE: "厦大体育小程序未显示",
-      UIA_TARGET_MISSING: "厦大体育小程序未显示",
+      MINIPROGRAM_NOT_VISIBLE: "厦大体育小程序打开失败",
+      MINIPROGRAM_LAUNCH_FAILED: "厦大体育小程序打开失败",
+      UIA_TARGET_MISSING: "厦大体育小程序打开失败",
       H5_ENTRY_STILL_EXPIRED: "预约登录凭证仍已失效",
       H5_ENTRY_UNAVAILABLE: "预约登录凭证未能读取",
       UIA_LOGIN_UNAVAILABLE: "无法识别小程序当前页面",
@@ -294,7 +298,7 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
       kind: "error",
       code,
       title: loginTitle || (m.kind === "error" ? m.title : `失败：${code}`),
-      detail: ev.http?.message || m.detail,
+      detail: ["MINIPROGRAM_NOT_VISIBLE","UIA_TARGET_MISSING","MINIPROGRAM_LAUNCH_FAILED"].includes(ev.http?.reason ?? code) ? MINIPROGRAM_OPEN_GUIDE : ev.http?.message || m.detail,
       pageId: ev.page_id ?? null,
       ts: ev.ts ?? null,
     };

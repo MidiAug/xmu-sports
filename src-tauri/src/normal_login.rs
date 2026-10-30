@@ -18,7 +18,7 @@ pub(crate) fn manual(reason: &str) -> Value {
         "UIA_PIN_UNAVAILABLE"=>"未能完成小程序及登录遮罩的置顶准备，尚未开始页面操作。请确认只有一个厦大体育窗口并重新检查；未提交预约",
         "UIA_HOME_SCROLL_UNAVAILABLE"=>"已识别厦大体育首页，但未找到可见的“场馆预约”入口，且当前窗口或页面未能执行自动滚动。请保持小程序可见，手动向下滚动并进入场馆预约后重试；未提交预约",
         "UIA_STADIUM_NAVIGATION_TIMEOUT"=>"已点击“场馆预约”，但未检测到预约页面；可能是页面加载或跳转异常。请查看小程序页面后重试；未提交预约",
-        "MINIPROGRAM_NOT_VISIBLE"|"UIA_TARGET_MISSING"=>"未检测到可见的厦大体育小程序窗口，无法继续自动导航。请确认电脑微信已登录并打开厦大体育后重试；未提交预约",
+        "MINIPROGRAM_NOT_VISIBLE"|"UIA_TARGET_MISSING"|"MINIPROGRAM_LAUNCH_FAILED"=>"厦大体育小程序打开失败。请先在电脑微信手动打开“厦大体育”，点击右上角“更多”→“添加到桌面”，完成后回到本应用重试；未提交预约",
         "H5_ENTRY_STILL_EXPIRED"=>"已进入场馆预约，但学校接口仍返回预约登录凭证失效；小程序首页登录不代表预约会话有效。请在小程序重新进入场馆预约后重试；未提交预约",
         "H5_ENTRY_UNAVAILABLE"=>"已检测到场馆预约页面，但未能从本机读取有效的预约登录凭证。请等待页面加载完成，重新进入场馆预约后重试；未提交预约",
         "UIA_LOGIN_UNAVAILABLE"|"UIA_LOGIN_TIMEOUT"=>"无法识别当前小程序页面的可操作入口，尚不能确定是登录、授权还是页面加载问题。请查看小程序当前页面，必要时手动进入场馆预约后重试；未提交预约",
@@ -643,7 +643,7 @@ mod tests {
     }
     #[test]
     fn manual_failure_messages_distinguish_navigation_visibility_and_expiry() {
-        for (reason,expected) in [("MINIPROGRAM_NOT_VISIBLE","未检测到可见"),("UIA_LOGIN_UNAVAILABLE","尚不能确定"),
+        for (reason,expected) in [("MINIPROGRAM_NOT_VISIBLE","添加到桌面"),("UIA_LOGIN_UNAVAILABLE","尚不能确定"),
             ("H5_ENTRY_STILL_EXPIRED","首页登录不代表预约会话有效"),("H5_ENTRY_UNAVAILABLE","未能从本机读取"),("UIA_STADIUM_NAVIGATION_TIMEOUT","已点击")] {
             assert!(manual(reason)["message"].as_str().unwrap().contains(expected));
         }

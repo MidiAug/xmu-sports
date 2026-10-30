@@ -1,17 +1,15 @@
+import { SVG } from "../ui/icons";
 import { renderPlanQueue } from "../ui/plan-queue";
 import { bookingPlans, type PlansSnapshot } from "../lib/booking-plans-store";
 import { invoke } from "@tauri-apps/api/core";
-import type { BookingTask, LiveStatus, RunEvent, WechatProbe } from "../types";
+import type { LiveStatus, RunEvent, WechatProbe } from "../types";
 import { ingestLiveStatus } from "../lib/run-feedback";
 import { outcomeFromEvent } from "../lib/run-outcome";
 import { clearLiveTick, setRunIndicator } from "../lib/run-indicator";
 import {
-  formatFallbackLabel,
-  formatFireAtHuman,
   formatTargetBrief,
   formatTaskSportVenue,
 } from "../lib/format-human";
-import { formatRemaining } from "../lib/time";
 import { BOOKING_STEPS, currentRunEvents, elapsedLabel, progressMessage, progressStep } from "../lib/booking-progress";
 import { log } from "../lib/log";
 import { toastError, toastSuccess } from "../ui/toast";
@@ -108,6 +106,7 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false): string {
 
 function recoveryHtml(event: RunEvent | null): string {
   const code = event?.result ?? "";
+  if (["MINIPROGRAM_NOT_VISIBLE","UIA_TARGET_MISSING","MINIPROGRAM_LAUNCH_FAILED"].includes(event?.http?.reason ?? code)) return "";
   if (code.startsWith("RUNTIME_") && code !== "RUNTIME_CLOSE_FAILED") return '<div class="task-busy-note"><span>请重启电脑微信后重试；仍失败请导出诊断日志。</span><button type="button" class="btn ghost" data-tab="settings">前往设置</button></div>';
   const login = ["LOGIN_CONFIRM_REQUIRED", "SESSION_EXPIRED", "NO_ENTRY", "RUNTIME_UNAVAILABLE", "RUNTIME_UNSUPPORTED", "LOGIN_FOCUS_REQUIRED"].includes(code);
   const uncertain = ["SUBMIT_UNKNOWN", "RESULT_UNCONFIRMED", "http_submitted", "ORDER_RECHECK_UNCONFIRMED"].includes(code);
@@ -116,23 +115,8 @@ function recoveryHtml(event: RunEvent | null): string {
   return "";
 }
 
-function taskBriefHtml(t: BookingTask | null, opts?: { withSetupCta?: boolean }): string {
-  if (!t) {
-    const cta = opts?.withSetupCta
-      ? `<p class="live-brief-cta"><button type="button" class="btn primary" data-tab="setup">去配置任务</button></p>`
-      : "";
-    return `<div class="live-brief empty-brief activity-empty"><span class="activity-empty-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="16"/><path d="M24 14v11l7 4"/></svg></span>
-      <p class="live-brief-title">尚未配置任务</p>
-      <p class="live-brief-sub">添加预约后，在这里查看执行进度</p>
-      ${cta}
-    </div>`;
-  }
-  return `<div class="live-brief">
-    <p class="live-brief-title">${escText(t.sport)}</p>
-    <p class="live-draft-place">${escText(t.venue)}</p>
-    <p class="live-draft-time">${escText(formatTargetBrief(t))}</p>
-    <p class="live-brief-sub">${escText(formatFallbackLabel(t))}</p>
-  </div>`;
+function emptyProgressHtml(): string {
+  return `<div class="activity-empty"><span class="activity-empty-icon" aria-hidden="true">${SVG.tabHistory}</span><p class="live-brief-title">尚未配置任务</p><p class="live-brief-sub">添加预约后，在这里查看执行进度</p><p class="live-brief-cta"><button type="button" class="btn primary" data-tab="setup">去配置任务</button></p></div>`;
 }
 
 function envRowHtml(wxText: string, wxRunning: boolean): string {
@@ -145,31 +129,22 @@ function envRowHtml(wxText: string, wxRunning: boolean): string {
     </div>`;
 }
 
-/** Match the closed cards, excluding the process content from the shared height. */
-function alignLiveCards(panel: Element) {
-  const execution = panel.querySelector<HTMLElement>(".booking-recent");
-  const draft = panel.querySelector<HTMLElement>('#live_single_context');
-  if (!execution || !draft || draft.hidden) return;
-  execution.style.minHeight = "";
-  draft.style.minHeight = "";
-  const details = execution.querySelector<HTMLDetailsElement>(".booking-details")!;
-  const expandedHeight = details.open ? details.querySelector<HTMLElement>(".booking-details-content")!.getBoundingClientRect().height : 0;
-  const closedHeight = Math.max(execution.getBoundingClientRect().height - expandedHeight, draft.getBoundingClientRect().height);
-  execution.style.minHeight = `${closedHeight + expandedHeight}px`;
-  draft.style.minHeight = `${closedHeight}px`;
-}
-
 function paintPlanContext(panel: Element, status: LiveStatus | null, snapshot: PlansSnapshot) {
   const host = panel.querySelector<HTMLElement>("#live_plan_queue");
-  if (!host || (!snapshot.view && !snapshot.error)) return;
-  let hasPlans: boolean;
+  if (!host) return;
+  const scheduled = renderPlanQueue(host, snapshot.view, status);
   if (snapshot.error) {
-    host.textContent = `暂未读取到长期计划：${String(snapshot.error)}`;
-    hasPlans = true;
-  } else hasPlans = renderPlanQueue(host, snapshot.view!);
-  const task = status?.task;
-  const context = panel.querySelector<HTMLElement>("#live_single_context");
-  if (context && !status?.armed && !status?.running) context.hidden = task ? Boolean(task.plan_id) : hasPlans;
+    const error = document.createElement("p"); error.className = "msg err";
+    error.textContent = `计划暂未读取：${String(snapshot.error)}`; host.append(error);
+  }
+  const results = panel.querySelector<HTMLElement>("#live_plan_results");
+  const labels: Record<string,string> = {succeeded:"已约到",existing:"已有预约",failed:"未约到"};
+  const attempts = snapshot.view?.plans.attempts.filter(a => labels[a.status] && a.task.task_id !== status?.last_event?.task_id).slice(-3).reverse() ?? [];
+  if(results) patchHtml(results, attempts.length ? `<section class="live-results"><header><h3>最近预约结果</h3><button class="btn text" data-tab="history">查看记录 →</button></header>${attempts.map(a=>`<article><div><strong>${escText(a.task.sport)}</strong><p>${escText(`${a.task.venue} · ${formatTargetBrief(a.task)}`)}</p></div><span data-result="${a.status}">${labels[a.status]}</span></article>`).join("")}</section>` : "");
+  const empty = panel.querySelector<HTMLElement>(".live-upcoming-empty");
+  if (empty) empty.hidden = scheduled || !!status?.running;
+  const draft = panel.querySelector<HTMLElement>("#live_single_context");
+  if (draft) draft.hidden = !!status?.armed || !!status?.running || !!status?.task?.plan_id || !status?.task;
 }
 
 function paintLiveBody(
@@ -180,6 +155,7 @@ function paintLiveBody(
 ) {
   const previousTimeline = panel.querySelector<HTMLElement>(".live-timeline");
   const previousQueue = panel.querySelector("#live_plan_queue")?.innerHTML ?? "";
+  const auxiliaryOpen = panel.querySelector<HTMLDetailsElement>(".live-auxiliary")?.open ?? false;
   const detailsOpen = panel.querySelector<HTMLDetailsElement>(".booking-details")?.open ?? false;
   const timelineTop = previousTimeline?.scrollTop ?? 0;
   const followTimeline = !previousTimeline || previousTimeline.scrollHeight - previousTimeline.clientHeight - timelineTop < 32;
@@ -191,7 +167,6 @@ function paintLiveBody(
   const armed = Boolean(st?.armed);
   const running = Boolean(st?.running);
   const stopping = Boolean(st?.stopping);
-  const fireAt = st?.fire_at || t?.fire_at || null;
   const wxRunning = Boolean(wx?.running);
   const busy = armed || running;
 
@@ -203,56 +178,23 @@ function paintLiveBody(
   const executionBlock = executionHtml(st, detailsOpen);
   const outcomeBlock = !running && !executionBlock ? outcomeBarHtml(ev) : "";
 
-  let mainBlock = "";
-
-  if (armed && fireAt) {
-    mainBlock = `
-      <div class="settings-group">
-        <p class="settings-group-title">挂机等待</p>
-        <div class="settings-group-body">
-          <div class="live-hero">
-            <p class="live-countdown-label">距离开抢</p>
-            <p class="live-countdown-value" id="live_remain">计算中…</p>
-            <p class="live-countdown-sub">${escText(formatFireAtHuman(fireAt))}${t?.executor === "http" ? "　提前 1 分钟准备登录与 H5" : ""}</p>
-          </div>
-          ${taskBriefHtml(t)}
-          ${!running ? `<div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">取消挂机</p>
-              <p class="settings-cell-desc">停止等待，不会到点开抢</p>
-            </div>
-            <button type="button" class="btn ghost" id="disarm_hang">取消挂机</button>
-          </div>` : ""}
-        </div>
-      </div>`;
-  } else if (running) {
-    mainBlock = "";
-  } else {
-    mainBlock = `
-      <div class="settings-group">
-        ${t ? '<div class="live-draft-heading"><p class="settings-group-title">单次预约草稿</p><button type="button" class="btn text" id="live_draft_edit" data-tab="setup">修改<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>' : ""}
-        <div class="settings-group-body well-flush">
-          ${taskBriefHtml(t, { withSetupCta: true })}
-        </div>
-      </div>`;
-  }
+  const auxiliary = !running && Boolean(ev?.action === "done" && (ev.result === "http_auth_ready" || ev.result === "http_prepared" || st?.operation === "auth" || st?.operation === "prepare"));
+  const resultBlock = auxiliary
+    ? `<details class="live-auxiliary" ${auxiliaryOpen ? "open" : ""}><summary><span>最近检查</span><span>${escText(outcomeFromEvent(ev)?.title ?? "体育登录检查")} ${"›"}</span></summary>${executionBlock || outcomeBlock}</details>`
+    : executionBlock || outcomeBlock;
+  const mainBlock = t ? `<div class="live-draft-heading"><div><span class="section-eyebrow">单次预约 · 未启动</span><p>${escText(t.sport)} · ${escText(t.venue)}<br>${escText(formatTargetBrief(t))}</p></div><button type="button" class="btn ghost" id="live_draft_edit" data-tab="setup">修改预约 →</button></div>` : "";
 
   patchHtml(panel, `
     <div class="page-stack live-page" data-idle="${!busy && !t && !executionBlock && !outcomeBlock}">
-      <div class="page-heading"><div><h2>运行进度</h2><p>当前进度、执行队列与预约结果</p></div><div class="live-heading-actions"><button type="button" class="btn ghost" id="live_configuration" ${t && (busy || t.plan_id) ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : "查看配置"}</button>${envRowHtml(wxText, wxRunning)}</div></div>
-      <section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section>
-      <div class="live-workspace" data-context="${!!t && !busy}">${outcomeBlock}
-      ${executionBlock}
+      <div class="page-heading"><div><h2>预约进度</h2><p>下一次开抢与最近预约结果</p></div><div class="live-heading-actions"><button type="button" class="btn ghost" id="live_configuration" ${t && running ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : "查看配置"}</button>${envRowHtml(wxText, wxRunning)}</div></div>
+      <div id="pending_order_checks"></div><div class="live-board"><div class="live-primary"><h3 class="live-column-title">预约安排</h3>${running ? resultBlock : ""}<section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section><div class="live-upcoming-empty" hidden>${t ? '<div class="activity-empty"><p class="live-brief-title">没有待执行预约</p><p class="live-brief-sub">启动单次定时或启用计划后，在这里查看开抢安排</p><p class="live-brief-cta"><button class="btn primary" data-tab="setup">去预约</button></p></div>' : emptyProgressHtml()}</div><div id="live_single_context" hidden>${mainBlock}</div></div><aside class="live-secondary"><div class="live-workspace">${!running && !auxiliary ? resultBlock : ""}<div id="live_plan_results"></div>${auxiliary ? resultBlock : ""}
       ${!running ? recoveryHtml(ev) : ""}
-      <div id="pending_order_checks"></div>
-      <div id="live_single_context" ${!busy && (!t || t.plan_id) ? "hidden" : ""}>${mainBlock}</div></div>
+      </div></aside></div>
     </div>
     ${stopping ? '<p class="task-busy-note" role="status">正在停止，请等待已发送请求的结果确认。</p>' : ""}
   `);
   paintPlanContext(panel, st, bookingPlans.snapshot());
-  const details = panel.querySelector<HTMLDetailsElement>(".booking-details");
-  if (details) details.ontoggle = () => alignLiveCards(panel);
-  alignLiveCards(panel);
+
   const pendingHost=panel.querySelector<HTMLElement>("#pending_order_checks");
   if (pendingHost) void mountOrderRecheck(pendingHost,busy,()=>!opts?.scope || opts.scope.current());
   if (stopping) {
@@ -269,15 +211,7 @@ function paintLiveBody(
     finally { if (recovery.isConnected) recovery.disabled = false; }
   };
 
-  if (armed && fireAt) {
-    const remainEl = panel.querySelector("#live_remain");
-    const tick = () => {
-      const ms = Date.parse(fireAt) - Date.now();
-      if (remainEl) remainEl.textContent = formatRemaining(ms);
-    };
-    tick();
-    setLiveTickTimer(window.setInterval(tick, 1000));
-  } else if (running) {
+  if (running) {
     let tick = 0;
     setLiveTickTimer(
       window.setInterval(() => {
@@ -335,9 +269,6 @@ async function pollWhileRunning(panel: Element, scope?: PageScope) {
 export async function renderLive(panel: Element, opts?: RenderLiveOpts) {
   const scope = mountPage(panel);
   scope.onDispose(clearLiveTick);
-  const resizeCards = () => alignLiveCards(panel);
-  window.addEventListener("resize", resizeCards);
-  scope.onDispose(() => window.removeEventListener("resize", resizeCards));
   const gen = bumpLiveRenderGen();
   const statusOnly = Boolean(opts?.statusOnly);
 

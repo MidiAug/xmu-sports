@@ -13,7 +13,7 @@ const {createBookingPlansStore}=await import(`data:text/javascript;base64,${Buff
 let calls=0,finish,now=Date.parse('2026-10-30T12:00:00+08:00');
 const store=createBookingPlansStore(()=>{calls++;return new Promise(resolve=>finish=resolve);},()=>now);
 const seen=[];const stop=store.subscribe(state=>seen.push(state));
-const first=store.read(),same=store.read();
+const first=store.read(),same=store.read(true);
 assert.equal(first,same);assert.equal(calls,1);
 store.invalidate();store.invalidate();
 assert.equal(calls,1,"events during a pending read coalesce");
@@ -38,3 +38,10 @@ broken=true;await assert.rejects(retry.read(true),/offline/);
 assert.equal(retry.snapshot().view,after,"read errors retain the last known snapshot");
 unsubscribe();
 console.log('Plan store passed: shared reads, event coalescing, page lifetime, failure/retry and retained snapshot');
+
+let refreshCalls=0,finishRefresh;
+const shared=createBookingPlansStore(()=>{refreshCalls++;return new Promise(resolve=>finishRefresh=resolve);});
+shared.subscribe(()=>{});
+const inflight=shared.read();assert.equal(shared.read(true),inflight);
+finishRefresh({plans:{rules:[],attempts:[],paused:false}});await inflight;
+assert.equal(refreshCalls,1,'force during a pending read reuses the snapshot without an extra fetch');

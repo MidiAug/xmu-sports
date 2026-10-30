@@ -132,12 +132,12 @@ try {
   await page.evaluate(()=>document.documentElement.dataset.shellTheme='light');
   await showLive({});
   assert.equal(await page.locator('#arm_hang,#trial_run,#http_prepare').count(),0);
-  await page.locator('.live-draft-heading').getByRole('button',{name:'修改',exact:true}).waitFor();
+  await page.locator('.live-draft-heading').getByRole('button',{name:'修改预约 →',exact:true}).waitFor();
   assert.equal(await page.locator('#live_configuration').isVisible(),false);
   await page.screenshot({path:`${output}/live-idle.png`});
   await showLive({armed:true,fire_at:'2026-10-28T07:00:00+08:00'});
-  await page.locator('#live_remain').waitFor();
-  assert.equal(await page.locator('#disarm_hang').innerText(),'取消挂机');
+  await page.locator('.plan-queue-row').waitFor();
+  assert.equal(await page.locator('#disarm_hang').innerText(),'取消单次定时');
   const phase={task_id:'fixture',run_id:'fixture-run',ts:'2026-10-28T07:00:00+08:00',action:'http_phase',result:'querying_slots',http:{phase:'querying_slots'}};
   await showLive({running:true,last_event:phase,recent_events:[phase]});
   await page.locator('.booking-execution').waitFor();

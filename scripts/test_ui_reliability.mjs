@@ -57,10 +57,12 @@ for (const [reason,title] of [["UIA_STADIUM_ENTRY_NOT_FOUND","首页未找到场
   ["UIA_PORTRAIT_UNAVAILABLE","小程序无法调整为竖屏"],["UIA_WINDOW_LAYOUT_UNAVAILABLE","小程序窗口尺寸调整失败"],
   ["UIA_WINDOW_LAYOUT_UNSTABLE","小程序窗口尺寸持续回弹"],
   ["LOGIN_FOCUS_REQUIRED","小程序未能保持在前台"],["UIA_PIN_UNAVAILABLE","小程序置顶准备失败"],
-  ["MINIPROGRAM_NOT_VISIBLE","厦大体育小程序未显示"],["H5_ENTRY_STILL_EXPIRED","预约登录凭证仍已失效"]]) {
+  ["MINIPROGRAM_NOT_VISIBLE","厦大体育小程序打开失败"],["UIA_TARGET_MISSING","厦大体育小程序打开失败"],["MINIPROGRAM_LAUNCH_FAILED","厦大体育小程序打开失败"],["H5_ENTRY_STILL_EXPIRED","预约登录凭证仍已失效"]]) {
   const message="具体失败原因；未提交预约";
   const failed=outcomeFromEvent({action:"fail",result:"LOGIN_CONFIRM_REQUIRED",http:{reason,message}});
-  assert.equal(failed.title,title);assert.equal(failed.detail,message);
+  assert.equal(failed.title,title);
+  if(["MINIPROGRAM_NOT_VISIBLE","UIA_TARGET_MISSING","MINIPROGRAM_LAUNCH_FAILED"].includes(reason)) assert.match(failed.detail,/更多.*添加到桌面.*重试/);
+  else assert.equal(failed.detail,message);
   assert.doesNotMatch(failed.title+failed.detail,/手动确认登录|立即登录、确认协议/);
 }
 const missingRuntime=outcomeFromEvent({action:"fail",result:"RUNTIME_FILE_MISSING"});

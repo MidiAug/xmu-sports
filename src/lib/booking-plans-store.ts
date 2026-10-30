@@ -15,8 +15,8 @@ export function createBookingPlansStore(fetcher: () => Promise<BookingPlansView>
   const notify = () => listeners.forEach(listener => listener(state));
   function read(force = false): Promise<BookingPlansView> {
     const today = localDateISO(new Date(now()));
-    if (force || readDay !== today) dirty = true;
     if (pending) return pending;
+    if (force || readDay !== today) dirty = true;
     if (!dirty && state.view && !state.error) return Promise.resolve(state.view);
     dirty = false;
     readDay = today;

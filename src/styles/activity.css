@@ -83,20 +83,14 @@
 .live-heading-actions { flex-direction:row; flex-wrap:nowrap; }
 .live-workspace { display:grid; grid-template-columns:minmax(0,1fr); gap:20px; align-items:start; }
 .live-workspace > :empty { display:none; }
-.live-workspace[data-context="true"]:has(.booking-recent) { grid-template-columns:minmax(0,1fr) 280px; align-items:start; }
-.live-workspace[data-context="true"]:has(.booking-recent) > :not(#live_single_context) { grid-column:1; }
-.live-workspace[data-context="true"]:has(.booking-recent) #live_single_context { grid-column:2; grid-row:1; }
-.live-workspace[data-context="true"] #live_single_context { padding:24px; border:1px solid var(--color-line); border-radius:18px; background:var(--color-panel); }
-.live-workspace[data-context="true"] #live_single_context .settings-group-title { margin:0 0 22px; padding:0; font-size:12px; color:var(--color-muted); }
-.live-draft-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 0 22px; }
-.live-workspace[data-context="true"] #live_single_context .live-draft-heading .settings-group-title { margin:0; }
-.live-draft-heading .btn { display:inline-flex; align-items:center; gap:6px; padding:4px 0 4px 8px; font-size:12px; color:var(--color-muted); }
-.live-draft-heading .btn:hover { color:var(--color-accent); }
+.live-draft-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.live-draft-heading p { margin:6px 0 0; color:var(--color-secondary-ink); font-size:14px; }
+#live_single_context:not([hidden]) { padding:20px 24px; border:1px dashed var(--color-line-strong); border-radius:14px; }
+.live-auxiliary { border:1px solid var(--color-line); border-radius:14px; background:var(--color-panel); overflow:hidden; }
+.live-auxiliary > summary { display:flex; justify-content:space-between; gap:16px; padding:18px 24px; list-style:none; cursor:pointer; font-size:12px; color:var(--color-muted); }
+.live-auxiliary > summary::-webkit-details-marker { display:none; }
+.live-auxiliary .booking-execution { border:0; border-radius:0; }
 .booking-details-content { display:flow-root; }
-.live-workspace[data-context="true"] #live_single_context .settings-group-body { border:0; border-radius:0; padding:0; background:transparent; }
-.live-workspace[data-context="true"] #live_single_context .live-brief { margin:0; padding:0; background:transparent; }
-.live-draft-place { margin:8px 0 0; color:var(--color-muted); font-size:12px; line-height:1.7; }
-.live-draft-time { margin:22px 0 0; padding-top:18px; border-top:1px solid var(--color-line); color:var(--color-secondary-ink); font-size:15px; line-height:1.7; }
 .live-workspace .booking-execution { border-radius:18px; }
 .live-workspace .booking-execution-head { align-items:center; padding:28px 26px 20px; background:transparent; }
 .live-workspace .booking-head-copy h2 { font-size:23px; line-height:1.4; font-weight:600; letter-spacing:-.4px; margin-top:6px; }
@@ -116,3 +110,44 @@
   .run-card-head { padding:20px; }
   .run-card-outcome { max-width:200px; }
 }
+
+.live-page .plan-queue-heading h3 { font-size:24px; }
+.live-page .plan-queue-overview { padding:24px 26px; }
+.live-page .plan-queue-schedule { margin-top:10px; font-size:14px; }
+.live-page .plan-queue-row { grid-template-columns:44px minmax(0,1fr) auto; gap:16px; }
+.live-page .plan-queue-status { grid-column:2 / -1; padding:0; background:transparent; text-align:left; color:var(--color-muted); font-size:11px; margin-top:-8px; }
+.live-page .booking-recent { min-height:0; }
+.live-page .live-workspace { margin-top:0; }
+
+.queue-source { border:0; padding:0; background:transparent; color:var(--color-accent); font:inherit; cursor:pointer; }
+
+.live-page > #pending_order_checks:empty { display:none; }
+.live-page .plan-queue-overview { padding:20px 24px; }
+.live-page .plan-queue-row { padding:16px 0; gap:12px 16px; }
+.live-results { padding:20px 24px; border:1px solid var(--color-line); border-radius:16px; background:var(--color-panel); }
+.live-results header,.live-results article { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+.live-results h3 { margin:0; font-size:14px; }
+.live-results article { padding:16px 0; border-top:1px solid var(--color-line); }
+.live-results article:last-child { padding-bottom:0; }
+.live-results strong { font-size:14px; } .live-results p { margin:4px 0 0; color:var(--color-muted); font-size:12px; }
+.live-results [data-result] { color:var(--color-muted); font-size:12px; } .live-results [data-result="succeeded"] { color:var(--color-ok); }
+
+.live-board { display:grid; grid-template-columns:minmax(0,1fr); gap:20px; align-items:start; }
+.live-board:has(.live-secondary .live-auxiliary),.live-board:has(.live-secondary .booking-recent),.live-board:has(.live-secondary .live-results) { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); }
+.live-primary { display:flex; flex-direction:column; gap:20px; min-width:0; }
+.live-secondary { min-width:0; }
+.live-board .live-plan-queue { margin-top:0; }
+.live-primary > .live-plan-queue:empty { display:none; }
+.live-upcoming-empty[hidden] { display:none; }
+.live-board .activity-empty { min-height:260px; border:1px dashed var(--color-line-strong); border-radius:18px; }
+.live-board .plan-queue-items { padding:4px 22px; }
+.live-board .plan-queue-time { font-size:18px; }
+.live-secondary .booking-head-copy h2 { font-size:19px; }
+.live-secondary .live-auxiliary > summary { flex-wrap:wrap; gap:6px 12px; }
+@media(max-width:800px) { .live-board:has(.live-secondary) { grid-template-columns:minmax(0,1fr); } }
+
+.live-column-title { margin:0; font-size:14px; color:var(--color-secondary-ink); font-weight:550; }
+.live-primary:has(#live_single_context:not([hidden])) .live-upcoming-empty { display:none; }
+.live-plan-queue .queue-overview-only { border-bottom:0; }
+.live-plan-queue:not(:has(.plan-queue-row)):not(:has(.plan-queue-actions > *)) .plan-queue-actions { display:none; }
+.live-plan-queue:not(:has(.plan-queue-row)) .plan-queue-items { display:none; }

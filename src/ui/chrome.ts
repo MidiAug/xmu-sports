@@ -168,7 +168,7 @@ function mountShell() {
           </div>
           <nav class="nav-tabs nav-primary" aria-label="主导航">
             <button type="button" data-tab="setup" aria-label="单次预约" class="${tab === "setup" ? "active" : ""}"><span class="nav-tab-label">预约</span></button>
-            <button type="button" data-tab="plans" class="${tab === "plans" ? "active" : ""}"><span class="nav-tab-label">长期计划</span></button>
+            <button type="button" data-tab="plans" class="${tab === "plans" ? "active" : ""}"><span class="nav-tab-label">计划</span></button>
             <button type="button" data-tab="live" aria-label="运行" class="${tab === "live" ? "active" : ""}${runIndicatorOn ? " has-run-dot" : ""}"><span class="nav-tab-label">进度</span></button>
             <button type="button" data-tab="history" aria-label="历史" class="${tab === "history" ? "active" : ""}"><span class="nav-tab-label">记录</span></button>
           </nav>

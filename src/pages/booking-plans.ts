@@ -178,6 +178,9 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     let venue = sport.venues.find(v => v.id === existing?.venue) ?? sport.venues[0];
     let selected = new Set(existing?.weekdays ?? [1, 2, 3, 4, 5, 6, 7]);
     let editorAccount = existing?.account ?? availabilitySessionCache.account;
+    let submitting = false;
+    let accountRequest: Promise<string> | undefined;
+    const verifyAccount = () => accountRequest ??= invoke<string>("booking_plan_account").catch(error => { accountRequest = undefined; throw error; });
     let slot = existing ? `${existing.start}|${existing.end}` : `${venue.time_slots[0].start}|${venue.time_slots[0].end}`;
     editor.innerHTML = `<form class="plan-editor"><div class="plan-editor-main"><h3>${existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
       <fieldset><legend>去运动的星期</legend><div class="plan-presets"><button type="button" data-days="1,2,3,4,5,6,7">每天</button><button type="button" data-days="1,2,3,4,5">工作日</button><button type="button" data-days="6,7">周末</button></div><div class="plan-weekdays">${days.map((d, i) => `<button type="button" data-day="${i + 1}" aria-label="周${d}" aria-pressed="${selected.has(i + 1)}">${d}</button>`).join("")}</div></fieldset>
@@ -196,7 +199,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       }
       const unavailable = options.find(option => option.value === slot)?.disabled;
       slotSelect.setOptions(options, slot);
-      editor.querySelector<HTMLButtonElement>('[type="submit"]')!.disabled = saving || !selected.size || !!unavailable;
+      editor.querySelector<HTMLButtonElement>('[type="submit"]')!.disabled = saving || submitting || !selected.size || !!unavailable;
       editor.querySelector("#plan_preview")!.textContent = !selected.size ? "至少选择一天" : unavailable ? "时段均已编排，请调整星期" : `${weekdaysLabel([...selected].sort((a, b) => a - b))} · ${slot.replace("|", "–")}`;
     };
     const slots = () => venue.time_slots.map(t => {
@@ -221,13 +224,16 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     editor.querySelector<HTMLButtonElement>("#plan_cancel")!.onclick = close;
     editor.querySelector<HTMLFormElement>("form")!.onsubmit = async event => {
       event.preventDefault();
+      if (submitting) return;
       const formMessage = editor.querySelector<HTMLElement>("#plan_form_msg")!;
       if (!selected.size) { formMessage.textContent = "至少选择一天"; return; }
+      submitting = true;
       const submit = editor.querySelector<HTMLButtonElement>('[type="submit"]')!; submit.disabled = true;
       editor.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.disabled = true);
       try {
         formMessage.textContent = existing?.account ? "正在保存…" : "正在核验当前账号，未提交预约…";
-        const account = existing?.account ?? await invoke<string>("booking_plan_account");
+        const account = existing?.account ?? await verifyAccount();
+        formMessage.textContent = "正在保存计划…";
         if ((existing?.enabled ?? true) && view.plans.rules.some(r => r.id !== existing?.id && r.enabled && r.account === account && r.sport === sport.id && r.weekdays.some(d => selected.has(d)))) {
           throw new Error("这项运动在所选星期已有计划，请修改已有计划或换一天。");
         }
@@ -237,12 +243,13 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
         const index = existing ? view.plans.rules.findIndex(r => r.id === rule.id) : -1;
         rules.splice(index < 0 ? rules.length : index, 0, rule);
         await save(rules);
-        if (scope.current()) { close(); await load(); }
-      } catch (e) { if (scope.current()) { formMessage.textContent = String(e); editor.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.disabled = false); preview(); } }
+        if (scope.current()) close();
+      } catch (e) { if (scope.current()) { formMessage.textContent = String(e); editor.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.disabled = false); } }
+      finally { submitting = false; if (scope.current() && editing) preview(); }
     };
     if (!existing) {
       const form = editor.querySelector("form")!;
-      void invoke<string>("booking_plan_account").then(account => {
+      void verifyAccount().then(account => {
         if (scope.current() && form.isConnected) { editorAccount = account; preview(); }
       }).catch(() => { /* Saving retains the explicit login check and error. */ });
     }
