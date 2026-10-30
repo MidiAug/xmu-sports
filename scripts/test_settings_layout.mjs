@@ -47,10 +47,19 @@ try {
   assert.equal(await page.locator('.settings-page h2').evaluate(el => getComputedStyle(el).userSelect), 'none');
   assert.notEqual(await page.locator('#settings_msg').evaluate(el => getComputedStyle(el).userSelect), 'none');
   await page.screenshot({ path: join(output, 'collapsed-light.png') });
+  const closedButton=await toggle.boundingBox();
+  const closedOffset=closedButton.y-(await card.boundingBox()).y;
   await toggle.click();
+  const openButton=await toggle.boundingBox();
+  assert.equal(openButton.height,closedButton.height,'edit/done button keeps its height');
+  assert.equal(openButton.width,closedButton.width,'edit/done button keeps its width');
+  assert.ok(Math.abs(openButton.y-(await card.boundingBox()).y-closedOffset)<1,'header keeps the same internal vertical position');
+  assert.equal(await toggle.locator('svg').count(),1);
+  assert.equal(await toggle.locator('.favorite-edit-label').innerText(),'完成');
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
   assert.equal(await page.locator('[data-fav-sport]').count(), 8);
   assert.ok((await page.locator('[data-fav-sport]').first().boundingBox()).height <= 34);
+  await page.clock.runFor(220);
   await page.screenshot({ path: join(output, 'expanded-light.png') });
   const buttons = page.locator('[data-fav-sport]');
   const selected = page.locator('[data-fav-sport][aria-pressed="true"]');
@@ -74,6 +83,7 @@ try {
   await toggle.focus(); await page.keyboard.press('Enter');
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
   await page.evaluate(() => document.documentElement.dataset.shellTheme = 'dark');
+  await page.clock.runFor(220);
   await page.screenshot({ path: join(output, 'expanded-dark.png') });
   await page.setViewportSize({ width: 960, height: 600 });
   const box = await page.locator('.settings-sport-grid').boundingBox();

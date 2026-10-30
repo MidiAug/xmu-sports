@@ -65,6 +65,7 @@ try {
   await page.clock.runFor(400);
   await page.getByRole('tooltip').waitFor();
   assert.equal(await page.getByRole('tooltip').innerText(),'设置');
+  assert.equal((await page.getByRole('tooltip').boundingBox()).height,28,'shared tooltip has compact line height and padding');
   await page.keyboard.press('Escape');
   assert.equal(await page.getByRole('tooltip').count(),0);
   await page.locator('.header-settings').click();

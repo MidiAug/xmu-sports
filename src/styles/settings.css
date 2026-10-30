@@ -8,7 +8,9 @@
 .settings-favorites-header p { margin: 6px 0 0; font-size: 12px; line-height: 1.7; color: var(--color-muted); overflow-wrap: anywhere; }
 .settings-favorites { padding: 16px 20px; }
 .favorite-edit { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--color-muted); font: inherit; font-size: 12px; cursor: pointer; }
-.favorite-edit span { font-size: 16px; line-height: 16px; }
+.favorite-edit-label { font-size:13px; line-height:18px; }
+.favorite-edit svg { display:block; flex:none; transition:transform .18s ease; }
+.favorite-edit[aria-expanded="true"] svg { transform:rotate(180deg); }
 .favorite-edit:hover { color: var(--color-accent); background: var(--color-nav-hover); }
 #favorite_sports_body { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--color-line); }
 .favorite-hint, .favorite-unavailable { margin: 0; color: var(--color-muted); font-size: 11px; line-height: 1.7; }

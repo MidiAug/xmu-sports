@@ -1,4 +1,4 @@
 /* The desktop host enforces a 960px minimum width; contents scroll vertically. */
 @media(prefers-reduced-motion:reduce) {
- .btn,.switch,.switch::after,.shell-select-chevron,.choice-option,.booking-date-option { transition:none !important; }
+ .btn,.switch,.switch::after,.shell-select-chevron,.choice-option,.booking-date-option,.favorite-edit svg { transition:none !important; }
 }

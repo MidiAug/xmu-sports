@@ -442,16 +442,34 @@ export async function renderSetup(panel: Element) {
     { label: "时段", kind: "slot" },
   );
   const advanced = panel.querySelector<HTMLDetailsElement>(".task-advanced")!;
+  const scroller = panel.closest<HTMLElement>(".content")!;
+  let advancedScrollFrame = 0;
   const revealAdvanced = () => {
-    if (advanced.open) advanced.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    window.cancelAnimationFrame(advancedScrollFrame);
+    if (!advanced.open) return;
+    const from = scroller.scrollTop;
+    const bottom = () => scroller.scrollHeight - scroller.clientHeight;
+    if (bottom() <= from + 1) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      scroller.scrollTop = bottom();
+      return;
+    }
+    const started = performance.now();
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - started) / 500);
+      const eased = progress < .5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
+      scroller.scrollTop = from + (bottom() - from) * eased;
+      if (progress < 1) advancedScrollFrame = window.requestAnimationFrame(step);
+    };
+    advancedScrollFrame = window.requestAnimationFrame(step);
   };
   // Availability messages can change the form height after opening the options.
   const advancedLayout = new ResizeObserver(revealAdvanced);
   advanced.addEventListener("toggle", () => {
     if (advanced.open) { advancedLayout.observe(advanced.closest(".booking-form-card")!); revealAdvanced(); }
-    else advancedLayout.disconnect();
+    else { advancedLayout.disconnect(); window.cancelAnimationFrame(advancedScrollFrame); }
   });
-  scope.onDispose(() => advancedLayout.disconnect());
+  scope.onDispose(() => { advancedLayout.disconnect(); window.cancelAnimationFrame(advancedScrollFrame); });
 
   function sportOptions(): SelectOption[] {
     return selectable.map(s => ({ value: s.ocr_label, label: s.label }));

@@ -106,7 +106,7 @@ export async function renderSettings(panel: Element) {
       </section>
       <section class="preference-card" id="startup_settings"></section>
       <section class="preference-card settings-favorites" aria-labelledby="favorite_sports_title">
-        <div class="settings-favorites-header"><div><h3 id="favorite_sports_title">常用运动</h3><p id="favorite_sports_summary"></p></div><button type="button" class="favorite-edit" aria-expanded="false" aria-controls="favorite_sports_body">编辑<span aria-hidden="true">›</span></button></div>
+        <div class="settings-favorites-header"><div><h3 id="favorite_sports_title">常用运动</h3><p id="favorite_sports_summary"></p></div><button type="button" class="favorite-edit" aria-expanded="false" aria-controls="favorite_sports_body"><span class="favorite-edit-label">编辑</span>${SVG.chevron}</button></div>
         <div id="favorite_sports_body" hidden>
           <p class="favorite-hint">选择在预约页显示的运动，至少保留一项，修改自动保存</p>
           ${favoriteGridHtml(favoriteIds)}
@@ -132,7 +132,7 @@ export async function renderSettings(panel: Element) {
   edit.onclick = () => {
     favoritesBody.hidden = !favoritesBody.hidden;
     edit.setAttribute("aria-expanded", String(!favoritesBody.hidden));
-    edit.innerHTML = favoritesBody.hidden ? '编辑<span aria-hidden="true">›</span>' : '完成<span aria-hidden="true">⌃</span>';
+    edit.querySelector('.favorite-edit-label')!.textContent = favoritesBody.hidden ? '编辑' : '完成';
   };
   panel.querySelector<HTMLButtonElement>(".settings-about-entry")!.onclick = () => {
     void renderAbout(panel, () => { void renderSettings(panel); });
