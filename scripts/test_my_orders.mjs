@@ -178,6 +178,13 @@ try {
  assert.equal(await page.locator('.orders-count svg').count(),0,'header count stays still while popup refresh spins');
  assert.equal(await page.locator('.orders-count').innerText(),entryCount);
  assert.equal((await page.locator('.my-orders-toggle').boundingBox()).width,entryWidth);
+ await page.keyboard.press('Escape');
+ assert.equal(await page.locator('.orders-count.is-loading svg').count(),1,'collapsed entry carries the refresh animation');
+ assert.equal((await page.locator('.my-orders-toggle').boundingBox()).width,entryWidth);
+ await page.locator('.my-orders-toggle').hover();
+ await page.locator('.my-orders-popup').waitFor({state:'visible'});
+ assert.equal(await page.locator('.orders-count svg').count(),0,'opening moves refresh feedback into the popup');
+ assert.equal(await page.locator('.order-icon.is-loading svg').count(),1);
  assert.equal(await page.locator(".my-orders-status").count(),0,"refresh progress is shown on the button, not another row");
  assert.equal(await page.locator("[data-orders-refresh]").getAttribute("aria-label"),"正在更新预约");
  assert.deepEqual(await page.locator("[data-orders-refresh]").evaluate(el=>{

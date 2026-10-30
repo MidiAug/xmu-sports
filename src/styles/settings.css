@@ -68,12 +68,12 @@
 .about-identity h3 { margin: 0 0 7px; font-size: 23px; font-weight: 600; letter-spacing: -.5px; }
 .about-identity p { margin: 0; color: var(--color-muted); font-size: 12px; }
 .about-page { --about-control-width:132px; }
-.about-layout { display:grid; grid-template-columns:260px minmax(0,1fr); gap:22px; align-items:start; }
-.about-layout .about-identity { padding:36px 24px 28px; background:var(--color-booking); border:1px solid var(--color-booking-line); border-radius:20px; }
-.about-layout .about-mark { width:88px; height:88px; margin:0 auto 24px; }
-.about-layout .about-identity h3 { font-size:25px; margin-bottom:8px; }
-.about-layout .about-footnote { margin:32px 0 0; font-size:11px; line-height:1.9; color:var(--color-muted); }
-.about-main { display:grid; gap:18px; min-width:0; }
+.about-layout { display:flex; flex-direction:column; gap:0; width:100%; max-width:760px; margin:0 auto; }
+.about-layout .about-identity { display:flex; align-items:center; justify-content:center; gap:20px; width:100%; padding:16px 0 32px; text-align:left; }
+.about-layout .about-mark { width:96px; height:64px; object-fit:cover; margin:0; }
+.about-layout .about-identity h3 { font-size:27px; margin:0 0 7px; }
+.about-layout .about-footnote { margin:22px 0 0; font-size:11px; line-height:1.9; color:var(--color-muted); }
+.about-main { width:100%; display:grid; gap:18px; min-width:0; }
 .about-main .about-section { padding:26px; border-color:var(--color-line); border-radius:18px; }
 .about-main .about-row h3 { font-size:17px; font-weight:600; }
 .about-main .about-row p { margin-top:9px; font-size:12px; }

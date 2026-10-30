@@ -47,6 +47,14 @@ try {
         assert.equal(await page.locator('.booking-target').count(),0,'login-only check does not invent a booking target');
         assert.equal(await page.locator('.booking-track').count(),0,'login result needs no booking stepper');
         assert.equal(await page.locator('#live_single_context .live-draft-place').innerText(),'翔安校区健身房');
+        const summary=page.locator('.booking-details summary');
+        const before=await summary.boundingBox();
+        const scroll=await page.locator('.content').evaluate(el=>el.scrollTop);
+        await summary.click();
+        assert.ok(Math.abs((await summary.boundingBox()).y-before.y)<1,'expanding process records does not move its header upward');
+        assert.equal(await page.locator('.content').evaluate(el=>el.scrollTop),scroll);
+        await page.screenshot({path:`${output}/live-auth-expanded-light.png`,animations:'disabled'});
+        await summary.click();
       }
       if(scenario==='auth' && tab==='history') {
         await page.locator('#history_kind_host .shell-select-trigger').click();

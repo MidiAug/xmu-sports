@@ -97,8 +97,9 @@
 .live-workspace .booking-current-detail { margin:0 26px 24px; font-size:13px; line-height:1.8; }
 .live-workspace .booking-target { padding:20px 0; border-radius:0; background:transparent; border-top:1px solid var(--color-line); }
 .live-workspace .booking-details { border:0; border-top:1px solid var(--color-line); border-radius:0; margin:0 26px; padding:6px 0; }
-.booking-auth { display:flex; flex-direction:column; }
-.booking-auth .booking-details { margin-top:auto; }
+.booking-auth .booking-details { margin-top:8px; }
+.content:has(.live-page) { overflow-anchor:none; }
+.live-page .live-workspace,.live-page .live-plan-queue { margin-top:16px; }
 .booking-auth.success .booking-state-icon { background:color-mix(in srgb,var(--color-ok) 10%,var(--color-panel)); color:var(--color-ok); }
 @media(max-width:1080px) {
   .settings-page > .settings-diagnostics { padding:20px; }

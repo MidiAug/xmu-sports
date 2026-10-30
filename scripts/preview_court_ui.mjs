@@ -14,12 +14,23 @@ try {
   const context=await browser.newContext({viewport:{width:1100,height:760}});
   await context.addInitScript(installShellFixture,data);
   const page=await context.newPage();
-  await page.clock.install({time:new Date('2026-10-30T12:00:00+08:00')});
+  await page.clock.install({time:new Date('2026-10-30T08:00:00+08:00')});
   await page.goto(process.env.XMU_TEST_BASE_URL);
   await page.locator('#court_host').waitFor();
   await page.locator('[data-date="2026-10-30"]').click();
   await page.clock.runFor(1500);
   await page.locator('#court_host .shell-select-badge').first().waitFor({state:'attached'});
+  await page.clock.runFor(1000);
+  const chooseCourt=async value=>{
+    await page.locator('#court_host .shell-select-trigger').click();
+    await page.locator(`#court_host [data-value="${value}"]`).click();
+  };
+  await chooseCourt('02');
+  assert.equal(await page.locator('#setup_primary').isDisabled(),true,'full preferred court blocks immediate booking');
+  assert.match(await page.locator('#task_action_reason').innerText(),/已满/);
+  await chooseCourt('03');
+  assert.equal(await page.locator('#setup_primary').isEnabled(),true,'available court restores immediate booking');
+  await chooseCourt('');
   for(const size of [{width:1100,height:760},{width:960,height:600}]) {
     await page.setViewportSize(size);
     await page.keyboard.press('Escape');

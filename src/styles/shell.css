@@ -45,6 +45,7 @@ h1,h2,h3,button,summary,.page-heading { user-select:none; }
 .orders-popover .header-orders-button { width:132px; justify-content:center; }
 .header-orders-button > svg { width:17px; height:17px; }
 .orders-count { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; flex:none; white-space:nowrap; padding:0 4px; box-sizing:border-box; border-radius:10px; color:white; background:var(--color-primary); font-size:10px; }
+.orders-count.is-loading svg { width:12px; height:12px; display:block; animation:order-refresh-spin .8s linear infinite; }
 .my-orders-popup { position:absolute; top:calc(100% + 16px); right:0; width:340px; max-height:calc(100vh - 104px); overflow:auto; padding:20px; border-radius:18px; border:1px solid var(--color-line-strong); background:var(--color-panel); color:var(--color-ink); box-shadow:var(--shadow-lv3); }
 .my-orders-popup[hidden] { display:none; }
 .my-orders-status { margin:4px 0 12px; color:var(--color-muted); font-size:12px; line-height:1.6; }
@@ -67,6 +68,6 @@ h1,h2,h3,button,summary,.page-heading { user-select:none; }
 .order-icon.is-loading { opacity:1; cursor:default; }
 .order-icon.is-loading svg { animation:order-refresh-spin .8s linear infinite; }
 @keyframes order-refresh-spin { to { transform:rotate(360deg); } }
-@media(prefers-reduced-motion:reduce) { .order-icon.is-loading svg { animation:none; } }
+@media(prefers-reduced-motion:reduce) { .order-icon.is-loading svg,.orders-count.is-loading svg { animation:none; } }
 
 input,textarea,[contenteditable="true"],.msg,.release-notes,.live-timeline,.run-stages,.run-card-why,.booking-run-id { user-select:text; }

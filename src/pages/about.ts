@@ -6,7 +6,7 @@ import { renderReleaseNotes } from "../lib/release-notes";
 import { mountShellSelect } from "../ui/select";
 
 const REPOSITORY = "https://github.com/MidiAug/xmu-sports";
-const appIcon = new URL("../../assets/app-icon/source.svg", import.meta.url).href;
+const appIcon = new URL("../assets/brand-mark.png", import.meta.url).href;
 const updateHint = import.meta.env.DEV ? "开发版仅手动检查更新" : "启动后自动检查，成功后间隔24小时；失败后1小时重试";
 export async function renderAbout(panel: Element, back: () => void) {
   const scope = mountPage(panel);
@@ -16,7 +16,7 @@ export async function renderAbout(panel: Element, back: () => void) {
   panel.closest<HTMLElement>(".content")?.scrollTo({ top: 0 });
   panel.innerHTML = `<div class="page-stack about-page">
     <div class="about-navigation"><button class="about-back" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>返回</span></button></div>
-    <div class="about-layout"><header class="about-identity"><img class="about-mark" src="${appIcon}" width="64" height="64" alt="XMU Sports 图标"><h3>XMU Sports</h3><p id="about_version"></p><p class="about-footnote">独立开源项目<br>与厦大体育无官方关联</p></header><div class="about-main">
+    <div class="about-layout"><header class="about-identity"><img class="about-mark" src="${appIcon}" width="64" height="64" alt="XMU Sports 图标"><div class="about-identity-copy"><h3>XMU Sports</h3><p id="about_version"></p></div></header><div class="about-main">
     <section class="preference-card about-section" aria-labelledby="update_title">
       <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">${updateHint}</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
       <div class="about-download-route"><label id="update_route_label">下载线路</label><div id="update_route" aria-labelledby="update_route_label"></div></div>
@@ -25,7 +25,7 @@ export async function renderAbout(panel: Element, back: () => void) {
       </div>
     </section>
     <section class="preference-card about-section" aria-labelledby="repository_title"><div class="about-row"><div><h3 id="repository_title">开源项目</h3><p>MidiAug / xmu-sports</p></div><button class="btn ghost" id="about_repository" type="button">GitHub ↗</button></div></section>
-    </div></div>
+    </div><p class="about-footnote">独立开源项目，与厦大体育无官方关联</p></div>
     <p class="msg" id="about_message" role="status"></p>
   </div>`;
   const query = <T extends HTMLElement = HTMLElement>(selector: string) => panel.querySelector<T>(selector)!;

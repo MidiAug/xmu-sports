@@ -10,12 +10,15 @@ export function isAdminLocked(slot:AvailabilitySlot,court=""):boolean {
   const cells=cellsFor(slot,court);
   return cells.length>0 && cells.every(cell=>cell.admin_locked);
 }
+export function isFull(slot:AvailabilitySlot,court=""):boolean {
+  const cells=cellsFor(slot,court).filter(cell=>!cell.admin_locked);
+  return cells.length>0 && cells.every(cell=>hasQuota(cell) && cell.remaining===0);
+}
 
 export const courtLabel = (name:string) => /^\d+$/.test(name) ? `${name} 号场地` : name;
 export function slotOption(slot:AvailabilitySlot) {
   const locked=slot.cells.some(cell=>cell.admin_locked);
-  const unlocked=slot.cells.filter(cell=>!cell.admin_locked);
-  const full=unlocked.length>0 && unlocked.every(cell=>hasQuota(cell) && cell.remaining===0);
+  const full=isFull(slot);
   return {
     value:`${slot.start}|${slot.end}`, label:`${slot.start}–${slot.end}`,
     badge:isAdminLocked(slot) ? "全部锁定" : locked ? "部分锁定" : full ? "已满" : undefined,

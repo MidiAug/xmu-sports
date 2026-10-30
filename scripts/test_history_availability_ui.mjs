@@ -201,7 +201,9 @@ try {
   assert.equal(await court.locator('[data-value="07"]').isEnabled(),true);
   assert.match(await court.locator('[data-value="07"]').innerText(),/已满/);
   await choose(court,"07");
-  assert.equal(await page.locator('#setup_primary').isEnabled(),true);
+  assert.equal(await page.locator('#setup_primary').isDisabled(),true,'full court stays selectable for inspection but cannot be booked immediately');
+  assert.match(await page.locator('#task_action_reason').innerText(),/已满/);
+  assert.equal(await page.locator('#setup_check').isEnabled(),true,'full capacity does not block a login check');
   await court.locator('[data-value="03"]').evaluate(button=>button.click());
   assert.match(await court.locator('.shell-select-value').innerText(),/07/);
   mkdirSync(artifacts,{recursive:true});
@@ -219,7 +221,8 @@ try {
   await choose(court,"08");
   assert.equal(await page.locator('#setup_primary').isEnabled(),true);
   await choose(slot,"12:00|13:00");
-  assert.equal(await page.locator('#setup_primary').isEnabled(),true);
+  assert.equal(await page.locator('#setup_primary').isDisabled(),true,'an entirely full slot blocks immediate booking');
+  assert.match(await page.locator('#task_action_reason').innerText(),/已满/);
   assert.match(await slot.locator('.choice-option.on').innerText(),/已满/);
   assert.match(await court.locator('[data-value="01"]').innerText(),/已满/);
   assert.equal(await court.locator('[data-value="01"]').isEnabled(),true);
