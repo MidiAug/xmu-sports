@@ -168,6 +168,22 @@ try {
   await page.locator('#plans_retry').waitFor({state:'hidden'});
   await page.evaluate(()=>{window.__plans={rules:[],attempts:[],paused:false};window.__next=[];window.__emit('plans-changed');});
   await page.getByRole('button',{name:'添加第一条计划',exact:true}).waitFor();
+  assert.equal(await page.locator('.plans-summary').isVisible(),false);
+  assert.equal(await page.locator('#plan_add').isVisible(),false);
+  for(const theme of ['light','dark']) {
+    await page.setViewportSize({width:1100,height:760});
+    await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+    await page.screenshot({path:`artifacts/ui-refactor/plans-empty-${theme}.png`});
+  }
+  await page.setViewportSize({width:960,height:600});
+  const emptyAction=await page.locator('#plan_example').boundingBox();
+  assert.ok(emptyAction.y+emptyAction.height<=600,'first plan action fits the minimum window');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.locator('#plan_example').focus();await page.keyboard.press('Enter');
+  await page.locator('#plan_editor').waitFor({state:'visible'});
+  await page.locator('#plan_cancel').click();
+  await page.locator('#plan_example').waitFor({state:'visible'});
+  await page.screenshot({path:'artifacts/ui-refactor/plans-empty-dark-narrow.png'});
   await page.getByRole('button',{name:'运行',exact:true}).click();
   await page.getByText('尚未配置任务',{exact:true}).waitFor();
   assert.equal(await page.locator('#live_configuration').getAttribute('data-tab'),'setup');

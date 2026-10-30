@@ -53,6 +53,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       if (message.classList.contains("err")) { message.textContent = ""; message.className = "msg"; }
       const enabled = view.plans.rules.filter(r => r.enabled).length;
       const pending = view.plans.attempts.filter(a => a.status === "unconfirmed");
+      panel.querySelector<HTMLElement>(".plans-page")!.dataset.empty = String(!view.plans.rules.length && !pending.length);
       const round = nextPlanRound(view);
       panel.querySelector("#plans_state")!.textContent = view.plans.paused ? "自动计划已暂停" : view.plans.rules.some(r => r.enabled) ? "自动计划已开启" : "还没有启用的计划";
       panel.querySelector(".plans-summary")!.setAttribute("data-state", pending.length ? "attention" : view.plans.paused || !enabled ? "paused" : "enabled");
@@ -93,7 +94,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
 
   function paintList() {
     if (!view.plans.rules.length) {
-      list.innerHTML = `<div class="empty"><p class="empty-title">把每周运动安排好</p><p class="empty-desc">选择运动、场馆和时段，按每天、工作日或指定星期重复预约。</p><button type="button" class="btn ghost" id="plan_example">添加第一条计划</button></div>`;
+      list.innerHTML = `<section class="plan-empty" aria-label="开始安排运动"><div class="plan-empty-art" aria-hidden="true"><svg viewBox="0 0 80 80" fill="none"><rect x="13" y="16" width="54" height="52" rx="12"/><path d="M13 32h54M28 11v12M52 11v12"/><path class="plan-empty-check" d="m29 49 8 8 16-18"/></svg><span class="plan-empty-sport sport-icon" data-sport="羽毛球">${sportIcon("羽毛球")}</span></div><h3>让运动成为每周的习惯</h3><p>选好运动、时段和星期，剩下的交给自动预约。</p><button type="button" class="btn primary" id="plan_example">添加第一条计划<span aria-hidden="true">＋</span></button><div class="plan-empty-note"><span>按周重复</span><i aria-hidden="true"></i><span>前一天 07:00 开抢</span><i aria-hidden="true"></i><span>随时暂停与调整</span></div><footer>预约时请保持电脑唤醒、联网，应用可在托盘运行。</footer></section>`;
       list.querySelector<HTMLButtonElement>("#plan_example")!.onclick = () => openEditor();
       return;
     }
