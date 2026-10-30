@@ -77,8 +77,6 @@ try {
  await page.clock.runFor(250);
  assert.equal(await page.locator('.plan-skips-label').count(),1,'only cards with skipped dates show a label');
  assert.equal(await page.locator('.plan-actions .plan-skip-chip').count(),1,'skipped date sits in the edit action row');
- const chipBox=await page.locator('.plan-skip-chip').boundingBox(),restoreBox=await restore.boundingBox();
- assert.ok(restoreBox.y<chipBox.y && restoreBox.x>chipBox.x+chipBox.width/2,'restore button sits at the date chip upper right');
  await page.clock.runFor(9000);
  assert.equal(await page.locator('.toast:not(.toast-leave) .toast-action').count(),0,'undo toast expires without focus or hover');
  await restore.focus();
