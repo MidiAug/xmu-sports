@@ -132,7 +132,7 @@ try {
   await page.evaluate(()=>document.documentElement.dataset.shellTheme='light');
   await showLive({});
   assert.equal(await page.locator('#arm_hang,#trial_run,#http_prepare').count(),0);
-  await page.locator('.live-draft-heading').getByRole('button',{name:'修改预约 →',exact:true}).waitFor();
+  await page.locator('.live-draft-heading').getByRole('button',{name:'修改预约',exact:true}).waitFor();
   assert.equal(await page.locator('#live_configuration').isVisible(),false);
   await page.screenshot({path:`${output}/live-idle.png`});
   await showLive({armed:true,fire_at:'2026-10-28T07:00:00+08:00'});

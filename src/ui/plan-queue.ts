@@ -7,6 +7,7 @@ import { formatEventTimeHuman, formatMonthDayWeekday } from "../lib/format-human
 import { nextPlanRound, type BookingPlansView } from "../lib/booking-plans";
 import { patchHtml } from "./patch-html";
 import { sportIcon } from "./sport-icons";
+import { SVG } from "./icons";
 
 export function renderPlanQueue(host: HTMLElement, view: BookingPlansView | undefined, status?: LiveStatus | null): boolean {
   const content = document.createElement("div");
@@ -19,7 +20,7 @@ export function renderPlanQueue(host: HTMLElement, view: BookingPlansView | unde
   ].sort((a,b)=>Date.parse(a.fireAt)-Date.parse(b.fireAt));
   const activeRound = round?.items.some(item => item.status === "running" || item.status === "queued");
   if (!items.length && !pending.length && !view?.plans.paused && !activeRound) { patchHtml(host, ""); return false; }
-  content.innerHTML = `<div class="plan-queue-overview"><div class="plan-queue-heading"><div><span class="section-eyebrow">长期计划</span><h3></h3></div><button type="button" class="btn ghost" data-tab="plans">管理计划<span aria-hidden="true">↗</span></button></div><p class="plan-queue-schedule"></p></div><ol class="plan-queue-items"></ol><div class="plan-queue-actions"></div>`;
+  content.innerHTML = `<div class="plan-queue-overview"><div class="plan-queue-heading"><div><span class="section-eyebrow">长期计划</span><h3></h3></div><button type="button" class="btn ghost live-context-action" data-tab="plans">管理计划${SVG.arrowUpRight}</button></div><p class="plan-queue-schedule"></p></div><ol class="plan-queue-items"></ol><div class="plan-queue-actions"></div>`;
   content.querySelector("h3")!.textContent = pending.length ? "预约结果待确认" : items.length ? `${formatEventTimeHuman(items[0].fireAt)} 开抢` : activeRound ? "本轮进行中" : "计划已暂停";
   content.querySelector(".section-eyebrow")!.textContent = items.length ? "下一次开抢" : pending.length ? "需要处理" : activeRound ? "正在预约" : "预约安排";
   content.querySelector(".plan-queue-schedule")!.textContent = pending.length ? "请先核对结果，确认前不会自动重复下单" : items.length ? `${items.length} 项待执行 · 按开抢时间排列` : activeRound ? "当前预约结束后完成本轮" : "恢复计划后继续自动预约";

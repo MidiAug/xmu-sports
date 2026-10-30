@@ -51,6 +51,11 @@ try {
  assert.equal(await page.locator('.live-primary #live_single_context').count(),1,'draft belongs to the shared arrangement column');
  assert.equal(await page.locator('.plan-queue-items').count(),0,'paused empty list is removed');
  assert.equal(await page.locator('.plan-queue-actions').evaluate(el=>getComputedStyle(el).display),'none');
+ const manage=page.locator('.plan-queue-heading [data-tab="plans"]'),edit=page.locator('#live_draft_edit');
+ const manageBox=await manage.boundingBox(),editBox=await edit.boundingBox();
+ assert.equal(manageBox.width,editBox.width,'manage plan and edit booking have the same width');
+ assert.equal(manageBox.height,editBox.height,'manage plan and edit booking have the same height');
+ assert.equal(await manage.locator('svg').evaluate(el=>el.outerHTML),await edit.locator('svg').evaluate(el=>el.outerHTML),'both navigation controls use the same diagonal arrow');
  await page.screenshot({path:'artifacts/progress-unified/paused-draft-dark.png'});
  await page.evaluate(()=>{window.__plans.attempts=[{task:{...window.__task,task_id:'completed'},sport:'pingpong',account:'a'.repeat(64),status:'succeeded',message:''}];window.__emit('plans-changed');});
  await page.getByText('已约到',{exact:true}).waitFor();
@@ -72,6 +77,43 @@ try {
  assert.match(await page.locator('.booking-current-detail').innerText(),/更多.*添加到桌面.*重试/);
  assert.equal(await page.locator('#open_booking').count(),0,'do not send the user into a failing launch retry loop');
  await page.screenshot({path:'artifacts/progress-unified/launch-failed-dark.png'});
+ await page.evaluate(()=>{
+   const base={task_id:'launch-failed',run_id:'fixture-process-01'};
+   const events=[
+    {...base,ts:'2026-10-30T12:02:00+08:00',action:'spawn',result:'http_auth'},
+    {...base,ts:'2026-10-30T12:02:01+08:00',action:'http_phase',http:{phase:'authenticating'}},
+    {...base,ts:'2026-10-30T12:02:02+08:00',action:'auth_check',result:'ready'},
+    {...base,ts:'2026-10-30T12:02:03+08:00',action:'login_recovery'},
+    {...base,ts:'2026-10-30T12:02:18+08:00',action:'http_phase',http:{phase:'authenticating',message:'未检测到可见的厦大体育小程序窗口，无法继续自动导航。请确认电脑微信已登录并打开厦大体育后重试；未提交预约'}},
+    {...window.__live.last_event,...base,ts:'2026-10-30T12:02:19+08:00',http:{reason:'MINIPROGRAM_NOT_VISIBLE',message:'未检测到可见的厦大体育小程序窗口，无法继续自动导航。请确认电脑微信已登录并打开厦大体育后重试；未提交预约'}}
+   ];
+   window.__live={...window.__live,recent_events:events,last_event:events.at(-1)};window.__emit('run-changed');
+ });
+ await page.waitForFunction(()=>document.querySelectorAll('.live-timeline li').length===6);
+ const summary=page.locator('.booking-details summary');
+ await summary.focus();await page.keyboard.press('Enter');
+ assert.equal(await page.locator('.booking-details').getAttribute('open'),'','keyboard opens process records');
+ await page.clock.runFor(8000);
+ for(const width of [1100,960]) {
+   await page.setViewportSize({width,height:900});
+   for(const theme of ['light','dark']) {
+    await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+    await page.locator('.content').evaluate(el=>el.scrollTop=0);
+    await page.locator('.live-timeline').evaluate(el=>el.scrollTop=0);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    const header=await summary.boundingBox(),timeline=await page.locator('.live-timeline').boundingBox();
+    assert.ok(timeline.y>=header.y+header.height,'timeline starts below its disclosure header');
+    assert.equal(await page.locator('.live-timeline').evaluate(el=>el.scrollWidth>el.clientWidth),false,'long log messages wrap inside the timeline');
+    await page.screenshot({path:`artifacts/progress-unified/process-${theme}-${width}.png`});
+   }
+ }
+ await page.setViewportSize({width:1100,height:900});
+ await summary.focus();await page.keyboard.press('Enter');
+ const headerY=(await summary.boundingBox()).y;
+ await page.keyboard.press('Enter');
+ assert.ok(Math.abs((await summary.boundingBox()).y-headerY)<1,'expanding records keeps the header in place');
+ await page.evaluate(()=>window.__emit('run-changed'));await page.clock.runFor(100);
+ assert.equal(await page.locator('.booking-details').getAttribute('open'),'','status refresh preserves expanded records');
  await page.evaluate(()=>{
    window.__live={...window.__live,task:null,running:false,armed:false,last_event:null,recent_events:[]};
    window.__plans.paused=false;window.__plans.attempts=[];

@@ -79,7 +79,8 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false): string {
     const next = events[events.indexOf(event) + 1];
     const duration = next ? Math.max(0, Date.parse(next.ts) - Date.parse(event.ts)) / 1000 : null;
     const time = new Date(event.ts).toLocaleTimeString("zh-CN", {hour12: false, timeZone: "Asia/Shanghai"});
-    return `<li class="${index === rows.length - 1 && running ? "active" : ""}"><time>${escText(time)}</time><span>${escText(progressMessage(event))}</span>${duration !== null ? `<small>${duration.toFixed(1)}s</small>` : ""}</li>`;
+    const rowState = index === rows.length - 1 && running ? "active" : event.action === "fail" ? "failed" : event.action === "done" ? "complete" : "";
+    return `<li class="${rowState}"><div class="booking-event-meta"><time datetime="${escText(event.ts)}">${escText(time)}</time>${duration !== null ? `<small>${duration.toFixed(1)}s</small>` : ""}</div><span>${escText(progressMessage(event))}</span></li>`;
   }).join("");
   const result = last?.http;
   const selected = [...events].reverse().find(event => event.http?.court)?.http?.court;
@@ -100,7 +101,7 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false): string {
     <p class="booking-current-detail">${escText(detail)}</p>${confirming ? '<p class="booking-current-detail">正在只读查单；停止只会结束后续检查，已经发送的预约不会被撤回。</p>' : ""}
     ${!authOnly && (target || running && st?.task) ? `<div class="booking-target"><strong>${escText(venueLabel)}</strong><div><span>${escText(date)}</span><span>${escText(slot)}</span><span>${escText(court ? `${court} 号场地` : "自动选择场地")}</span></div>${result?.order_id ? `<small>订单号 ${escText(String(result.order_id))}</small>` : ""}</div>` : ""}
     ${!authOnly ? `<ol class="booking-track${recheckOnly ? " recheck-only" : authOnly ? " auth-only" : ""}" aria-label="执行步骤">${steps}</ol>` : ""}
-    <details class="booking-details" ${detailsOpen ? "open" : ""}><summary><span>过程记录</span><span>${rows.length} 条 <span class="booking-chevron">⌄</span></span></summary><div class="booking-details-content"><ol class="live-timeline" aria-label="预约过程记录">${timeline}</ol><p class="booking-run-id">${escText(`执行编号 ${last?.run_id ?? ""}`)}</p></div></details>
+    <details class="booking-details" ${detailsOpen ? "open" : ""}><summary><span class="booking-details-label">${SVG.tabHistory}<span>过程记录</span><span class="booking-event-count">${rows.length} 条</span></span><span class="booking-chevron">${SVG.chevron}</span></summary><div class="booking-details-content"><ol class="live-timeline" aria-label="预约过程记录" tabindex="0">${timeline}</ol><p class="booking-run-id">${escText(`执行编号 ${last?.run_id ?? ""}`)}</p></div></details>
   </section>`;
 }
 
@@ -182,7 +183,7 @@ function paintLiveBody(
   const resultBlock = auxiliary
     ? `<details class="live-auxiliary" ${auxiliaryOpen ? "open" : ""}><summary><span>最近检查</span><span>${escText(outcomeFromEvent(ev)?.title ?? "体育登录检查")} ${"›"}</span></summary>${executionBlock || outcomeBlock}</details>`
     : executionBlock || outcomeBlock;
-  const mainBlock = t ? `<div class="live-draft-heading"><div><span class="section-eyebrow">单次预约 · 未启动</span><p>${escText(t.sport)} · ${escText(t.venue)}<br>${escText(formatTargetBrief(t))}</p></div><button type="button" class="btn ghost" id="live_draft_edit" data-tab="setup">修改预约 →</button></div>` : "";
+  const mainBlock = t ? `<div class="live-draft-heading"><div><span class="section-eyebrow">单次预约 · 未启动</span><p>${escText(t.sport)} · ${escText(t.venue)}<br>${escText(formatTargetBrief(t))}</p></div><button type="button" class="btn ghost live-context-action" id="live_draft_edit" data-tab="setup">修改预约${SVG.arrowUpRight}</button></div>` : "";
 
   patchHtml(panel, `
     <div class="page-stack live-page" data-idle="${!busy && !t && !executionBlock && !outcomeBlock}">
