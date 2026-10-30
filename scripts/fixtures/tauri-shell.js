@@ -7,8 +7,8 @@ export function installShellFixture(data) {
   window.__plans = structuredClone(data.plans);
   window.__next = structuredClone(data.next);
   window.__orders = structuredClone(data.orders ?? []);
-  window.__task = null;
-  window.__live = {task:null,armed:false,running:false,recent_events:[],last_event:null,fire_at:null};
+  window.__task = data.task ?? null;
+  window.__live = {task:window.__task,armed:false,running:false,recent_events:[],last_event:null,fire_at:null,...data.live};
   window.__startup = {supported:true,enabled:true,hidden:true};
   window.__prefs = {favorite_sport_ids:[],venue_slot_prefs:{},autostart_hidden:true};
   const callbacks = new Map(), listeners = new Map();
@@ -36,9 +36,12 @@ export function installShellFixture(data) {
       if (command === "get_shell_prefs") return structuredClone(window.__prefs);
       if (command === "save_shell_prefs") {if(window.failSave)throw new Error('模拟保存失败');window.__prefs=structuredClone(args.prefs);return window.__prefs;}
       if (command === "get_startup") return window.__startup;
+      if (command === "export_diagnostic_logs") return "C:/fixture-downloads/diagnostic-fixture.zip";
+      if (command === "open_app_log_dir") return "fixture-logs";
       if (command === "get_my_orders") return {ok:true,orders:structuredClone(window.__orders),account_fingerprint:"a".repeat(64),fetched_at:new Date().toISOString()};
       if (command === "get_venue_availability") return {ok:true,state:"availability_ready",...args,account_fingerprint:"a".repeat(64),fetched_at:new Date().toISOString(),slots:[]};
-      if (command === "list_recent_events" || command === "list_pending_orders") return [];
+      if (command === "list_recent_events") return structuredClone(data.events ?? []);
+      if (command === "list_pending_orders") return [];
       if (command === "probe_wechat") return {running:true};
       if (command === "plugin:app|version") return "0.1.34";
       if (command === "plugin:event|listen") {const id=++serial;listeners.set(id,args);return id;}

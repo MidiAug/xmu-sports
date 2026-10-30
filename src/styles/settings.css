@@ -49,14 +49,6 @@
 .settings-page #settings_theme_host + .settings-cell { margin-top: 18px; padding-bottom: 0; border-top: 1px solid var(--color-line); }
 .settings-page .shell-select-trigger { height: 36px; border-radius: 8px; font-size: 12px; }
 .settings-page .btn { border-radius: 8px; font-size: 12px; }
-.settings-diagnostics { padding: 0; }
-.settings-diagnostics summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; cursor: pointer; }
-.settings-diagnostics summary::-webkit-details-marker { display: none; }
-.settings-diagnostics summary strong { display: block; font-size: 13px; font-weight: 500; }
-.settings-diagnostics summary div > span { display: block; margin-top: 3px; color: var(--color-muted); font-size: 11px; }
-.settings-disclosure { color: var(--color-muted); font-size: 16px; }
-.settings-diagnostics[open] .settings-disclosure { transform: rotate(180deg); }
-.settings-diagnostics-body { padding: 0 20px; border-top: 1px solid var(--color-line); }
 .settings-about { padding: 4px 2px; }
 .settings-about > div { display: flex; align-items: baseline; gap: 8px; }
 .settings-about strong { color: var(--color-muted); font-size: 12px; font-weight: 600; }
@@ -121,7 +113,4 @@
   .settings-page .settings-theme-cube { padding: 6px; gap: 8px; }
   .settings-page .theme-option-label { gap: 3px; font-size: 11px; }
   .theme-option-label > svg { display: none; }
-  .settings-diagnostics { padding: 0; }
-  .settings-diagnostics summary { padding: 16px; }
-  .settings-diagnostics-body { padding: 0 16px; }
 }

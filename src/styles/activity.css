@@ -1,0 +1,74 @@
+/* Activity surfaces: one overview, readable targets, quiet supporting details. */
+.live-heading-actions { display:flex; align-items:center; gap:16px; min-height:34px; }
+.live-heading-actions .live-env { display:flex; gap:0; padding:0; margin:0; }
+.live-heading-actions .live-env-value { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--color-muted); }
+.live-plan-queue { padding:0; border:1px solid var(--color-line); overflow:hidden; }
+.plan-queue-overview { padding:24px 26px 20px; background:var(--color-booking); border-bottom:1px solid var(--color-booking-line); }
+.plan-queue-heading h3 { font-size:24px; margin-top:7px; letter-spacing:-.4px; }
+.plan-queue-heading .btn { height:38px; padding:0 14px; gap:14px; font-size:13px; }
+.plan-queue-schedule { margin:12px 0 0; color:var(--color-secondary-ink); }
+.plan-queue-items { padding:6px 26px; }
+.plan-queue-row { grid-template-columns:44px minmax(0,1fr) auto 96px; padding:20px 0; gap:16px; }
+.plan-queue-row:first-child { border-top:0; }
+.plan-queue-icon { position:relative; width:44px; height:44px; display:grid; place-items:center; border-radius:13px; background:var(--color-control); }
+.plan-queue-icon svg { width:26px; height:26px; }
+.plan-queue-icon small { position:absolute; right:-4px; bottom:-3px; display:grid; place-items:center; width:16px; height:16px; border:2px solid var(--color-panel); border-radius:6px; background:var(--color-control); color:var(--color-muted); font-size:9px; }
+.plan-queue-target strong { font-size:15px; font-weight:600; }
+.plan-queue-target > span { margin-top:3px; }
+.plan-queue-time { font-size:20px; font-weight:550; letter-spacing:-.4px; }
+.plan-queue-status { padding:5px 10px; border-radius:8px; text-align:center; font-size:12px; }
+.plan-queue-actions:not(:empty) { padding:0 26px 22px; margin:0; }
+.booking-execution { border:1px solid var(--color-line); }
+.booking-execution-head { background:color-mix(in srgb,var(--color-control) 45%,var(--color-panel)); padding:24px 26px 20px; }
+.booking-current-detail { margin:18px 26px; color:var(--color-muted); }
+.booking-target { margin:0 26px; padding:20px; border-radius:12px; background:var(--color-control); border:0; }
+.booking-track { margin:24px 26px; padding:18px 10px; background:transparent; }
+.booking-step-icon { border-radius:50%; }
+.booking-details { margin:0 26px 24px; border-radius:12px; }
+.live-page[data-idle="true"] #live_single_context .settings-group-body { background:transparent; border:0; padding:0; }
+.activity-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:calc(100dvh - 300px); padding:32px 20px; text-align:center; background:transparent; border:0; box-shadow:none; }
+.activity-empty-icon { display:grid; place-items:center; width:88px; height:88px; margin-bottom:24px; border-radius:28px; background:color-mix(in srgb,var(--color-accent) 8%,var(--color-canvas)); color:var(--color-accent); }
+.activity-empty-icon svg { width:48px; height:48px; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.activity-empty .empty-title,.activity-empty .live-brief-title { margin:0; font-size:20px; font-weight:500; color:var(--color-secondary-ink); }
+.activity-empty .empty-desc,.activity-empty .live-brief-sub { margin:12px 0 0; font-size:13px; color:var(--color-muted); }
+.activity-empty .live-brief-cta { margin:24px 0 0; }
+.activity-empty .btn { height:40px; padding:0 20px; border-radius:10px; }
+.history-summary-group[data-empty="true"] .history-filter-selects { display:none; }
+.history-filter-selects { padding:12px; margin:0 0 8px; border-radius:14px; background:var(--color-panel); }
+.history-filter-selects .shell-select-trigger { height:36px; background:var(--color-control); }
+.history-filter-clear { padding:0 14px; font-size:12px; }
+.run-card-list { gap:12px; }
+.run-card { border:1px solid var(--color-line); border-radius:16px; }
+.run-card-head { padding:22px 24px; gap:16px; align-items:center; }
+.run-card-sport { flex:none; display:grid; place-items:center; width:46px; height:46px; border-radius:14px; background:var(--color-control); color:var(--color-accent); }
+.run-card-sport svg { width:27px; height:27px; }
+.run-card-text { gap:5px; }
+.run-card-target { font-size:16px; font-weight:600; line-height:1.5; }
+.run-card-place { color:var(--color-secondary-ink); font-size:12px; line-height:1.7; }
+.run-card-meta { margin:0; font-size:11px; }
+.run-card-outcome { flex:none; max-width:240px; padding:6px 10px; font-size:12px; font-weight:400; border-radius:8px; background:var(--color-control); }
+.run-card.ok .run-card-outcome { color:var(--color-ok); background:color-mix(in srgb,var(--color-ok) 8%,var(--color-panel)); }
+.run-card.err .run-card-outcome { color:var(--color-warning); background:color-mix(in srgb,var(--color-warning) 9%,var(--color-panel)); }
+.run-card-body { margin:0 24px 24px; }
+.run-card-chevron { margin:0 2px 0 6px; width:7px; height:7px; }
+.settings-page .favorite-edit { min-width:90px; height:38px; justify-content:center; padding:0 14px; border-radius:10px; background:var(--color-control); color:var(--color-secondary-ink); font-size:13px; }
+.settings-page .favorite-edit:hover { color:var(--color-accent); }
+.settings-page .switch { width:46px; height:28px; border-radius:15px; }
+.settings-page .switch:after { width:22px; height:22px; }
+.settings-page .switch:has(input:checked):after { transform:translateX(18px); }
+.settings-page #close_mode_host .shell-select-trigger { height:40px; border-radius:10px; }
+.settings-page > .settings-diagnostics { padding:22px 24px; }
+.settings-diagnostics .preference-card-heading { margin-bottom:0; }
+.settings-diagnostic-actions { display:flex; align-items:center; gap:10px; margin-top:16px; }
+.settings-diagnostic-actions .btn { display:flex; align-items:center; justify-content:center; gap:14px; min-width:124px; height:40px; border:0; background:var(--color-control); border-radius:10px; font-size:13px; }
+.settings-diagnostic-note { color:var(--color-muted); font-size:11px; line-height:1.7; margin:14px 0 0; }
+.settings-page .settings-about-entry { align-self:start; min-height:108px; }
+.settings-about-entry > span { flex:none; display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--color-control); color:var(--color-secondary-ink); font-size:24px; }
+@media(max-width:1080px) {
+  .settings-page > .settings-diagnostics { padding:20px; }
+  .plan-queue-overview { padding:22px; }
+  .plan-queue-items { padding:4px 22px; }
+  .plan-queue-row { gap:12px; }
+  .run-card-head { padding:20px; }
+  .run-card-outcome { max-width:200px; }
+}

@@ -4,13 +4,14 @@ import {
   formatStepClock,
 } from "../lib/collapse-step-cycles";
 import { historyStages, historyTargetParts } from "../lib/history-steps";
-import { formatEventTimeHuman, pageLabelZh } from "../lib/format-human";
+import { formatEventTimeHuman, formatMonthDayWeekday, pageLabelZh } from "../lib/format-human";
 import { groupEventsIntoRuns, type RunSummary } from "../lib/run-groups";
 import type { OutcomeKind } from "../lib/run-outcome";
 import { askConfirm } from "../ui/confirm-ask";
 import { mountShellSelect } from "../ui/select";
 import { toastError, toastSuccess } from "../ui/toast";
 import { mountPage } from "../lib/page-lifecycle";
+import { sportIcon } from "../ui/sport-icons";
 import { localDateISO } from "../lib/time";
 
 type KindFilter = "all" | "success" | "error" | "other";
@@ -111,16 +112,17 @@ function cardHtml(run: RunSummary, index: number): string {
   const when = formatEventTimeHuman(run.endedAt);
   const page = o?.pageId ? pageLabelZh(o.pageId) : null;
   const metaSafe = page ? `${when}  ${page}` : when;
+  const target = historyTargetParts(run.events);
 
   return `
     <article class="run-card ${kindClass(kind)}" data-run-idx="${index}">
       <button type="button" class="run-card-head" aria-expanded="false" data-toggle-run="${index}">
-        <span class="run-card-dot" aria-hidden="true"></span>
+        <span class="run-card-sport sport-icon" data-sport="${escText(target?.sport ?? "")}" aria-hidden="true">${target?.sport ? sportIcon(target.sport) : '<svg viewBox="0 0 24 24" fill="none"><path d="M6 4h12v16H6zM9 9h6M9 13h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>'}</span>
         <span class="run-card-text">
-          <span class="run-card-title">${escText(title)}</span>
+          <span class="run-card-target">${escText(target?.sport || title)}</span>${target ? `<span class="run-card-place">${escText([target.venue,target.date ? formatMonthDayWeekday(target.date) : "",target.time].filter(Boolean).join(" · "))}</span>` : ""}
           <span class="run-card-meta">${escText(metaSafe)}</span>
         </span>
-        <span class="run-card-chevron" aria-hidden="true"></span>
+        ${target ? `<span class="run-card-title run-card-outcome">${escText(title)}</span>` : ""}<span class="run-card-chevron" aria-hidden="true"></span>
       </button>
       <div class="run-card-body" hidden></div>
     </article>`;
@@ -148,15 +150,15 @@ function cardBodyHtml(run: RunSummary): string {
 
 function emptyAllHtml(): string {
   return `
-    <div class="empty history-empty">
+    <div class="empty history-empty activity-empty"><span class="activity-empty-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="12" y="8" width="24" height="32" rx="5"/><path d="M19 18h10M19 25h10M19 32h6"/></svg></span>
       <p class="empty-title">还没有运行记录</p>
-      <p class="empty-desc">单次预约、长期计划与登录检查的执行记录会显示在这里。</p>
+      <p class="empty-desc">预约与登录检查完成后，记录会保存在这里。</p>
     </div>`;
 }
 
 function emptyFilterHtml(): string {
   return `
-    <div class="empty history-empty">
+    <div class="empty history-empty activity-empty"><span class="activity-empty-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><rect x="12" y="8" width="24" height="32" rx="5"/><path d="M19 18h10M19 25h10M19 32h6"/></svg></span>
       <p class="empty-title">没有符合筛选的记录</p>
       <p class="empty-desc">换一组结果或时间条件再试。</p>
     </div>`;
@@ -188,6 +190,7 @@ function paintList(panel: Element, state: HistoryListState, filters: HistoryFilt
   const filtered = filterRuns(state.allRuns, filters);
   const listHost = panel.querySelector("#history_list");
   if (!listHost) return;
+  panel.querySelector(".history-summary-group")?.setAttribute("data-empty", String(!state.allRuns.length));
 
   if (!state.allRuns.length) {
     listHost.innerHTML = emptyAllHtml();

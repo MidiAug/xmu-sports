@@ -23,6 +23,16 @@ try {
   assert.equal(await page.locator('#favorite_sports_body').isVisible(), false);
   assert.ok((await card.boundingBox()).height < 100);
   assert.equal(await page.locator('.preference-card').first().locator('h3').innerText(), '外观与窗口');
+  assert.equal(await page.locator('details.settings-diagnostics').count(),0,'diagnostic actions are visible without expanding the page');
+  for(const id of ['diag_export_btn','diag_open_logs_btn']) {
+    const bounds=await page.locator(`#${id}`).boundingBox();
+    assert.ok(bounds.width>=120 && bounds.height>=38,'diagnostic actions have a comfortable click target');
+  }
+  await page.locator('#diag_export_btn').click();
+  await page.getByText('已导出到下载：diagnostic-fixture.zip',{exact:true}).waitFor();
+  await page.locator('#diag_open_logs_btn').click();
+  await page.getByText('已打开日志文件夹',{exact:true}).waitFor();
+  await page.locator('.content').evaluate(el=>el.scrollTop=0);
   assert.equal(await page.locator('.settings-page h2').evaluate(el => getComputedStyle(el).userSelect), 'none');
   assert.notEqual(await page.locator('#settings_msg').evaluate(el => getComputedStyle(el).userSelect), 'none');
   await page.screenshot({ path: join(output, 'collapsed-light.png') });

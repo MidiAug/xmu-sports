@@ -122,9 +122,9 @@ function taskBriefHtml(t: BookingTask | null, opts?: { withSetupCta?: boolean })
     const cta = opts?.withSetupCta
       ? `<p class="live-brief-cta"><button type="button" class="btn primary" data-tab="setup">去配置任务</button></p>`
       : "";
-    return `<div class="live-brief empty-brief">
+    return `<div class="live-brief empty-brief activity-empty"><span class="activity-empty-icon" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="16"/><path d="M24 14v11l7 4"/></svg></span>
       <p class="live-brief-title">尚未配置任务</p>
-      <p class="live-brief-sub">在「单次预约」选择目标，或添加长期计划，这里显示执行进度</p>
+      <p class="live-brief-sub">添加预约后，在这里查看执行进度</p>
       ${cta}
     </div>`;
   }
@@ -139,7 +139,6 @@ function taskBriefHtml(t: BookingTask | null, opts?: { withSetupCta?: boolean })
 function envRowHtml(wxText: string, wxRunning: boolean): string {
   return `
     <div class="live-env">
-      <span class="live-env-label">环境</span>
       <span class="live-env-value">
         <span class="dot ${wxRunning ? "on" : ""}" id="wx_dot"></span>
         <span id="wx_text">微信（${wxText}）</span>
@@ -218,7 +217,7 @@ function paintLiveBody(
   } else {
     mainBlock = `
       <div class="settings-group">
-        <p class="settings-group-title">单次预约草稿</p>
+        ${t ? '<p class="settings-group-title">单次预约草稿</p>' : ""}
         <div class="settings-group-body well-flush">
           ${taskBriefHtml(t, { withSetupCta: true })}
         </div>
@@ -226,11 +225,10 @@ function paintLiveBody(
   }
 
   patchHtml(panel, `
-    <div class="page-stack live-page">
-      <div class="page-heading"><div><h2>运行进度</h2><p>当前进度、执行队列与预约结果</p></div><button type="button" class="btn ghost" id="live_configuration" ${t ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : busy ? "查看配置" : "修改单次预约"}</button></div>
+    <div class="page-stack live-page" data-idle="${!busy && !t && !executionBlock && !outcomeBlock}">
+      <div class="page-heading"><div><h2>运行进度</h2><p>当前进度、执行队列与预约结果</p></div><div class="live-heading-actions">${envRowHtml(wxText, wxRunning)}<button type="button" class="btn ghost" id="live_configuration" ${t ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : busy ? "查看配置" : "修改单次预约"}</button></div></div>
       <section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section>
       ${outcomeBlock}
-      ${envRowHtml(wxText, wxRunning)}
       ${executionBlock}
       ${!running ? recoveryHtml(ev) : ""}
       <div id="pending_order_checks"></div>

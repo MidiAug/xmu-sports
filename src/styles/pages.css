@@ -332,31 +332,6 @@
   background: var(--color-panel-hover, color-mix(in srgb, var(--color-ink) 4%, transparent));
 }
 
-.run-card-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  margin-top: 6px;
-  border-radius: 50%;
-  background: var(--color-muted);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-muted) 18%, transparent);
-}
-
-.run-card.ok .run-card-dot {
-  background: var(--color-ok);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-ok) 22%, transparent);
-}
-
-.run-card.err .run-card-dot {
-  background: var(--color-danger);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 22%, transparent);
-}
-
-.run-card.info .run-card-dot {
-  background: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
-}
-
 .run-card-text {
   flex: 1;
   min-width: 0;

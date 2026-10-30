@@ -127,7 +127,6 @@
 .history-filter-clear { border:0; background:transparent; color:var(--color-muted); }
 .run-card,.run-card.ok,.run-card.err { border-color:transparent; border-radius:16px; background:var(--color-panel); }
 .run-card-head { padding:19px 20px; gap:13px; align-items:center; }
-.run-card-dot { width:8px; height:8px; margin-top:0; box-shadow:0 0 0 4px color-mix(in srgb,currentColor 8%,transparent); }
 .run-card-title { font-size:14px; font-weight:550; line-height:1.6; }
 .run-card.ok .run-card-title,.run-card.err .run-card-title { color:var(--color-ink); }
 .run-card-meta { margin-top:5px; line-height:1.6; }
@@ -147,10 +146,8 @@
 .settings-page .settings-theme-cube { border-radius:12px; padding:8px; }
 .settings-page .settings-cell { padding:18px 0; }
 .settings-favorites-header h3 { font-size:15px; font-weight:600; }
-.settings-page > .settings-diagnostics { padding:0; }
-.settings-diagnostics summary { padding:22px; }
-.settings-diagnostics summary strong,.settings-about-entry strong { font-size:14px; font-weight:550; }
-.settings-diagnostics summary div > span,.settings-about-entry div > span { font-size:12px; line-height:1.7; }
+.settings-about-entry strong { font-size:14px; font-weight:550; }
+.settings-about-entry div > span { font-size:12px; line-height:1.7; }
 .settings-about-entry { align-self:start; min-height:88px; }
 .confirm-ask { padding:25px; border-radius:20px; width:min(400px,100%); }
 .confirm-ask .close-ask-title { font-size:19px; line-height:1.5; }
@@ -165,7 +162,7 @@
 .confirm-ask-details > div { display:grid; grid-template-columns:76px minmax(0,1fr); gap:14px; font-size:13px; line-height:1.7; }
 .confirm-ask-details dt { color:var(--color-muted); }
 .confirm-ask-details dd { margin:0; color:var(--color-ink); overflow-wrap:anywhere; }
-@media(max-width:1080px) { .settings-page > .preference-card { padding:20px; } .settings-page > .settings-diagnostics { padding:0; } }
+@media(max-width:1080px) { .settings-page > .preference-card { padding:20px; } }
 
 /* All primary pages share the same title origin and content width. */
 .content > .page-stack { max-width:1180px; width:100%; margin:0 auto; }

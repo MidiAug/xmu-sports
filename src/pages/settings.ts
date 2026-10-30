@@ -114,25 +114,11 @@ export async function renderSettings(panel: Element) {
           <p class="msg" id="favorite_sports_message" role="status" aria-live="polite"></p>
         </div>
       </section>
-      <details class="preference-card settings-diagnostics">
-        <summary><div><strong>诊断与日志</strong><span>遇到问题时，导出日志以便排查</span></div><span class="settings-disclosure" aria-hidden="true">⌄</span></summary>
-        <div class="settings-diagnostics-body">
-          <div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">导出诊断日志</p>
-              <p class="settings-cell-desc">保存到「下载」文件夹。日志可能包含旧版本历史记录，分享前请检查</p>
-            </div>
-            <button type="button" class="btn ghost" id="diag_export_btn">导出</button>
-          </div>
-          <div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">日志文件夹</p>
-              <p class="settings-cell-desc">查看此电脑保存的运行日志</p>
-            </div>
-            <button type="button" class="btn ghost" id="diag_open_logs_btn">打开</button>
-          </div>
-        </div>
-      </details>
+      <section class="preference-card settings-diagnostics" aria-labelledby="diagnostics_title">
+        <div class="preference-card-heading"><h3 id="diagnostics_title">诊断与日志</h3></div>
+        <div class="settings-diagnostic-actions"><button type="button" class="btn ghost" id="diag_export_btn">导出日志<span aria-hidden="true">↗</span></button><button type="button" class="btn ghost" id="diag_open_logs_btn">打开文件夹</button></div>
+        <p class="settings-diagnostic-note">导出到下载文件夹，分享前请检查日志内容。</p>
+      </section>
       <button type="button" class="preference-card settings-about-entry"><div><strong>关于 XMU Sports</strong><span>版本 ${version}　项目地址与应用更新</span></div><span aria-hidden="true">›</span></button>
       <p class="msg" id="settings_msg"></p>
     </div>
