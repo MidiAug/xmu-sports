@@ -62,8 +62,40 @@
 .settings-diagnostic-actions { display:flex; align-items:center; gap:10px; margin-top:16px; }
 .settings-diagnostic-actions .btn { display:flex; align-items:center; justify-content:center; gap:14px; min-width:124px; height:40px; border:0; background:var(--color-control); border-radius:10px; font-size:13px; }
 .settings-diagnostic-note { color:var(--color-muted); font-size:11px; line-height:1.7; margin:14px 0 0; }
-.settings-page .settings-about-entry { align-self:start; min-height:108px; }
+.settings-page .settings-about-entry { align-self:stretch; min-height:108px; align-items:center; }
 .settings-about-entry > span { flex:none; display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--color-control); color:var(--color-secondary-ink); font-size:24px; }
+#startup_settings .settings-cell:last-of-type { border-bottom:0; padding-bottom:0; }
+.settings-about-entry > span svg { display:block; }
+.plan-actions > [data-edit] { display:inline-flex; align-items:center; gap:6px; color:var(--color-muted); }
+.plan-actions > [data-edit]:hover { color:var(--color-accent); }
+.plan-more summary { display:grid; place-items:center; width:34px; height:32px; padding:0; list-style:none; border-radius:8px; }
+.plan-more summary::-webkit-details-marker { display:none; }
+.plan-more[open] summary { color:var(--color-accent); background:var(--color-control); }
+.plan-more > div { top:auto; bottom:calc(100% + 8px); padding:6px; border-radius:12px; min-width:185px; box-shadow:var(--shadow-lv3); }
+.plan-more button { min-height:36px; padding:8px 12px; border-radius:7px; }
+.plan-more [data-delete] { border-top:1px solid var(--color-line); margin-top:5px; padding-top:12px; border-radius:0 0 7px 7px; }
+.live-heading-actions { flex-direction:row; flex-wrap:nowrap; }
+.live-workspace { display:grid; grid-template-columns:minmax(0,1fr); gap:20px; align-items:start; }
+.live-workspace > :empty { display:none; }
+.live-workspace[data-context="true"]:has(.booking-recent) { grid-template-columns:minmax(0,1fr) 280px; align-items:stretch; }
+.live-workspace[data-context="true"]:has(.booking-recent) > :not(#live_single_context) { grid-column:1; }
+.live-workspace[data-context="true"]:has(.booking-recent) #live_single_context { grid-column:2; grid-row:1; }
+.live-workspace[data-context="true"] #live_single_context { padding:24px; border:1px solid var(--color-line); border-radius:18px; background:var(--color-panel); }
+.live-workspace[data-context="true"] #live_single_context .settings-group-title { margin:0 0 22px; padding:0; font-size:12px; color:var(--color-muted); }
+.live-workspace[data-context="true"] #live_single_context .settings-group-body { border:0; border-radius:0; padding:0; background:transparent; }
+.live-workspace[data-context="true"] #live_single_context .live-brief { margin:0; padding:0; background:transparent; }
+.live-draft-place { margin:8px 0 0; color:var(--color-muted); font-size:12px; line-height:1.7; }
+.live-draft-time { margin:22px 0 0; padding-top:18px; border-top:1px solid var(--color-line); color:var(--color-secondary-ink); font-size:15px; line-height:1.7; }
+.live-workspace .booking-execution { border-radius:18px; }
+.live-workspace .booking-execution-head { align-items:center; padding:28px 26px 20px; background:transparent; }
+.live-workspace .booking-head-copy h2 { font-size:23px; line-height:1.4; font-weight:600; letter-spacing:-.4px; margin-top:6px; }
+.live-workspace .booking-state-icon { width:48px; height:48px; border-radius:15px; flex:none; }
+.live-workspace .booking-current-detail { margin:0 26px 24px; font-size:13px; line-height:1.8; }
+.live-workspace .booking-target { padding:20px 0; border-radius:0; background:transparent; border-top:1px solid var(--color-line); }
+.live-workspace .booking-details { border:0; border-top:1px solid var(--color-line); border-radius:0; margin:0 26px; padding:6px 0; }
+.booking-auth { display:flex; flex-direction:column; }
+.booking-auth .booking-details { margin-top:auto; }
+.booking-auth.success .booking-state-icon { background:color-mix(in srgb,var(--color-ok) 10%,var(--color-panel)); color:var(--color-ok); }
 @media(max-width:1080px) {
   .settings-page > .settings-diagnostics { padding:20px; }
   .plan-queue-overview { padding:22px; }

@@ -38,7 +38,10 @@ export function installShellFixture(data) {
       if (command === "get_startup") return window.__startup;
       if (command === "export_diagnostic_logs") return "C:/fixture-downloads/diagnostic-fixture.zip";
       if (command === "open_app_log_dir") return "fixture-logs";
-      if (command === "get_my_orders") return {ok:true,orders:structuredClone(window.__orders),account_fingerprint:"a".repeat(64),fetched_at:new Date().toISOString()};
+      if (command === "get_my_orders") {
+        if(window.__holdOrders) await new Promise(resolve=>window.__finishOrders=resolve);
+        return {ok:true,orders:structuredClone(window.__orders),account_fingerprint:"a".repeat(64),fetched_at:new Date().toISOString()};
+      }
       if (command === "get_venue_availability") return {ok:true,state:"availability_ready",...args,account_fingerprint:"a".repeat(64),fetched_at:new Date().toISOString(),slots:[]};
       if (command === "list_recent_events") return structuredClone(data.events ?? []);
       if (command === "list_pending_orders") return [];

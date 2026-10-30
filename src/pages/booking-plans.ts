@@ -7,6 +7,7 @@ import { outcomeFromEvent } from "../lib/run-outcome";
 import { formatEventTimeHuman, formatMonthDayWeekday } from "../lib/format-human";
 import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, type BookingPlan, type BookingPlansView } from "../lib/booking-plans";
 import { bookingPlans } from "../lib/booking-plans-store";
+import { SVG } from "../ui/icons";
 import { sportIcon } from "../ui/sport-icons";
 import { patchHtml } from "../ui/patch-html";
 
@@ -114,8 +115,8 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
         <div class="plan-schedule"><strong>${r.start}<span class="plan-time-divider">–</span>${r.end}</strong><span>${weekdaysLabel(r.weekdays)}</span></div>
         <div class="plan-week-strip" aria-label="重复星期：${weekdaysLabel(r.weekdays)}">${days.map((day, i) => `<span data-selected="${r.weekdays.includes(i + 1)}" aria-hidden="true">${day}</span>`).join("")}</div>
         <div class="plan-dates">${next ? `<div><span>下次运动</span><strong>${formatMonthDayWeekday(next.date)}</strong></div><div><span>${view.plans.paused ? "恢复后按计划开抢" : "自动开抢"}</span><strong>${escape(formatEventTimeHuman(next.fire_at))}</strong></div>` : `<div><span>本计划已停用</span><strong>启用后继续安排</strong></div>`}</div>
-        <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}">编辑计划</button>
-        <details class="plan-more"><summary>更多</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-copy="${r.id}">复制</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
+        <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}">${SVG.edit}<span>编辑</span></button>
+        <details class="plan-more"><summary aria-label="更多操作">${SVG.more}</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
     }).join(""));
     list.querySelectorAll<HTMLInputElement>("[data-enable]").forEach(box => {
@@ -126,7 +127,6 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       };
     });
     list.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach(b => b.onclick = () => openEditor(view.plans.rules.find(r => r.id === b.dataset.edit)));
-    list.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach(b => b.onclick = () => openEditor({ ...view.plans.rules.find(r => r.id === b.dataset.copy)!, id: crypto.randomUUID(), enabled: false }, true));
     list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach(b => b.onclick = async () => {
       if (await askConfirm({ title: "删除这条计划？", lead: "已成功预约的订单会保留，之后不再自动安排。", confirmLabel: "删除计划" })) {
         void save(view.plans.rules.filter(r => r.id !== b.dataset.delete)).catch(() => {});
@@ -167,7 +167,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     });
   }
 
-  function openEditor(existing?: BookingPlan, copying = false) {
+  function openEditor(existing?: BookingPlan) {
     if (saving || !view) return;
     editing = true; editor.hidden = false; add.disabled = true; list.hidden = true;
     panel.querySelector(".plans-page")!.setAttribute("data-editing", "true");
@@ -176,12 +176,12 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     let venue = sport.venues.find(v => v.id === existing?.venue) ?? sport.venues[0];
     let selected = new Set(existing?.weekdays ?? [1, 2, 3, 4, 5, 6, 7]);
     let slot = existing ? `${existing.start}|${existing.end}` : `${venue.time_slots[0].start}|${venue.time_slots[0].end}`;
-    editor.innerHTML = `<form class="plan-editor"><div class="plan-editor-main"><h3>${copying ? "复制计划" : existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
+    editor.innerHTML = `<form class="plan-editor"><div class="plan-editor-main"><h3>${existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
       <fieldset><legend>去运动的星期</legend><div class="plan-presets"><button type="button" data-days="1,2,3,4,5,6,7">每天</button><button type="button" data-days="1,2,3,4,5">工作日</button><button type="button" data-days="6,7">周末</button></div><div class="plan-weekdays">${days.map((d, i) => `<button type="button" data-day="${i + 1}" aria-label="周${d}" aria-pressed="${selected.has(i + 1)}">${d}</button>`).join("")}</div></fieldset>
-      </div><aside class="plan-editor-summary"><span class="plan-editor-eyebrow">前一天自动开抢</span><strong class="plan-editor-fire">07:00</strong><p class="plan-preview" id="plan_preview"></p>${copying ? `<p class="plan-preview">副本保存后默认停用，请调整星期后再启用。</p>` : ""}<p class="plan-preview" id="plan_paused_hint" hidden>自动计划已暂停，保存后仍需点击“恢复计划”。</p><p class="msg" id="plan_form_msg" role="status"></p><div class="plan-actions"><button type="submit" class="btn primary"></button><button type="button" class="btn ghost" id="plan_cancel">取消</button></div><p class="plan-editor-condition">预约时保持电脑唤醒、联网</p></aside></form>`;
+      </div><aside class="plan-editor-summary"><span class="plan-editor-eyebrow">前一天自动开抢</span><strong class="plan-editor-fire">07:00</strong><p class="plan-preview" id="plan_preview"></p><p class="plan-preview" id="plan_paused_hint" hidden>自动计划已暂停，保存后仍需点击“恢复计划”。</p><p class="msg" id="plan_form_msg" role="status"></p><div class="plan-actions"><button type="submit" class="btn primary"></button><button type="button" class="btn ghost" id="plan_cancel">取消</button></div><p class="plan-editor-condition">预约时保持电脑唤醒、联网</p></aside></form>`;
     updateEditorStatus = () => {
       editor.querySelector<HTMLElement>("#plan_paused_hint")!.hidden = !view.plans.paused;
-      editor.querySelector<HTMLButtonElement>('[type="submit"]')!.textContent = copying ? "保存为停用计划" : existing || view.plans.paused ? "保存计划" : "保存并启用";
+      editor.querySelector<HTMLButtonElement>('[type="submit"]')!.textContent = existing || view.plans.paused ? "保存计划" : "保存并启用";
     };
     updateEditorStatus();
     const preview = () => {

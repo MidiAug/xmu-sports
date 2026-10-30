@@ -109,12 +109,12 @@ try {
   await page.waitForFunction(id=>document.querySelector(".plan-card").dataset.plan!==id,before);
   assert.equal(await page.locator(".plan-card").first().getAttribute("data-plan"),rules[1].id);
   await page.locator('.plan-more').first().locator('summary').click();
-  await page.locator('[data-copy]').first().click();
-  assert.equal(await page.locator('#plan_editor h3').innerText(),'复制计划');
-  assert.equal(await page.locator('#plan_editor [type="submit"]').innerText(),'保存为停用计划');
-  assert.match(await page.locator('#plan_editor').innerText(),/副本保存后默认停用/);
-  await page.screenshot({path:'artifacts/booking-plans/copy-editor-light.png'});
-  await page.locator('#plan_cancel').click();
+  assert.equal(await page.locator('[data-copy]').count(),0);
+  const menuBox=await page.locator('.plan-more').first().locator('div').boundingBox();
+  const moreBox=await page.locator('.plan-more').first().locator('summary').boundingBox();
+  assert.ok(menuBox.y+menuBox.height<=moreBox.y,'plan menu opens upward');
+  await page.screenshot({path:'artifacts/booking-plans/menu-up-light.png'});
+  await page.keyboard.press('Escape');
   await page.locator(`[data-edit="${rules[0].id}"]`).click();
   await page.getByRole("button",{name:"周末",exact:true}).click();
   assert.equal(await page.locator('[data-day][aria-pressed="true"]').count(),2);
@@ -170,12 +170,10 @@ try {
   await page.locator('#plan_cancel').click();
   await page.locator('#plans_pause').click();
   await page.getByText('自动计划已暂停',{exact:true}).waitFor();
-  await page.locator('.plan-more').first().locator('summary').click();
-  await page.locator('[data-copy]').first().click();
+  await page.locator(`[data-edit="${rules[0].id}"]`).click();
   await page.locator('#plan_editor [type="submit"]').click();
   await page.locator('#plan_editor').waitFor({state:'hidden'});
   assert.equal(await page.evaluate(()=>window.__plans.paused),true);
-  assert.equal(await page.evaluate(()=>window.__plans.rules.at(-1).enabled),false);
   // Same real single-booking page: badges follow exercise day, not the day of opening.
   await page.locator('#plans_pause').click();
   await page.getByText('自动计划已开启',{exact:true}).waitFor();

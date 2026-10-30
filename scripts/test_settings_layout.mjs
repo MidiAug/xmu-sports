@@ -24,6 +24,13 @@ try {
   assert.ok((await card.boundingBox()).height < 100);
   assert.equal(await page.locator('.preference-card').first().locator('h3').innerText(), '外观与窗口');
   assert.equal(await page.locator('details.settings-diagnostics').count(),0,'diagnostic actions are visible without expanding the page');
+  const diagnosticBox=await page.locator('.settings-diagnostics').boundingBox();
+  const aboutBox=await page.locator('.settings-about-entry').boundingBox();
+  assert.ok(Math.abs(diagnosticBox.height-aboutBox.height)<1,'bottom settings cards share a height');
+  assert.equal(await page.locator('#startup_settings .settings-cell').last().evaluate(el=>getComputedStyle(el).borderBottomWidth),'0px');
+  const arrow=await page.locator('.settings-about-entry > span svg').boundingBox();
+  const arrowTile=await page.locator('.settings-about-entry > span').boundingBox();
+  assert.ok(Math.abs(arrow.y+arrow.height/2-arrowTile.y-arrowTile.height/2)<1,'about arrow is centered in its tile');
   for(const id of ['diag_export_btn','diag_open_logs_btn']) {
     const bounds=await page.locator(`#${id}`).boundingBox();
     assert.ok(bounds.width>=120 && bounds.height>=38,'diagnostic actions have a comfortable click target');

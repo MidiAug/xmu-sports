@@ -10,7 +10,6 @@ import {
   formatFireAtHuman,
   formatTargetBrief,
   formatTaskSportVenue,
-  joinParts,
 } from "../lib/format-human";
 import { formatRemaining } from "../lib/time";
 import { BOOKING_STEPS, currentRunEvents, elapsedLabel, progressMessage, progressStep } from "../lib/booking-progress";
@@ -93,16 +92,16 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false): string {
   const date = result?.date ?? target?.date ?? (!recheckOnly && running ? st?.task?.target_date : "") ?? "";
   const slot = result?.time ?? (target ? `${target.time ?? ""}–${target.end ?? ""}` : !recheckOnly && running ? `${st?.task?.target_time_start ?? ""}–${st?.task?.target_time_end ?? ""}` : "");
   const outcome = last ? outcomeFromEvent(last) : null;
-  const state = running ? "running" : uncertain ? "unconfirmed" : failed ? "failed" : result?.verified ? "success" : "finished";
+  const state = running ? "running" : uncertain ? "unconfirmed" : failed ? "failed" : (result?.verified || last?.result === "http_auth_ready") ? "success" : "finished";
   const confirming = running && latestPhase && progressStep(latestPhase) === "order";
   const title = running ? recheckOnly ? "正在再次查单" : confirming ? "正在确认预约结果" : st?.operation === "scheduled" && st.armed ? "定时预约准备中" : authOnly ? "正在检查体育登录" : prepareOnly ? "正在检查预约条件" : "预约进行中" : outcome?.title ?? "预约流程已结束";
   const detail = running ? (last ? progressMessage(last) : "正在启动…") : outcome?.detail ?? (last ? progressMessage(last) : "");
   const court = result?.court ?? selected ?? target?.court;
-  return `<section class="booking-execution ${state}${running ? "" : " booking-recent"}" aria-label="预约执行状态">
-    <div class="booking-execution-head"><span class="booking-state-icon" aria-hidden="true">${running ? '<span class="booking-spinner"></span>' : state === "success" ? "✓" : failed ? "!" : "·"}</span><div class="booking-head-copy"><span class="booking-eyebrow">${recheckOnly ? running ? "只读查单" : "最近一次查单" : running ? "正在执行" : "最近一次预约"}</span><h2 role="status">${escText(title)}</h2></div><span class="booking-elapsed">${running ? "已用时" : "总用时"}<strong>${elapsedLabel(events, running)}</strong></span>${running ? '<button type="button" class="btn ghost booking-stop" id="disarm_hang">停止</button>' : ""}</div>
+  return `<section class="booking-execution ${state}${authOnly ? " booking-auth" : ""}${running ? "" : " booking-recent"}" aria-label="预约执行状态">
+    <div class="booking-execution-head"><span class="booking-state-icon" aria-hidden="true">${running ? '<span class="booking-spinner"></span>' : state === "success" ? "✓" : failed ? "!" : "·"}</span><div class="booking-head-copy"><span class="booking-eyebrow">${authOnly ? "体育登录" : prepareOnly ? "预约条件检查" : recheckOnly ? running ? "只读查单" : "最近一次查单" : running ? "正在执行" : "最近一次预约"}</span><h2 role="status">${escText(title)}</h2></div><span class="booking-elapsed">${running ? "已用时" : "总用时"}<strong>${elapsedLabel(events, running)}</strong></span>${running ? '<button type="button" class="btn ghost booking-stop" id="disarm_hang">停止</button>' : ""}</div>
     <p class="booking-current-detail">${escText(detail)}</p>${confirming ? '<p class="booking-current-detail">正在只读查单；停止只会结束后续检查，已经发送的预约不会被撤回。</p>' : ""}
-    <div class="booking-target"><strong>${escText(venueLabel)}</strong><div><span>${escText(date)}</span><span>${escText(slot)}</span><span>${escText(court ? `${court} 号场地` : "自动选择场地")}</span></div>${result?.order_id ? `<small>订单号 ${escText(String(result.order_id))}</small>` : ""}</div>
-    <ol class="booking-track${recheckOnly ? " recheck-only" : authOnly ? " auth-only" : ""}" aria-label="执行步骤">${steps}</ol>
+    ${!authOnly && (target || running && st?.task) ? `<div class="booking-target"><strong>${escText(venueLabel)}</strong><div><span>${escText(date)}</span><span>${escText(slot)}</span><span>${escText(court ? `${court} 号场地` : "自动选择场地")}</span></div>${result?.order_id ? `<small>订单号 ${escText(String(result.order_id))}</small>` : ""}</div>` : ""}
+    ${!authOnly ? `<ol class="booking-track${recheckOnly ? " recheck-only" : authOnly ? " auth-only" : ""}" aria-label="执行步骤">${steps}</ol>` : ""}
     <details class="booking-details" ${detailsOpen ? "open" : ""}><summary><span>过程记录</span><span>${rows.length} 条 <span class="booking-chevron">⌄</span></span></summary><ol class="live-timeline" aria-label="预约过程记录">${timeline}</ol><p class="booking-run-id">${escText(`执行编号 ${last?.run_id ?? ""}`)}</p></details>
   </section>`;
 }
@@ -129,10 +128,10 @@ function taskBriefHtml(t: BookingTask | null, opts?: { withSetupCta?: boolean })
     </div>`;
   }
   return `<div class="live-brief">
-    <p class="live-brief-title">${escText(formatTaskSportVenue(t))}</p>
-    <p class="live-brief-sub">${escText(
-      joinParts(formatTargetBrief(t), formatFallbackLabel(t)),
-    )}</p>
+    <p class="live-brief-title">${escText(t.sport)}</p>
+    <p class="live-draft-place">${escText(t.venue)}</p>
+    <p class="live-draft-time">${escText(formatTargetBrief(t))}</p>
+    <p class="live-brief-sub">${escText(formatFallbackLabel(t))}</p>
   </div>`;
 }
 
@@ -228,11 +227,11 @@ function paintLiveBody(
     <div class="page-stack live-page" data-idle="${!busy && !t && !executionBlock && !outcomeBlock}">
       <div class="page-heading"><div><h2>运行进度</h2><p>当前进度、执行队列与预约结果</p></div><div class="live-heading-actions">${envRowHtml(wxText, wxRunning)}<button type="button" class="btn ghost" id="live_configuration" ${t ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : busy ? "查看配置" : "修改单次预约"}</button></div></div>
       <section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section>
-      ${outcomeBlock}
+      <div class="live-workspace" data-context="${!!t && !busy}">${outcomeBlock}
       ${executionBlock}
       ${!running ? recoveryHtml(ev) : ""}
       <div id="pending_order_checks"></div>
-      <div id="live_single_context" ${!busy && (!t || t.plan_id) ? "hidden" : ""}>${mainBlock}</div>
+      <div id="live_single_context" ${!busy && (!t || t.plan_id) ? "hidden" : ""}>${mainBlock}</div></div>
     </div>
     ${stopping ? '<p class="task-busy-note" role="status">正在停止，请等待已发送请求的结果确认。</p>' : ""}
   `);

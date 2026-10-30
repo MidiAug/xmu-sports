@@ -119,7 +119,7 @@ export async function renderSettings(panel: Element) {
         <div class="settings-diagnostic-actions"><button type="button" class="btn ghost" id="diag_export_btn">导出日志<span aria-hidden="true">↗</span></button><button type="button" class="btn ghost" id="diag_open_logs_btn">打开文件夹</button></div>
         <p class="settings-diagnostic-note">导出到下载文件夹，分享前请检查日志内容。</p>
       </section>
-      <button type="button" class="preference-card settings-about-entry"><div><strong>关于 XMU Sports</strong><span>版本 ${version}　项目地址与应用更新</span></div><span aria-hidden="true">›</span></button>
+      <button type="button" class="preference-card settings-about-entry"><div><strong>关于 XMU Sports</strong><span>版本 ${version}　项目地址与应用更新</span></div><span aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="m9 5 7 7-7 7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span></button>
       <p class="msg" id="settings_msg"></p>
     </div>
   `;

@@ -172,6 +172,9 @@ try {
  await page.getByRole("button",{name:"刷新我的预约",exact:true}).click();
  assert.ok(await page.locator("[data-orders-refresh]").isDisabled());
  assert.ok(await page.locator("[data-orders-refresh]").evaluate(el=>el.classList.contains("is-loading")));
+ assert.equal(await page.locator('.orders-count.is-loading svg').count(),1,'count badge becomes the refresh spinner');
+ assert.equal(await page.locator('.orders-count').innerText(),'');
+ assert.equal(await page.locator('.orders-count svg').evaluate(el=>getComputedStyle(el).animationName),'order-refresh-spin');
  assert.equal(await page.locator(".my-orders-status").count(),0,"refresh progress is shown on the button, not another row");
  assert.equal(await page.locator("[data-orders-refresh]").getAttribute("aria-label"),"正在更新预约");
  assert.deepEqual(await page.locator("[data-orders-refresh]").evaluate(el=>{

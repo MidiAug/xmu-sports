@@ -1,4 +1,6 @@
 export const SVG = {
+  edit: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1 12-12a2.8 2.8 0 0 0-4-4L4 15z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  more: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>`,
   minimize: `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M2.8 9.1h10.4v1.8H2.8V9.1Z" fill="currentColor"/></svg>`,
   maximize: `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden><path fill-rule="evenodd" clip-rule="evenodd" d="M3.4 3.4h9.2v9.2H3.4V3.4zm1.45 1.45v6.3h6.3v-6.3H4.85z" fill="currentColor"/></svg>`,
   restore: `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden><path fill-rule="evenodd" clip-rule="evenodd" d="M2.5 4.2h7.5v7.5H2.5V4.2zm1.3 1.3v4.9h4.9V5.5H3.8z" fill="currentColor"/><path fill-rule="evenodd" clip-rule="evenodd" d="M6 2.5h7.5v7.5H6V2.5zm1.3 1.3v4.9h4.9V3.8H7.3z" fill="currentColor"/></svg>`,
