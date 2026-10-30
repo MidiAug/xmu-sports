@@ -65,7 +65,6 @@ export function installShellFixture(data) {
       if (command === "get_venue_availability") return {ok:true,state:"availability_ready",...args,account_fingerprint:"a".repeat(64),fetched_at:new Date().toISOString(),slots:structuredClone(data.availabilitySlots ?? [])};
       if (command === "list_recent_events") return structuredClone(data.events ?? []);
       if (command === "list_pending_orders") {
-        if (window.__holdPending) await new Promise(resolve=>(window.__pendingResolvers??=[]).push(resolve));
         return structuredClone(window.__pendingOrders??[]);
       }
       if (command === "probe_wechat") return {running:true};

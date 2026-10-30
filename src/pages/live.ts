@@ -111,7 +111,7 @@ function recoveryHtml(event: RunEvent | null): string {
   if (code.startsWith("RUNTIME_") && code !== "RUNTIME_CLOSE_FAILED") return '<div class="task-busy-note"><span>请重启电脑微信后重试；仍失败请导出诊断日志。</span><button type="button" class="btn ghost" data-tab="settings">前往设置</button></div>';
   const login = ["LOGIN_CONFIRM_REQUIRED", "SESSION_EXPIRED", "NO_ENTRY", "RUNTIME_UNAVAILABLE", "RUNTIME_UNSUPPORTED", "LOGIN_FOCUS_REQUIRED"].includes(code);
   const uncertain = ["SUBMIT_UNKNOWN", "RESULT_UNCONFIRMED", "http_submitted", "ORDER_RECHECK_UNCONFIRMED"].includes(code);
-  if (login || uncertain) return `<div class="task-busy-note"><span>${uncertain ? "可在下方待确认记录点击「再次查单」，或在小程序「我的预约」核对；不会自动重发。" : "完成体育登录并进入场馆预约后，可以重新执行原任务。"}</span><button type="button" class="btn ghost" id="open_booking">打开小程序${uncertain ? "确认" : "登录"}</button></div>`;
+  if (login || uncertain) return `<div class="task-busy-note"><span>${uncertain ? "可在待确认记录点击「再次查单」，或在小程序「我的预约」核对；不会自动重发。" : "完成体育登录并进入场馆预约后，可以重新执行原任务。"}</span><button type="button" class="btn ghost" id="open_booking">打开小程序${uncertain ? "确认" : "登录"}</button></div>`;
   if (event?.action === "fail") return '<div class="task-busy-note"><span>可调整日期、场馆或备选策略，再尝试预约。</span><button type="button" class="btn ghost" data-tab="setup">修改预约目标</button></div>';
   return "";
 }
@@ -199,7 +199,10 @@ function paintLiveBody(
   paintPlanContext(panel, st, bookingPlans.snapshot());
 
   const pendingHost=panel.querySelector<HTMLElement>("#pending_order_checks");
-  if (pendingHost) void mountOrderRecheck(pendingHost,busy,()=>!opts?.scope || opts.scope.current());
+  if (pendingHost) {
+    if (!running) void mountOrderRecheck(pendingHost,busy,()=>!opts?.scope || opts.scope.current());
+    else pendingHost.querySelectorAll<HTMLButtonElement>("[data-order-recheck]").forEach(button => { button.disabled = true; });
+  }
   if (stopping) {
     const stop = panel.querySelector<HTMLButtonElement>("#disarm_hang");
     if (stop) { stop.disabled = true; stop.textContent = "正在停止…"; }

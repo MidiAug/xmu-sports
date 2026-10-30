@@ -61,6 +61,12 @@ try {
  await page.getByText('已约到',{exact:true}).waitFor();
  await page.screenshot({path:'artifacts/progress-unified/results-dark.png'});
  await page.evaluate(()=>{
+  window.__pendingOrders=[{request_ref:'a'.repeat(64),can_recheck:true,target:{sport:'乒乓球',venue:'旧待确认场馆',date:'2026-10-31',time:'19:30',end:'21:00',court:'04'}}];
+  window.__emit('run-changed');
+ });
+ await page.locator('#pending_order_checks .settings-group').waitFor();
+ await page.evaluate(()=>window.__pendingNode=document.querySelector('#pending_order_checks .settings-group'));
+ await page.evaluate(()=>{
   const event={task_id:'active',ts:'2026-10-30T12:01:00+08:00',action:'http_phase',result:'querying_slots',http:{phase:'querying_slots'}};
   window.__live={...window.__live,task:{...window.__task,task_id:'active'},running:true,armed:false,operation:'booking',recent_events:[event],last_event:event};window.__emit('run-changed');
  });
@@ -70,25 +76,26 @@ try {
  assert.equal(await page.locator('.live-primary .booking-execution').count(),0,'execution does not create a wide primary card');
  assert.equal(await page.locator('#live_single_context').isVisible(),false);
  await page.screenshot({path:'artifacts/progress-unified/running-dark.png'});
- await page.evaluate(()=>{
-  window.__pendingOrders=[{request_ref:'a'.repeat(64),can_recheck:false,reason:'旧记录缺少原账号或实际场次快照，请在小程序核对',target:{sport:'乒乓球',venue:'测试场馆',date:'2026-10-31',time:'19:30',end:'21:00'}}];
-  window.__emit('run-changed');
- });
- await page.locator('#pending_order_checks .settings-group').waitFor();
  assert.equal(await page.locator('.live-secondary #pending_order_checks').count(),1);
- await page.evaluate(()=>{window.__holdPending=true;window.__pendingNode=document.querySelector('#pending_order_checks .settings-group');window.__executionNode=document.querySelector('#live_execution .booking-execution');});
+ assert.equal(await page.locator('[data-order-recheck]').isDisabled(),true,'existing unresolved orders remain visible but cannot be queried during execution');
+ await page.evaluate(()=>{
+  window.__pendingOrders.push({request_ref:'b'.repeat(64),can_recheck:false,reason:'临时提交记录',target:{venue:'本次执行中的临时记录'}});
+  window.__executionNode=document.querySelector('#live_execution .booking-execution');
+ });
  const executionBox=await page.locator('#live_execution').boundingBox();
  for(const phase of ['server_precheck','submitting','order_accepted','verifying_order']) {
   const reads=await page.evaluate(()=>window.__calls.filter(c=>c.command==='list_pending_orders').length);
+  const message=await page.locator('.booking-current-detail').first().innerText();
   await page.evaluate(phase=>{
    const event={...window.__live.last_event,ts:'2026-10-30T12:01:02+08:00',result:phase,http:{phase}};
    window.__live.last_event=event;window.__live.recent_events.push(event);window.__emit('run-changed');
   },phase);
-  await page.waitForFunction(before=>window.__calls.filter(c=>c.command==='list_pending_orders').length>before,reads);
-  assert.equal(await page.evaluate(()=>window.__pendingNode===document.querySelector('#pending_order_checks .settings-group')),true,'pending rows are retained while their replacement read is in flight');
+  await page.waitForFunction(previous=>document.querySelector('.booking-current-detail').textContent!==previous,message);
+  assert.equal(await page.evaluate(()=>window.__calls.filter(c=>c.command==='list_pending_orders').length),reads,'running phases do not scan the actively written journal');
+  assert.equal(await page.evaluate(()=>window.__pendingNode===document.querySelector('#pending_order_checks .settings-group')),true,'older pending rows retain their DOM nodes while running');
+  assert.equal(await page.getByText('本次执行中的临时记录',{exact:true}).count(),0,'temporary current-run records never create another pending widget');
   assert.ok(Math.abs((await page.locator('#live_execution').boundingBox()).y-executionBox.y)<1,'pending reads do not move the execution card');
  }
- await page.evaluate(()=>{window.__holdPending=false;window.__pendingResolvers.forEach(resolve=>resolve());});
  await page.screenshot({path:'artifacts/progress-unified/confirming-dark.png'});
  await page.evaluate(()=>{
   const event={...window.__live.last_event,action:'done',result:'http_verified',http:{verified:true,target:{sport:'乒乓球',venue:'测试场馆',date:'2026-10-31',time:'19:30',end:'21:00'}}};
@@ -105,6 +112,29 @@ try {
    await page.screenshot({path:`artifacts/progress-unified/result-${theme}-${width}.png`});
   }
  }
+ await page.evaluate(()=>{
+  const event={task_id:'active',ts:'2026-10-30T12:01:03+08:00',action:'http_phase',result:'submitting',http:{phase:'submitting'}};
+  window.__live={...window.__live,running:true,last_event:event,recent_events:[event]};
+  window.__pendingOrders=[{request_ref:'b'.repeat(64),can_recheck:false,reason:'临时提交记录',target:{venue:'本次执行中的临时记录'}}];
+  window.__emit('run-changed');
+ });
+ await page.locator('#live_execution .booking-execution.running').waitFor();
+ assert.equal(await page.locator('#pending_order_checks .settings-group').count(),0,'a current submission does not spawn a pending card');
+ await page.evaluate(()=>{
+  const event={...window.__live.last_event,action:'fail',result:'SUBMIT_UNKNOWN',http:{phase:'order_unconfirmed'}};
+  window.__live={...window.__live,running:false,last_event:event,recent_events:[...window.__live.recent_events,event]};
+  window.__pendingOrders=[{request_ref:'b'.repeat(64),can_recheck:true,target:{sport:'乒乓球',venue:'待核对场馆',date:'2026-10-31',time:'19:30',end:'21:00',court:'04'}}];window.__emit('run-changed');
+ });
+ await page.locator('#live_execution .booking-execution.unconfirmed').waitFor();
+ await page.waitForFunction(()=>document.querySelector('[data-order-recheck]')?.disabled===false);
+ await page.screenshot({path:'artifacts/progress-unified/unconfirmed-stopped.png'});
+ await page.evaluate(()=>{
+  const event={...window.__live.last_event,result:'HTTP_FAILED',http:{phase:'checking_orders'}};
+  window.__live={...window.__live,last_event:event,recent_events:[event]};window.__pendingOrders=[];window.__emit('run-changed');
+ });
+ await page.getByRole('status').filter({hasText:'学校接口请求失败'}).first().waitFor();
+ await page.waitForFunction(()=>document.querySelector('#pending_order_checks').children.length===0);
+ await page.screenshot({path:'artifacts/progress-unified/pre-submit-timeout.png'});
  await page.evaluate(()=>{
   const event={task_id:'launch-failed',ts:'2026-10-30T12:02:00+08:00',action:'fail',result:'LOGIN_CONFIRM_REQUIRED',http:{reason:'MINIPROGRAM_NOT_VISIBLE',message:'旧的未显示提示'}};
   window.__live={...window.__live,running:false,armed:false,operation:'auth',last_event:event,recent_events:[event]};window.__emit('run-changed');
