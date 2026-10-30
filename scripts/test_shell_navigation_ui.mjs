@@ -170,6 +170,7 @@ try {
   await page.getByRole('button',{name:'添加第一条计划',exact:true}).waitFor();
   assert.equal(await page.locator('.plans-summary').isVisible(),false);
   assert.equal(await page.locator('#plan_add').isVisible(),false);
+  await page.clock.runFor(5000);
   for(const theme of ['light','dark']) {
     await page.setViewportSize({width:1100,height:760});
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);

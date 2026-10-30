@@ -94,7 +94,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
 
   function paintList() {
     if (!view.plans.rules.length) {
-      list.innerHTML = `<section class="plan-empty" aria-label="开始安排运动"><div class="plan-empty-art" aria-hidden="true"><svg viewBox="0 0 80 80" fill="none"><rect x="13" y="16" width="54" height="52" rx="12"/><path d="M13 32h54M28 11v12M52 11v12"/><path class="plan-empty-check" d="m29 49 8 8 16-18"/></svg><span class="plan-empty-sport sport-icon" data-sport="羽毛球">${sportIcon("羽毛球")}</span></div><h3>让运动成为每周的习惯</h3><p>选好运动、时段和星期，剩下的交给自动预约。</p><button type="button" class="btn primary" id="plan_example">添加第一条计划<span aria-hidden="true">＋</span></button><div class="plan-empty-note"><span>按周重复</span><i aria-hidden="true"></i><span>前一天 07:00 开抢</span><i aria-hidden="true"></i><span>随时暂停与调整</span></div><footer>预约时请保持电脑唤醒、联网，应用可在托盘运行。</footer></section>`;
+      list.innerHTML = `<section class="plan-empty" aria-label="开始安排运动"><div class="plan-empty-art" aria-hidden="true"><svg viewBox="0 0 80 80" fill="none"><rect x="13" y="16" width="54" height="52" rx="12"/><path d="M13 32h54M28 11v12M52 11v12"/><path class="plan-empty-check" d="m29 49 8 8 16-18"/></svg><span class="plan-empty-sport sport-icon" data-sport="羽毛球">${sportIcon("羽毛球")}</span></div><h3>安排你的每周运动</h3><button type="button" class="btn primary" id="plan_example"><span aria-hidden="true">＋</span>添加第一条计划</button></section>`;
       list.querySelector<HTMLButtonElement>("#plan_example")!.onclick = () => openEditor();
       return;
     }
