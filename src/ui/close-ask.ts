@@ -19,6 +19,14 @@ export function hideCloseAsk() {
 }
 
 function onCloseAskKeydown(ev: KeyboardEvent) {
+  if (ev.key === "Tab") {
+    const controls = [...closeAskRoot().querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)")];
+    const first = controls[0], last = controls[controls.length - 1];
+    if (first && (ev.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+      ev.preventDefault();
+      (ev.shiftKey ? last : first).focus();
+    }
+  }
   if (ev.key === "Escape") {
     ev.preventDefault();
     hideCloseAsk();
@@ -30,6 +38,7 @@ async function applyCloseChoice(
   remember: boolean,
   disarm: boolean,
   savePrefs: boolean,
+  confirmed = false,
 ) {
   if (savePrefs) {
     try {
@@ -52,15 +61,16 @@ async function applyCloseChoice(
   }
   hideCloseAsk();
   if (toTray) await invoke("hide_to_tray");
-  else await invoke(disarm ? "force_quit_app" : "quit_app");
+  else await invoke(confirmed ? "force_quit_app" : "quit_app");
 }
 
-export function showCloseAsk(busy = false) {
+export function showCloseAsk(busy = false, plans = false) {
+  const guarded = busy || plans;
   const root = closeAskRoot();
   let remember = true;
   let busyFlag = false;
 
-  if (!busy) {
+  if (!guarded) {
     void invoke<ShellPrefs>("get_shell_prefs")
       .then((p) => {
         const defaultUsed = Boolean(p.close_remember_default_used);
@@ -75,12 +85,12 @@ export function showCloseAsk(busy = false) {
   window.addEventListener("keydown", onCloseAskKeydown);
 
   function paint() {
-    const title = busy ? "挂机进行中" : "关闭窗口";
-    const lead = busy
-      ? "当前有挂机或执行任务。最小化到托盘可继续运行；退出会停止本轮，后台自动预约也将暂停。"
+    const title = busy ? "预约任务进行中" : plans ? "自动预约已开启" : "关闭窗口";
+    const lead = guarded
+      ? `${busy ? "当前任务" : "长期计划"}需要应用保持运行。留在托盘可继续预约；退出后${busy ? "停止当前任务，并" : ""}停止后台自动预约。计划会保留，下次启动后继续生效，已提交的预约不会取消。`
       : "挂机开抢时建议最小化到托盘，避免误关进程。";
-    const quitLabel = busy ? "退出并取消挂机" : "退出应用";
-    const rememberBlock = busy
+    const quitLabel = guarded ? "停止并退出" : "退出应用";
+    const rememberBlock = guarded
       ? ""
       : `<label class="close-ask-remember">
             <input type="checkbox" id="close_ask_remember" ${remember ? "checked" : ""} ${
@@ -97,7 +107,7 @@ export function showCloseAsk(busy = false) {
           <div class="close-ask-actions">
             <button type="button" class="btn primary" id="close_ask_tray" ${
               busyFlag ? "disabled" : ""
-            }>最小化到托盘</button>
+            }>${guarded ? "留在托盘" : "最小化到托盘"}</button>
             <button type="button" class="btn ghost" id="close_ask_quit" ${
               busyFlag ? "disabled" : ""
             }>${quitLabel}</button>
@@ -119,7 +129,7 @@ export function showCloseAsk(busy = false) {
       busyFlag = true;
       paint();
       try {
-        await applyCloseChoice(true, remember, false, !busy);
+        await applyCloseChoice(true, remember, false, !guarded);
       } catch (e) {
         busyFlag = false;
         paint();
@@ -131,7 +141,7 @@ export function showCloseAsk(busy = false) {
       busyFlag = true;
       paint();
       try {
-        await applyCloseChoice(false, remember, busy, !busy);
+        await applyCloseChoice(false, remember, busy, !guarded, guarded);
       } catch (e) {
         busyFlag = false;
         paint();
@@ -140,4 +150,5 @@ export function showCloseAsk(busy = false) {
     });
   }
   paint();
+  root.querySelector<HTMLButtonElement>("#close_ask_tray")?.focus();
 }

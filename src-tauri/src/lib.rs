@@ -221,6 +221,17 @@ impl Default for ArmFile {
 #[derive(Clone, Serialize)]
 struct CloseAskPayload {
     armed: bool,
+    plans: bool,
+}
+
+#[derive(Debug, PartialEq)]
+enum CloseAction { Tray, Confirm, Update, Exit }
+
+fn close_action(remembered: bool, to_tray: bool, busy: bool, plans: bool, update: bool) -> CloseAction {
+    if remembered && to_tray { CloseAction::Tray }
+    else if busy || plans || !remembered { CloseAction::Confirm }
+    else if update { CloseAction::Update }
+    else { CloseAction::Exit }
 }
 
 pub struct AppState {
@@ -1286,36 +1297,21 @@ pub fn run() {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 let prefs = load_shell_prefs();
                 let busy = busy_now(window.app_handle());
-
-                if busy {
-                    if prefs.close_pref_set && prefs.close_to_tray {
+                let plans = booking_plans::enabled(window.app_handle());
+                match close_action(prefs.close_pref_set, prefs.close_to_tray, busy, plans, updates::has_update()) {
+                    CloseAction::Tray => {
                         api.prevent_close();
                         let _ = window.hide();
-                        return;
                     }
-                    // 询问 / 退出偏好：挂机中一律先问
-                    api.prevent_close();
-                    let _ = window.app_handle().emit(
-                        "shell-ask-close",
-                        CloseAskPayload { armed: true },
-                    );
-                    return;
-                }
-
-                if !prefs.close_pref_set {
-                    api.prevent_close();
-                    let _ = window.app_handle().emit(
-                        "shell-ask-close",
-                        CloseAskPayload { armed: false },
-                    );
-                    return;
-                }
-                if prefs.close_to_tray {
-                    api.prevent_close();
-                    let _ = window.hide();
-                } else if updates::has_update() || booking_plans::enabled(window.app_handle()) {
-                    api.prevent_close();
-                    tray::request_update_quit(window.app_handle());
+                    CloseAction::Confirm => {
+                        api.prevent_close();
+                        let _ = window.app_handle().emit("shell-ask-close", CloseAskPayload { armed: busy, plans });
+                    }
+                    CloseAction::Update => {
+                        api.prevent_close();
+                        tray::request_update_quit(window.app_handle());
+                    }
+                    CloseAction::Exit => {}
                 }
                 // else: allow close → exit
             }
@@ -1368,6 +1364,17 @@ pub fn run() {
 #[cfg(test)]
 mod task_snapshot_tests {
     use super::*;
+    #[test]
+    fn closing_with_plans_requires_confirmation_even_before_a_run_starts() {
+        assert_eq!(close_action(true, false, false, true, false), CloseAction::Confirm);
+        assert_eq!(close_action(true, false, false, true, true), CloseAction::Confirm);
+        assert_eq!(close_action(true, false, true, false, false), CloseAction::Confirm);
+        assert_eq!(close_action(true, true, false, true, false), CloseAction::Tray);
+        assert_eq!(close_action(true, true, true, true, false), CloseAction::Tray);
+        assert_eq!(close_action(false, true, false, false, false), CloseAction::Confirm);
+        assert_eq!(close_action(true, false, false, false, true), CloseAction::Update);
+        assert_eq!(close_action(true, false, false, false, false), CloseAction::Exit);
+    }
     #[test]
     fn tray_and_bundle_share_the_display_name_while_upgrade_identity_stays_stable() {
         let config: Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();

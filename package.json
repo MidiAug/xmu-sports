@@ -1,7 +1,7 @@
 {
   "name": "xmu-sports",
   "private": true,
-  "version": "0.1.34",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "test": "node scripts/test_run_failure.mjs && node scripts/test_booking_eligibility.mjs && node scripts/test_booking_progress.mjs && node scripts/test_ui_reliability.mjs && node scripts/test_history_availability.mjs && node scripts/test_availability_requests.mjs && node scripts/test_app_update.mjs && node scripts/test_auto_app_update.mjs && node scripts/test_booking_plan_hints.mjs && node scripts/test_booking_plans.mjs && node scripts/test_booking_plans_store.mjs",

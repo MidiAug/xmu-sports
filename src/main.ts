@@ -12,7 +12,6 @@ import { showCloseAsk } from "./ui/close-ask";
 import { preloadHistory } from "./pages/history";
 import { renderLive } from "./pages/live";
 import { renderSetup } from "./pages/setup";
-import { askConfirm } from "./ui/confirm-ask";
 import { closeShellSelects } from "./ui/select";
 import { getVersion } from "@tauri-apps/api/app";
 import { startAutoAppUpdate } from "./lib/app-update";
@@ -64,14 +63,14 @@ document.addEventListener("contextmenu", event => event.preventDefault(), { capt
 void win.onResized(() => {
   void syncMaximized();
 });
-void listen<{ armed?: boolean }>("shell-ask-close", (ev) => {
-  log.info("shell", "ask_close", { armed: Boolean(ev.payload?.armed) });
-  showCloseAsk(Boolean(ev.payload?.armed));
-});
-void listen("shell-plan-exit", async () => {
+void listen<{ armed?: boolean; plans?: boolean }>("shell-ask-close", (ev) => {
+  log.info("shell", "ask_close", { armed: Boolean(ev.payload?.armed), plans: Boolean(ev.payload?.plans) });
   closeShellSelects();
-  if (await askConfirm({title:"退出后自动预约将暂停",lead:"长期计划会保留，下次启动后继续。保持电脑唤醒并留在托盘，才能按时预约。",confirmLabel:"退出应用",cancelLabel:"留在后台"})) await invoke("force_quit_app");
-  else await invoke("hide_to_tray");
+  showCloseAsk(Boolean(ev.payload?.armed), Boolean(ev.payload?.plans));
+});
+void listen("shell-plan-exit", () => {
+  closeShellSelects();
+  showCloseAsk(false, true);
 });
 void listen<{plans?:boolean}>("shell-update-exit",event=>{closeShellSelects();showUpdateExit(openAppUpdates,Boolean(event.payload?.plans));});
 void listen("arm-changed", () => {

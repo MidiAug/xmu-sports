@@ -40,7 +40,9 @@ const lines=[
   "Call DetectInPlaceUpdate",`WriteINIStr "${result}" "fresh" "inplace" $InPlaceUpdate`,
   'WriteRegStr HKCU "${UNINSTKEY}" "UninstallString" "test-only-uninstaller.exe"',
 ];
-for (const [name,version] of [["upgrade","0.1.8"],["repair",config.version],["downgrade","0.2.0"]]) {
+const [major,minor,patch]=config.version.split('.').map(Number);
+const newerVersion=`${major}.${minor}.${patch+1}`;
+for (const [name,version] of [["upgrade","0.1.8"],["repair",config.version],["downgrade",newerVersion]]) {
   lines.push("StrCpy $InPlaceUpdate 0","StrCpy $UpdateMode 0",`WriteRegStr HKCU "\${UNINSTKEY}" "DisplayVersion" "${version}"`,"Call DetectInPlaceUpdate",
     `WriteINIStr "${result}" "${name}" "inplace" $InPlaceUpdate`,`WriteINIStr "${result}" "${name}" "update" $UpdateMode`);
 }
