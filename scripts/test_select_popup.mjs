@@ -13,12 +13,12 @@ const module=asModule(readFileSync("src/ui/select.ts","utf8").replace('"./icons"
 const css=readFileSync(join("dist/assets",readdirSync("dist/assets").find(name=>name.endsWith(".css"))),"utf8");
 const fixture=join(root,"fixture.html");
 writeFileSync(fixture,`<!doctype html><html data-shell-theme="light"><meta charset="utf-8"><style>${css}
-body{margin:0}.shell{--nav-w:194px}.fixture-spacer{height:230px}.fixture-tail{height:500px}</style>
+body{margin:0}.shell{--nav-w:194px}.fixture-spacer{height:230px}.fixture-tail{height:500px}#venue{max-width:160px}</style>
 <div id="app"><div class="shell"><div class="shell-row"><aside class="nav"><div class="nav-brand">XMU Sports</div></aside><div class="shell-main"><div class="titlebar"></div><main class="main"><div class="content"><div id="panel" class="page-stack setup-page"><h2>预约场馆</h2><div class="fixture-spacer"></div><div class="booking-form-card"><div class="task-grid"><div class="settings-cell"><label class="settings-cell-title">时段</label><div id="slot"></div></div><div class="settings-cell"><label class="settings-cell-title">场馆</label><div id="venue"></div></div></div></div><button id="outside">后续设置</button><div class="fixture-tail"></div></div></div></main></div></div></div></div>
 <script type="module">import {mountShellSelect,closeShellSelects} from ${JSON.stringify(module)};
 window.changed=[];const options=Array.from({length:12},(_,i)=>({value:String(i),label:(8+i)+':00–'+(9+i)+':00'}));
 const courts=options.map((o,i)=>({value:o.value,label:i===0?'自动选择':String(i).padStart(2,'0')+' 号场地',badge:i>0?'已锁':undefined}));
-window.selects={slot:mountShellSelect(document.querySelector('#slot'),options,'3',v=>changed.push(v),{columns:true}),venue:mountShellSelect(document.querySelector('#venue'),courts,'2',v=>changed.push(v),{compact:true})};document.addEventListener('click',closeShellSelects);window.ready=true;</script>`);
+window.selects={slot:mountShellSelect(document.querySelector('#slot'),options,'3',v=>changed.push(v),{columns:true}),venue:mountShellSelect(document.querySelector('#venue'),courts,'2',v=>changed.push(v),{compact:true,align:'end'})};document.addEventListener('click',closeShellSelects);window.ready=true;</script>`);
 const browser=await launchBrowser(process.env.SELECT_TEST_BROWSER);
 let cases=0;
 try {
@@ -42,6 +42,14 @@ try {
         assert.ok(result.bottom<=Math.min(height-8,result.panelBottom-8)+1,JSON.stringify(result));
         assert.ok(result.hit,"a visible option must receive clicks without a panel covering it");
         if(id==='venue') assert.ok(result.right-result.left<=321,'compact court menu stays within 320px');
+        if(id==='venue') {
+          const anchor=await trigger.boundingBox();
+          if(anchor.x+anchor.width-(result.right-result.left)>=Math.max(8,result.panelLeft+8)) {
+            assert.ok(Math.abs(result.right-(anchor.x+anchor.width))<=1,'end-aligned popup shares the trigger right edge');
+          } else {
+            assert.ok(Math.abs(result.left-Math.max(8,result.panelLeft+8))<=1,'viewport boundary takes precedence when right alignment cannot fit');
+          }
+        }
         assert.equal(result.native,!fallback);
         if(width===960&&height===720&&id==="slot"&&!fallback)await page.screenshot({path:join(root,"slot-fixed-960.png")});
         if(width===960&&height===720&&id==="venue"&&!fallback)await page.screenshot({path:join(root,"court-compact-960.png")});

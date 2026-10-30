@@ -28,6 +28,21 @@ try {
     }
   }
   await page.setViewportSize({width:1100,height:760});
+  await page.locator('.app-header [data-tab="setup"]').click();
+  await page.locator('#sport_host .choice-option').filter({hasText:'健身房'}).click();
+  for(const size of [{width:1100,height:760},{width:960,height:600}]) {
+    await page.setViewportSize(size);
+    await page.locator('#venue_host .shell-select-trigger').click();
+    const trigger=await page.locator('#venue_host .shell-select-trigger').boundingBox();
+    const menu=await page.locator('#venue_host .shell-select-menu').boundingBox();
+    assert.ok(Math.abs(menu.x+menu.width-trigger.x-trigger.width)<=1,'venue popup is right aligned');
+    for(const theme of ['light','dark']) {
+      await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+      await page.screenshot({path:`artifacts/page-layout/venue-${theme}-${size.width}.png`});
+    }
+    await page.keyboard.press('Escape');
+  }
+  await page.setViewportSize({width:1100,height:760});
   await page.locator('.app-header [data-tab="plans"]').click();
   await page.locator('#plan_example').click();
   for(const theme of ['light','dark']) {

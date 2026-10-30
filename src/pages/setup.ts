@@ -423,7 +423,7 @@ export async function renderSetup(panel: Element) {
     refreshSlots(venueSlotPrefs[venueSelect.getValue()]);
     scheduleSave();
     scheduleAvailability();
-  }, { minMenuWidth: 260 });
+  }, { minMenuWidth: 260, align: "end" });
   const slotSelect = mountChoiceGroup(
     slotHost,
     [],

@@ -9,7 +9,7 @@ export function mountShellSelect(
   options: SelectOption[],
   selected: string,
   onChange: (value: string) => void,
-  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean; matchTrigger?:boolean; minMenuWidth?: number },
+  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean; matchTrigger?:boolean; minMenuWidth?: number; align?: "start" | "end" },
 ): { getValue: () => string; setOptions: (opts: SelectOption[], sel?: string) => void; setDisabled: (disabled: boolean) => void } {
   let value = selected;
   let selectOpts = options;
@@ -108,7 +108,8 @@ export function mountShellSelect(
     const openAbove = below < wantedHeight && above > below;
     const height = Math.min(wantedHeight, openAbove ? above : below);
     menu.style.maxHeight = `${height}px`;
-    menu.style.left = `${Math.max(left, Math.min(anchor.left, right - width))}px`;
+    const alignedLeft = opts?.align === "end" ? anchor.right - width : anchor.left;
+    menu.style.left = `${Math.max(left, Math.min(alignedLeft, right - width))}px`;
     menu.style.top = `${openAbove ? anchor.top - 8 - height : anchor.bottom + 8}px`;
   }
 
