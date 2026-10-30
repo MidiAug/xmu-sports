@@ -166,9 +166,9 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     let venue = sport.venues.find(v => v.id === existing?.venue) ?? sport.venues[0];
     let selected = new Set(existing?.weekdays ?? [1, 2, 3, 4, 5, 6, 7]);
     let slot = existing ? `${existing.start}|${existing.end}` : `${venue.time_slots[0].start}|${venue.time_slots[0].end}`;
-    editor.innerHTML = `<form class="plan-editor"><h3>${copying ? "复制计划" : existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
+    editor.innerHTML = `<form class="plan-editor"><div class="plan-editor-main"><h3>${copying ? "复制计划" : existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
       <fieldset><legend>去运动的星期</legend><div class="plan-presets"><button type="button" data-days="1,2,3,4,5,6,7">每天</button><button type="button" data-days="1,2,3,4,5">工作日</button><button type="button" data-days="6,7">周末</button></div><div class="plan-weekdays">${days.map((d, i) => `<button type="button" data-day="${i + 1}" aria-label="周${d}" aria-pressed="${selected.has(i + 1)}">${d}</button>`).join("")}</div></fieldset>
-      <p class="plan-preview" id="plan_preview"></p>${copying ? `<p class="plan-preview">副本保存后默认停用，请调整星期后再启用。</p>` : ""}<p class="plan-preview" id="plan_paused_hint" hidden>自动计划已暂停，保存后仍需点击“恢复计划”。</p><p class="msg" id="plan_form_msg" role="status"></p><div class="plan-actions"><button type="submit" class="btn primary"></button><button type="button" class="btn ghost" id="plan_cancel">取消</button></div></form>`;
+      </div><aside class="plan-editor-summary"><span class="plan-editor-eyebrow">前一天自动开抢</span><strong class="plan-editor-fire">07:00</strong><p class="plan-preview" id="plan_preview"></p>${copying ? `<p class="plan-preview">副本保存后默认停用，请调整星期后再启用。</p>` : ""}<p class="plan-preview" id="plan_paused_hint" hidden>自动计划已暂停，保存后仍需点击“恢复计划”。</p><p class="msg" id="plan_form_msg" role="status"></p><div class="plan-actions"><button type="submit" class="btn primary"></button><button type="button" class="btn ghost" id="plan_cancel">取消</button></div><p class="plan-editor-condition">预约时保持电脑唤醒、联网</p></aside></form>`;
     updateEditorStatus = () => {
       editor.querySelector<HTMLElement>("#plan_paused_hint")!.hidden = !view.plans.paused;
       editor.querySelector<HTMLButtonElement>('[type="submit"]')!.textContent = copying ? "保存为停用计划" : existing || view.plans.paused ? "保存计划" : "保存并启用";
@@ -177,7 +177,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     const preview = () => {
       editor.querySelectorAll<HTMLButtonElement>("[data-day]").forEach(b => b.setAttribute("aria-pressed", String(selected.has(Number(b.dataset.day)))));
       editor.querySelectorAll<HTMLButtonElement>("[data-days]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.days!.split(",").map(Number).every(d => selected.has(d)) && b.dataset.days!.split(",").length === selected.size)));
-      editor.querySelector("#plan_preview")!.textContent = selected.size ? `${weekdaysLabel([...selected].sort((a, b) => a - b))} ${slot.replace("|", "–")} 去运动，前一天 07:00 开抢` : "至少选择一天";
+      editor.querySelector("#plan_preview")!.textContent = selected.size ? `${weekdaysLabel([...selected].sort((a, b) => a - b))} · ${slot.replace("|", "–")}` : "至少选择一天";
     };
     const slots = () => venue.time_slots.map(t => ({ value: `${t.start}|${t.end}`, label: `${t.start}–${t.end}` }));
     const slotSelect = mountShellSelect(editor.querySelector<HTMLElement>("#plan_slot")!, slots(), slot, value => { slot = value; preview(); });

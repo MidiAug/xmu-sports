@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 
 assert.ok(existsSync("dist/assets"),"Run npm run build before npm run test:ui");
 const scripts=[
+  "test_page_layout_ui",
   "test_shell_navigation_ui", "test_booking_plans_ui", "test_my_orders",
   "test_midnight_booking_ui", "test_schedule_delay_ui", "test_history_availability_ui",
   "test_about_ui", "test_version_update", "test_settings_layout", "test_select_popup", "test_order_recheck",

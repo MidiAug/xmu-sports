@@ -42,19 +42,36 @@
 .plan-dates strong { margin:0; font-size:13px; font-weight:500; }
 .plan-card[data-enabled="false"] .plan-week-strip > [data-selected="true"] { color:var(--color-muted); background:var(--color-control); }
 .plan-card[data-enabled="false"] { background:color-mix(in srgb,var(--color-panel) 70%,var(--color-canvas)); }
-.plan-editor { padding:26px; border-color:var(--color-line); border-radius:18px; }
-.plan-editor h3 { font-size:18px; margin-bottom:24px; }
-.plan-editor fieldset { margin-top:26px; }
-.plan-presets { width:fit-content; padding:4px; gap:2px; border-radius:10px; background:var(--color-control); }
-.plan-presets button { min-height:30px; padding:5px 16px; border-radius:7px; }
+.plan-editor { display:grid; grid-template-columns:minmax(0,1fr) 260px; padding:0; border-color:var(--color-line); border-radius:18px; overflow:hidden; }
+.plan-editor-main { min-width:0; padding:26px 28px; }
+.plan-editor h3 { font-size:18px; margin:0 0 24px; }
+.plan-fields { grid-template-columns:1fr 1.45fr; gap:18px 14px; }
+.plan-fields > label:last-child { grid-column:1 / -1; }
+.plan-fields .shell-select-trigger { height:40px; background:var(--color-control); border-color:transparent; border-radius:10px; }
+.plan-editor fieldset { margin:26px 0 0; }
+.plan-editor legend { margin-bottom:12px; }
+.plan-presets { width:fit-content; padding:3px; gap:2px; border-radius:9px; background:var(--color-control); margin-bottom:14px; }
+.plan-presets button { min-height:28px; padding:4px 14px; border-radius:6px; }
 .plan-presets button[aria-pressed="true"] { background:var(--color-panel); color:var(--color-accent); box-shadow:0 1px 4px rgb(0 0 0 / 5%); }
-.plan-weekdays { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:10px; }
-.plan-weekdays button { width:100%; height:48px; border-radius:11px; background:var(--color-control); border-color:transparent; }
-.plan-weekdays button[aria-pressed="true"] { background:color-mix(in srgb,var(--color-accent) 12%,var(--color-panel)); color:var(--color-accent); }
+.plan-weekdays { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:8px; }
+.plan-weekdays button { width:100%; height:40px; border-radius:10px; background:transparent; border-color:var(--color-line-strong); }
+.plan-weekdays button[aria-pressed="true"] { background:color-mix(in srgb,var(--color-accent) 10%,var(--color-panel)); border-color:transparent; color:var(--color-accent); }
 .plan-weekdays button:hover { border-color:var(--color-line-strong); }
-#plan_preview { padding:14px 16px; margin:20px 0 0; border-radius:10px; color:var(--color-secondary-ink); background:var(--color-control); line-height:1.7; }
-.plan-editor > .plan-actions { margin-top:22px; }
-.plan-editor > .plan-actions .btn { height:38px; padding:0 16px; font-size:13px; }
+.plan-editor-summary { display:flex; flex-direction:column; min-width:0; padding:30px 24px 24px; background:var(--color-booking); border-left:1px solid var(--color-booking-line); }
+.plan-editor-eyebrow { color:var(--color-muted); font-size:12px; }
+.plan-editor-fire { margin:8px 0 0; font-size:38px; line-height:1.25; font-weight:600; letter-spacing:-1px; font-variant-numeric:tabular-nums; }
+#plan_preview { padding:0; margin:14px 0 24px; background:transparent; color:var(--color-secondary-ink); font-size:13px; line-height:1.8; }
+.plan-editor-summary .plan-preview:not(#plan_preview) { font-size:12px; line-height:1.7; margin:0 0 14px; }
+.plan-editor-summary > .msg:empty { display:none; }
+.plan-editor-summary > .plan-actions { flex-direction:column; align-items:stretch; gap:8px; margin-top:auto; padding-top:24px; }
+.plan-editor-summary .plan-actions .btn { height:38px; padding:0 14px; font-size:13px; }
+.plan-editor-condition { margin:18px 0 0; font-size:11px; color:var(--color-muted); text-align:center; }
+.plans-page[data-editing="true"] .plan-footnote { display:none; }
+@media(max-width:680px) {
+  .plan-editor { grid-template-columns:1fr; }
+  .plan-editor-main { padding:22px; }
+  .plan-editor-summary { border-left:0; border-top:1px solid var(--color-booking-line); }
+}
 .plan-footnote { max-width:720px; padding:0 3px; }
 @media(max-width:800px) {
   .plans-summary { grid-template-columns:minmax(0,1fr) auto; gap:18px; padding:20px; }
@@ -149,3 +166,9 @@
 .confirm-ask-details dt { color:var(--color-muted); }
 .confirm-ask-details dd { margin:0; color:var(--color-ink); overflow-wrap:anywhere; }
 @media(max-width:1080px) { .settings-page > .preference-card { padding:20px; } .settings-page > .settings-diagnostics { padding:0; } }
+
+/* All primary pages share the same title origin and content width. */
+.content > .page-stack { max-width:1180px; width:100%; margin:0 auto; }
+.page-stack > .page-heading { align-items:flex-start; margin:0; padding:0; }
+.page-stack > .page-heading h2 { margin:0; font-size:24px; line-height:1.4; }
+.page-stack > .page-heading > .btn { margin-top:0; }
