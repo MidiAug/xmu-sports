@@ -48,6 +48,7 @@ try {
   await page.goto(base);
   await page.locator(".plan-card").first().waitFor();
   assert.equal(await page.locator(".plan-card").count(),2);
+  assert.equal(await page.locator('.plan-card').first().locator('.plan-week-strip [data-selected="true"]').count(),7);
   assert.match(await page.locator("#plans_health").innerText(),/微信未检测到运行.*会话/);
   assert.match(await page.locator(".plan-card").first().innerText(),/每天/);
   await page.locator("#plans_pause").click();await page.getByText("自动计划已暂停",{exact:true}).waitFor();
@@ -111,12 +112,14 @@ try {
   await page.waitForFunction(()=>window.__plans.rules.some(r=>r.weekdays.length===5));
   await page.locator('#plan_editor').waitFor({state:"hidden"});
   assert.deepEqual(await page.evaluate(id=>window.__plans.rules.find(r=>r.id===id).weekdays,rules[0].id),[1,2,3,4,5]);
+  assert.equal(await page.locator(`[data-plan="${rules[0].id}"] .plan-week-strip [data-selected="true"]`).count(),5);
   mkdirSync("artifacts/booking-plans",{recursive:true});
   await page.evaluate(()=>document.documentElement.dataset.shellTheme="light");
   await page.screenshot({path:"artifacts/booking-plans/plans-light.png"});
   await page.setViewportSize({width:960,height:600});
   await page.evaluate(()=>document.documentElement.dataset.shellTheme="dark");
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.screenshot({path:"artifacts/booking-plans/plans-dark-narrow.png"});
   await page.locator(`[data-edit="${rules[0].id}"]`).click();
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.locator('[data-day="1"]').focus();await page.keyboard.press("Space");
