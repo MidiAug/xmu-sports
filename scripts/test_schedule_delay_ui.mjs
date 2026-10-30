@@ -28,7 +28,12 @@ try {
     };
   });
   await page.goto(process.env.XMU_TEST_BASE_URL ?? "http://127.0.0.1:1421");
+  await page.emulateMedia({reducedMotion:'reduce'});
   await page.locator(".task-advanced summary").click();
+  await page.clock.runFor(600);
+  await page.waitForFunction(()=>{const el=document.querySelector('.task-advanced');return el.getBoundingClientRect().bottom<=el.closest('.content').getBoundingClientRect().bottom+1;});
+  const advancedBounds=await page.locator('.task-advanced').evaluate(el=>({box:el.getBoundingClientRect().toJSON(),viewport:el.closest('.content').getBoundingClientRect().toJSON(),scroll:el.closest('.content').scrollTop,open:el.open}));
+  assert.ok(advancedBounds.box.bottom<=advancedBounds.viewport.bottom+1,`expanded options scroll into view: ${JSON.stringify(advancedBounds)}`);
   const delay=page.locator("#fire_delay");
   await delay.fill("10");
   await page.waitForFunction(()=>JSON.parse(localStorage.getItem("fixture-task")??"null")?.fire_delay_seconds===10);

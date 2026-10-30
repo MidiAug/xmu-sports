@@ -1,6 +1,40 @@
 # Desktop booking redesign QA — 2026-10-30
 
-## Current follow-up: colorful direct sport grid
+## Current review: compact chrome and complete booking flows
+
+final result: passed
+
+### Sources and evidence
+
+- Latest user instructions: 56px title bar, settings at top right, no footer and no persistent version text; automatic reveal of advanced options; complete venue names and time choices; structured booking confirmation; modernize plans, progress, history and settings.
+- User visual evidence: `codex-clipboard-b75a7ca6-71be-4a2c-84c2-d2acf84c404b.png` (venue clipping), `codex-clipboard-cce18da7-7752-4786-841a-9ddde68674ac.png` (unnecessary time scroll), and `codex-clipboard-6fcdd6bf-6557-49a1-8a11-c724f6c71c11.png` (426 × 183 confirmation crop). The original selected mock remains the color and asset direction; these corrections intentionally change layout and density.
+- Opened official visual references: [Linear UI redesign](https://linear.app/now/how-we-redesigned-the-linear-ui), its [actual after screen](https://webassets.linear.app/images/ornj730p/production/9b91020243984487b4e0cbe72278dd1acd7f9c57-2352x1380.png), [Raycast Settings](https://manual.raycast.com/settings), and its [actual launcher settings screen](https://fz1sd71lwhbqy6sh.public.blob.vercel-storage.com/raycast/images/app/basics/mac-basics-settings-launcher.png). Reference files are local under ignored `artifacts/design-references/`; none are shipped application assets. Adopted principles are aligned labels, quiet surfaces, grouped controls and a clear primary task, not those products' navigation or branding.
+- Final implementation captures under `artifacts/page-polish/`: `setup-light-final.png`, `plans-light-final.png`, `progress-light-final.png`, `settings-light-final.png`, `history-empty-light.png`, `confirmation-light.png`, `venue-menu.png`, and `advanced-visible.png`. Standard CSS viewport is 1100 × 760, DPR 1; full frame captures have the same pixel dimensions. Populated history evidence: `artifacts/compact-availability-025/history.png` at 960 × 900.
+- Minimum/dark evidence: `settings-dark-minimum.png`, `plans-dark-minimum.png`, `confirmation-dark-minimum.png` at 960 × 600, DPR 1. Additional automated fixtures cover navigation, pending outcomes, errors, selection, focus, availability and updates.
+- Combined source/implementation input opened: `artifacts/page-polish/confirmation-before-after.png`. Left is the unscaled 426 × 183 user crop; right is the implementation dialog cropped from the 1100 × 760 frame to 440 × 419. Different dialog height and different sport/time content are intentional. This is a hierarchy/content comparison, not a claim of identical framing or pixel matching.
+
+### Findings, fixes and post-fix evidence
+
+1. **Resolved P2 — crowded title bar and incomplete drag targets.** Title bar reduced from 72px to 56px; progress joins primary navigation, settings remains a single icon at top right, version is available through settings/about, and the discarded footer is absent. Header mouse handling covers noninteractive descendants, excluding buttons/links/order popup content and secondary clicks. Full-shell browser tests verify seven drag targets, control exclusions and one maximize invocation for a double click. Native debug window, correct binary path and loaded 1420 document were verified. Native coordinate gestures were attempted; absolute window displacement and native double-click state were not established by that automation, so they are not counted as passed physical assertions.
+2. **Resolved P2 — clipped venue names and unnecessary time scrollbar.** Venue menu now has a 260px minimum constrained by the content viewport. Time options use the complete natural-height grid; the internal scrolling/resize observer was removed. Tests assert complete venue labels, popup width and no internal time overflow. Post-fix evidence: `venue-menu.png`, `setup-light-final.png`.
+3. **Resolved P1 — advanced options could remain partly below view.** Opening scrolls the expanded content into view. A later test exposed a 31px shift when an asynchronous availability warning changed form height; observe the form while options are open and reveal again, disconnecting on close/page disposal. Reduced-motion regression deterministically checks final bounds, and default smooth scrolling was visually verified. Post-fix bounds in the preview were bottom 759.9 within a viewport ending at 760; see `advanced-visible.png`.
+4. **Resolved P2 — unstructured confirmation and lost focus after cancellation.** Added a date/time summary and semantic definition list for sport, venue and execution time. The initiator was disabled while confirming, so the generic dialog's early focus restore could fail; the booking page now restores it after re-enabling controls on dismissal. Escape/focus regression confirms no booking command was invoked. Post-fix evidence: combined comparison and light/dark confirmation captures.
+5. **Resolved P1 — page changes inherited old scroll position.** Visual inspection after expanding options showed the next page's heading above the viewport. Explicit navigation resets content scroll, while same-page refreshes retain it and plan targeting can still focus the requested rule. Full-shell regression verifies the new heading starts at scroll zero.
+6. **Resolved P2 — inconsistent page hierarchy/density.** Plans now use two-column sport schedule cards and a compact next-run summary; progress emphasizes queue/time/state and execution stages; history uses neutral cards with semantic dots and a separate filter strip; settings groups appearance and startup side by side with favorites and support sections below. A first arrangement pushed narrow-window rules to y=400.6; reduced summary padding and recaptured the final layout. Plan/shell regressions and final light/dark captures pass.
+
+### Required fidelity surfaces and limits
+
+- Typography: native Segoe UI/Microsoft YaHei stack retained; 24px page headings, 13–14px controls/body, restrained secondary text, 23–29px schedule/confirmation emphasis. No external font dependency or raster text was introduced.
+- Spacing/layout: 56px header, consistent page margins, 18–20px rounded surfaces, deliberate section gaps and two-column plans/settings. Long content uses the page's vertical scroll; no portrait product layout was introduced. Title bar, settings and primary actions remain reachable at the desktop minimum.
+- Colors/tokens: selected blue, cool white and mint direction preserved, with navy/dark mint alternatives. Result borders no longer dominate history; semantic status dots and disabled states remain distinct.
+- Assets: existing generated local brand mark and licensed MingCute sport icons reused, including plan cards. Official research screenshots are reference-only. No placeholder charts, decorative CSS artwork or fake product data is shipped.
+- Copy/content: sport/venue/date/time are real task fields, and execution time is separate from the sports date. Business state, pending results, cancellation checks and scheduling semantics are unchanged. Shell version removal does not remove About/update functionality.
+- Validation: `npm test`, production build and the final complete 11-group UI suite passed. New regression assertions cover drag routing, no footer/version display, navigation scroll reset, update indicators, structured confirmation/dismissal, venue labels, complete times and advanced reveal. Browser console had no error entries in final preview inspection.
+- Native development host compiled and loaded this checkout; no real booking, explicit login recovery, cancellation, update installation or installer acceptance was performed. System display scaling/zoom and native physical drag distance remain verification limits.
+
+No actionable P0/P1/P2 visual findings remain in the reviewed browser states. Preview is retained locally, temporary viewport overrides are reset, and native development work remains separate from offline fixture acceptance.
+
+## Historical follow-up: colorful direct sport grid
 
 The latest user correction rejects the sport dropdown and explicitly restores colorful direct choices without horizontal scrolling. It supersedes the dropdown decision in the historical follow-up below.
 

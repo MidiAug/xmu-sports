@@ -423,7 +423,7 @@ export async function renderSetup(panel: Element) {
     refreshSlots(venueSlotPrefs[venueSelect.getValue()]);
     scheduleSave();
     scheduleAvailability();
-  });
+  }, { minMenuWidth: 260 });
   const slotSelect = mountChoiceGroup(
     slotHost,
     [],
@@ -441,7 +441,17 @@ export async function renderSetup(panel: Element) {
     },
     { label: "时段", kind: "slot" },
   );
-  scope.onDispose(slotSelect.dispose);
+  const advanced = panel.querySelector<HTMLDetailsElement>(".task-advanced")!;
+  const revealAdvanced = () => {
+    if (advanced.open) advanced.scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+  };
+  // Availability messages can change the form height after opening the options.
+  const advancedLayout = new ResizeObserver(revealAdvanced);
+  advanced.addEventListener("toggle", () => {
+    if (advanced.open) { advancedLayout.observe(advanced.closest(".booking-form-card")!); revealAdvanced(); }
+    else advancedLayout.disconnect();
+  });
+  scope.onDispose(() => advancedLayout.disconnect());
 
   function sportOptions(): SelectOption[] {
     return selectable.map((s) => {
@@ -698,13 +708,21 @@ export async function renderSetup(panel: Element) {
     const scheduled = mode === "primary" && !isFireAtPast(task.fire_at);
     const blocked = mode === "prepare" ? null : selectionBlockedReason() ?? (scheduled ? hangBlockedReason(task) : bookingBlockedReason(task));
     if (blocked) { toastError("暂时无法开始", blocked); return; }
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    let dismissed = false;
     starting = true; updateSummary();
     try {
       if (mode !== "prepare" && !await askConfirm({
         title: scheduled ? "安排定时预约？" : "现在预约？",
-        lead: `${task.sport}，${task.venue}，${formatTargetDateHuman(task.target_date)} ${task.target_time_start}–${task.target_time_end}。${scheduled ? `${formatFireAtHuman(task.fire_at)}（北京时间）自动执行。` : "成功后会真实预约。"}`,
+        lead: scheduled ? "届时自动执行，请保持电脑唤醒和联网。" : "确认后将向学校提交预约。",
+        summary: { label: formatMonthDayWeekday(task.target_date), value: `${task.target_time_start} – ${task.target_time_end}` },
+        details: [
+          { label: "运动", value: task.sport },
+          { label: "场馆", value: task.venue },
+          { label: "执行时间", value: scheduled ? `${formatFireAtHuman(task.fire_at).replace(/ 开抢$/, "")}（北京时间）` : "现在" },
+        ],
         confirmLabel: scheduled ? "定时预约" : "立即预约",
-      })) return;
+      })) { dismissed = true; return; }
       if (!scope.current()) return;
       saveTaskDraft(task);
       await flushTask();
@@ -713,7 +731,10 @@ export async function renderSetup(panel: Element) {
       else await invoke("start_http_run", { until: mode === "prepare" ? "auth" : "submit" });
       if (scope.current()) document.querySelector<HTMLButtonElement>('.nav-tabs [data-tab="live"]')?.click();
     } catch (error) { if (scope.current()) toastError("未能开始", String(error)); }
-    finally { starting = false; if (scope.current()) updateSummary(); }
+    finally {
+      starting = false;
+      if (scope.current()) { updateSummary(); if (dismissed) trigger?.focus(); }
+    }
   }
   panel.querySelector<HTMLButtonElement>("#setup_primary")!.onclick = () => { void start("primary"); };
   panel.querySelector<HTMLButtonElement>("#setup_now")!.onclick = () => { void start("now"); };

@@ -7,6 +7,7 @@ import { outcomeFromEvent } from "../lib/run-outcome";
 import { formatEventTimeHuman, formatMonthDayWeekday } from "../lib/format-human";
 import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, type BookingPlan, type BookingPlansView } from "../lib/booking-plans";
 import { bookingPlans } from "../lib/booking-plans-store";
+import { sportIcon } from "../ui/sport-icons";
 
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export async function renderBookingPlans(panel: Element, options?: { focusPlanId?: string }) {
@@ -101,7 +102,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       const venue = sport?.venues.find(v => v.id === r.venue);
       const next = view.next.find(n => n.id === r.id);
       return `<article class="plan-card" draggable="true" data-plan="${r.id}" data-enabled="${r.enabled}">
-        <div class="plan-card-top"><span class="plan-priority" aria-label="优先级 ${index + 1}">${index + 1}</span><div class="plan-title"><strong>${escape(sport?.label ?? r.sport)}</strong><span>${escape(venue?.label ?? r.venue)}</span></div>
+        <div class="plan-card-top"><span class="plan-priority plan-sport-icon sport-icon" data-sport="${escape(sport?.label ?? r.sport)}" aria-label="优先级 ${index + 1}">${sportIcon(sport?.label ?? r.sport)}<small>${index + 1}</small></span><div class="plan-title"><strong>${escape(sport?.label ?? r.sport)}</strong><span>${escape(venue?.label ?? r.venue)}</span></div>
         <label class="switch plan-enable"><input type="checkbox" aria-label="启用${escape(sport?.label ?? r.sport)}计划" data-enable="${r.id}" ${r.enabled ? "checked" : ""}></label></div>
         <div class="plan-schedule"><strong>${r.start}–${r.end}</strong><span>${weekdaysLabel(r.weekdays)}</span></div>
         <div class="plan-dates">${next ? `<span>下次运动 <strong>${formatMonthDayWeekday(next.date)}</strong></span><span>${view.plans.paused ? "恢复后按计划 " : ""}${escape(formatEventTimeHuman(next.fire_at))} 开抢</span>` : `<span>本计划已停用</span>`}</div>

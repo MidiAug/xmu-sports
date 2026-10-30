@@ -17,6 +17,29 @@ try {
   await page.clock.install({time:new Date("2026-10-30T12:00:00+08:00")});
   await page.goto(base);
   await page.locator('.plan-card').first().waitFor();
+  const windowCalls=command=>page.evaluate(command=>window.__calls.filter(call=>call.command===command).length,command);
+  const dragCommand='plugin:window|start_dragging';
+  for(const selector of ['.app-header','.nav-brand','.brand-mark','.nav-brand h1','.nav-primary','.header-drag-space','.header-actions']) {
+    const before=await windowCalls(dragCommand);
+    await page.locator(selector).dispatchEvent('mousedown',{button:0,detail:1});
+    assert.equal(await windowCalls(dragCommand),before+1,`non-interactive header region must drag: ${selector}`);
+  }
+  const noDrag=await windowCalls(dragCommand);
+  for(const selector of ['.nav-primary [data-tab="plans"] span','.my-orders-toggle span:first-of-type','.titlebar-right svg','.header-settings svg']) {
+    await page.locator(selector).first().dispatchEvent('mousedown',{button:0,detail:1});
+  }
+  await page.locator('.header-drag-space').dispatchEvent('mousedown',{button:2,detail:1});
+  assert.equal(await windowCalls(dragCommand),noDrag,'controls and secondary mouse button must not start dragging');
+  const maximize=await windowCalls('plugin:window|toggle_maximize');
+  await page.locator('.header-drag-space').dblclick();
+  assert.equal(await windowCalls('plugin:window|toggle_maximize'),maximize+1,'double clicking header space toggles maximize once');
+  await page.locator('.my-orders-toggle').click();
+  const popupDrag=await windowCalls(dragCommand);
+  await page.locator('.my-orders-popup h2').dispatchEvent('mousedown',{button:0,detail:1});
+  assert.equal(await windowCalls(dragCommand),popupDrag,'reading order popup content must not drag the window');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.app-header [data-tab="settings"]').count(),1);
+  assert.equal(await page.locator('.app-footer,.nav-foot,.nav-version').count(),0,'shell has no footer or version display');
   assert.equal(await page.locator('.nav-tabs [aria-current="page"]').getAttribute('data-tab'),'plans');
   assert.equal(await page.locator('.booking-modes').count(),0);
   assert.match(await page.locator('#plans_next').innerText(),/明天 07:00/);
@@ -25,8 +48,10 @@ try {
   const planReads=()=>page.evaluate(()=>window.__calls.filter(c=>c.command==='get_booking_plans').length);
   const firstReads=await planReads();
   await page.screenshot({path:`${output}/plans-light.png`});
+  await page.locator('.content').evaluate(el=>el.scrollTop=el.scrollHeight);
   await page.getByRole('button',{name:'运行',exact:true}).click();
   await page.locator('.plan-queue-row').waitFor();
+  assert.equal(await page.locator('.content').evaluate(el=>el.scrollTop),0,'changing pages starts at the new page heading');
   assert.equal(await page.getByText('尚未配置任务',{exact:true}).isVisible(),false);
   assert.equal(await page.locator('#live_configuration').isVisible(),false,'no duplicate management action beside the queue');
   assert.equal(await planReads(),firstReads,'navigation reuses the application plan snapshot');
@@ -107,6 +132,8 @@ try {
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
     for(const size of [{width:960,height:720},{width:960,height:600}]) {
       await page.setViewportSize(size);
+      const header=await page.locator('.app-header').boundingBox();
+      assert.equal(header.height,56,'header keeps a compact height at both desktop sizes');
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
       const card=await page.locator('.plan-card').first().boundingBox();
       await page.screenshot({path:`${output}/plans-${theme}-${size.width}.png`});

@@ -3,6 +3,8 @@
 export type ConfirmAskOpts = {
   title: string;
   lead: string;
+  summary?: { label: string; value: string };
+  details?: { label: string; value: string }[];
   confirmLabel?: string;
   cancelLabel?: string;
   /** 确认按钮用危险样式（清空/删除类） */
@@ -57,9 +59,11 @@ export function askConfirm(opts: ConfirmAskOpts): Promise<boolean> {
 
     root.innerHTML = `
       <div class="close-ask-backdrop" role="presentation">
-        <div class="close-ask" role="dialog" aria-modal="true" aria-labelledby="confirm_ask_title">
+        <div class="close-ask confirm-ask${opts.summary ? " confirm-ask--structured" : ""}" role="dialog" aria-modal="true" aria-labelledby="confirm_ask_title" aria-describedby="confirm_ask_lead">
           <h2 id="confirm_ask_title" class="close-ask-title"></h2>
-          <p class="close-ask-lead"></p>
+          ${opts.summary ? '<div class="confirm-ask-summary"><span></span><strong></strong></div>' : ""}
+          ${opts.details?.length ? '<dl class="confirm-ask-details"></dl>' : ""}
+          <p class="close-ask-lead" id="confirm_ask_lead"></p>
           <div class="close-ask-actions">
             <button type="button" class="btn ghost" data-confirm-cancel>${cancelLabel}</button>
             <button type="button" class="${confirmClass}" data-confirm-ok>${confirmLabel}</button>
@@ -70,6 +74,16 @@ export function askConfirm(opts: ConfirmAskOpts): Promise<boolean> {
 
     root.querySelector(".close-ask-title")!.textContent = opts.title;
     root.querySelector(".close-ask-lead")!.textContent = opts.lead;
+    if (opts.summary) {
+      root.querySelector(".confirm-ask-summary span")!.textContent = opts.summary.label;
+      root.querySelector(".confirm-ask-summary strong")!.textContent = opts.summary.value;
+    }
+    for (const detail of opts.details ?? []) {
+      const row = document.createElement("div");
+      const label = document.createElement("dt"), value = document.createElement("dd");
+      label.textContent = detail.label; value.textContent = detail.value;
+      row.append(label, value); root.querySelector(".confirm-ask-details")!.append(row);
+    }
 
     const backdrop = root.querySelector(".close-ask-backdrop") as HTMLElement;
     const dialog = root.querySelector(".close-ask") as HTMLElement;

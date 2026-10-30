@@ -16,6 +16,7 @@ import { mountPage } from "../lib/page-lifecycle";
 import { updatePrefs } from "../lib/prefs-store";
 import { mountStartupSettings } from "../ui/startup-settings";
 import { renderAbout } from "./about";
+import { watchAppUpdate } from "../lib/app-update";
 
 function themeCubesHtml(): string {
   const pref = currentThemePref();
@@ -150,6 +151,11 @@ export async function renderSettings(panel: Element) {
   panel.querySelector<HTMLButtonElement>(".settings-about-entry")!.onclick = () => {
     void renderAbout(panel, () => { void renderSettings(panel); });
   };
+  scope.onDispose(watchAppUpdate(state => {
+    const available = state.release?.status === "available";
+    const ready = state.phase === "downloaded" || state.phase === "installing" || state.phase === "error" && state.failedAt === "install";
+    panel.querySelector(".settings-about-entry div span")!.textContent = `版本 ${version}　${available ? ready ? "更新已下载，可查看安装" : "有更新，查看更新内容" : "项目地址与应用更新"}`;
+  }));
 
   panel.querySelectorAll("[data-theme]").forEach((btn) => {
     btn.addEventListener("click", () => {

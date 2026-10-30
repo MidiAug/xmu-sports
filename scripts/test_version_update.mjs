@@ -31,28 +31,28 @@ const css = readFileSync(join('dist/assets', readdirSync('dist/assets').find(nam
 const fixture = join(output, 'fixture.html');
 const notes = ['## 更新内容', '', '- **修复场次人数显示**', '- 保留凌晨立即执行入口', '', '| 日期 | 执行方式 |', '| --- | --- |', '| 明天 | 今天 07:00 |', '', '```html', '<script>示例代码</script>', '```', '', '[GitHub](https://github.com/MidiAug/xmu-sports)', '[危险链接](javascript:alert(1))', '<script>window.pwned=true</script><img src="https://example.com/tracker.png" onerror="window.pwned=true"><iframe src="https://example.com"></iframe>'].join('\n');
 writeFileSync(fixture, `<!doctype html><html data-shell-theme="light"><meta charset="utf-8"><style>${css}</style>
-<div id="app"><div class="shell"><div class="shell-row"><header class="app-header"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button>计划</button><button>记录</button></nav><div class="header-actions"><div class="nav-foot"><span class="nav-version">v0.1.29</span></div></div></header><div class="shell-main"><main class="main"><div class="content" id="panel">预约</div></main></div></div></div></div>
+<div id="app"><div class="shell"><div class="shell-row"><header class="app-header"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button>计划</button><button>记录</button></nav><div class="header-drag-space"></div><nav class="nav-tabs nav-utility"><button type="button" class="header-settings" aria-label="设置">设置</button></nav></header><div class="shell-main"><main class="main"><div class="content" id="panel">预约</div></main></div></div></div></div>
 <script>window.calls=[];window.opened=[];window.releaseNotes=${JSON.stringify(notes).replaceAll('<','\\u003c')};window.mockInvoke=async command=>{calls.push(command);if(command==='check_app_update')return {status:window.releaseStatus||'available',version:'0.2.0',size:10485760,notes:window.releaseNotes};if(command==='download_app_update')return 'synthetic.exe';throw Error('Installation is unavailable in this fixture');};</script>
-<script type="module">import {mountVersionUpdate} from ${JSON.stringify(icon)};import {renderAbout} from ${JSON.stringify(about)};import {checkAppUpdate} from ${JSON.stringify(controller)};import {disposePage} from ${JSON.stringify(lifecycle)};
-const panel=document.querySelector('#panel');window.leave=()=>{disposePage(panel);panel.textContent='预约';};window.openAbout=()=>renderAbout(panel,leave);mountVersionUpdate(document.querySelector('.nav-foot'),openAbout);window.check=checkAppUpdate;window.ready=true;</script>`);
+<script type="module">import {mountSettingsUpdateIndicator} from ${JSON.stringify(icon)};import {renderAbout} from ${JSON.stringify(about)};import {checkAppUpdate} from ${JSON.stringify(controller)};import {disposePage} from ${JSON.stringify(lifecycle)};
+const panel=document.querySelector('#panel');window.leave=()=>{disposePage(panel);panel.textContent='预约';};window.openAbout=()=>renderAbout(panel,leave);const settings=document.querySelector('.header-settings');settings.onclick=openAbout;mountSettingsUpdateIndicator(settings);window.check=checkAppUpdate;window.ready=true;</script>`);
 const browser = await launchBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 1200, height: 840 } });
   await page.goto(pathToFileURL(fixture).href);
   await page.waitForFunction(() => window.ready);
-  assert.equal(await page.locator('.version-update').isVisible(), true);
-  assert.equal(await page.locator('.version-update-status').isVisible(), false);
-  assert.match(await page.locator('.version-update').innerText(),/v0.1.29/);
-  await page.locator('.version-update .nav-version').click();
+  assert.equal(await page.locator('.header-settings').isVisible(), true);
+  assert.equal(await page.locator('.settings-update-dot').isVisible(), false);
+  assert.equal(await page.locator('.nav-version,.nav-foot').count(),0);
+  await page.locator('.header-settings').click();
   assert.match(await page.locator('#update_status').innerText(), /自动检查.*24小时/);
   assert.deepEqual(await page.evaluate(() => window.calls), [], 'opening About never triggers a check');
   await page.screenshot({ path: join(output, 'automatic-policy.png') });
   await page.evaluate(() => window.leave());
   await page.evaluate(() => window.check());
-  await page.getByRole('button', { name: '有新版本 0.2.0，查看应用更新' }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '下载更新', exact: true }).waitFor();
-  assert.equal(await page.locator('.version-update-label').innerText(),'有更新');
-  assert.equal(await page.locator('.version-update .nav-version').count(),1,'version text belongs to the same clickable entry');
+  assert.equal(await page.locator('.settings-update-dot').isVisible(),true);
+  assert.match(await page.locator('.header-settings').getAttribute('aria-description'),/有更新/);
   assert.match(await page.locator('#update_status').innerText(), /发现新版本 0.2.0/);
   assert.deepEqual(await page.evaluate(() => window.calls), ['check_app_update']);
   await page.locator('#update_notes summary').click();
@@ -69,20 +69,21 @@ try {
   await page.screenshot({ path: join(output, 'available-light.png') });
   await page.getByRole('button', { name: '下载更新', exact: true }).click();
   await page.getByRole('button', { name: '退出并安装', exact: true }).waitFor();
-  assert.equal(await page.locator('.version-update-label').innerText(),'可安装');
+  assert.match(await page.locator('.header-settings').getAttribute('aria-description'),/已下载/);
   assert.equal(await page.locator('.release-notes').evaluate(el => el.firstChild===window.notesNode && el.scrollTop===window.notesScroll), true, 'progress keeps rendered notes and scroll position');
   await page.getByRole('button', { name: '返回', exact: true }).click();
-  await page.locator('.version-update').focus();
+  await page.locator('.header-settings').focus();
   await page.keyboard.press('Enter');
   await page.getByRole('button', { name: '退出并安装', exact: true }).waitFor();
   assert.deepEqual(await page.evaluate(() => window.calls), ['check_app_update', 'download_app_update']);
   await page.evaluate(() => document.documentElement.dataset.shellTheme = 'dark');
-  assert.equal(await page.locator('.version-update').evaluate(button => getComputedStyle(button).outlineStyle), 'none');
+  assert.equal(await page.locator('.header-settings').evaluate(button => getComputedStyle(button).outlineStyle), 'none');
   await page.screenshot({ path: join(output, 'keyboard-focus-dark.png') });
-  await page.locator('.version-update').evaluate(button => button.blur());
+  await page.locator('.header-settings').evaluate(button => button.blur());
   await page.screenshot({ path: join(output, 'downloaded-dark.png') });
   await page.evaluate(async () => { window.releaseStatus = 'current'; await window.check(); });
-  assert.equal(await page.locator('.version-update').isVisible(), true);
-  assert.equal(await page.locator('.version-update-status').isVisible(), false);
-  console.log('Version update browser checks passed: visibility, keyboard navigation, retained release/download, no duplicate check, current version hides icon');
+  assert.equal(await page.locator('.header-settings').isVisible(), true);
+  assert.equal(await page.locator('.settings-update-dot').isVisible(), false);
+  assert.equal(await page.locator('.header-settings').getAttribute('aria-description'),null);
+  console.log('Settings update indicator passed: no shell version display, available/downloaded hint, keyboard navigation, retained release/download and no duplicate check');
 } finally { await browser.close(); }

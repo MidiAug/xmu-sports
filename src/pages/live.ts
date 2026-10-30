@@ -227,7 +227,7 @@ function paintLiveBody(
 
   patchHtml(panel, `
     <div class="page-stack live-page">
-      <div class="page-heading"><div><h2>运行状态</h2><p>当前进度、执行队列与预约结果</p></div><button type="button" class="btn ghost" id="live_configuration" ${t ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : busy ? "查看配置" : "修改单次预约"}</button></div>
+      <div class="page-heading"><div><h2>运行进度</h2><p>当前进度、执行队列与预约结果</p></div><button type="button" class="btn ghost" id="live_configuration" ${t ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : busy ? "查看配置" : "修改单次预约"}</button></div>
       <section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section>
       ${outcomeBlock}
       ${envRowHtml(wxText, wxRunning)}

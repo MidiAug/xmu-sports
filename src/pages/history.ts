@@ -260,7 +260,7 @@ export async function renderHistory(panel: Element) {
   try {
     panel.innerHTML = `
       <div class="page-stack history-page">
-        <div class="page-heading"><h2>活动记录</h2></div>
+        <div class="page-heading"><div><h2>活动记录</h2><p>按时间回看预约、登录与执行结果</p></div></div>
         <div class="history-summary-group">
           <div class="history-filter-selects">
             <div id="history_kind_host"></div>

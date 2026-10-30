@@ -9,7 +9,7 @@ export function mountShellSelect(
   options: SelectOption[],
   selected: string,
   onChange: (value: string) => void,
-  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean; matchTrigger?:boolean },
+  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean; matchTrigger?:boolean; minMenuWidth?: number },
 ): { getValue: () => string; setOptions: (opts: SelectOption[], sel?: string) => void; setDisabled: (disabled: boolean) => void } {
   let value = selected;
   let selectOpts = options;
@@ -97,7 +97,7 @@ export function mountShellSelect(
     const detailed=selectOpts.some(o=>o.badge);
     const wantedWidth = opts?.matchTrigger ? anchor.width : compact ? Math.min(320, Math.max(280, anchor.width))
       : Math.max(anchor.width, detailed ? 420 : useColumns() ? selectOpts.length >= 9 ? 400 : 300 : anchor.width);
-    const width = Math.min(wantedWidth, right - left);
+    const width = Math.min(Math.max(wantedWidth, opts?.minMenuWidth ?? 0), right - left);
     const columns = useColumns() ? Math.max(1, Math.min(compact || detailed ? 2 : selectOpts.length >= 9 ? 3 : 2, Math.floor((width - 12) / (compact ? 130 : detailed ? 190 : 124)))) : 1;
     menu.style.width = `${width}px`;
     menu.style.setProperty("--select-columns", String(columns));

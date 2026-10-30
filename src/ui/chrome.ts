@@ -1,4 +1,3 @@
-import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ShellThemePref, Tab } from "../types";
 import {
@@ -27,7 +26,7 @@ import { toastError } from "./toast";
 import { askConfirm } from "./confirm-ask";
 
 import { mountMyOrders } from "./my-orders";
-import { mountVersionUpdate } from "./version-update";
+import { mountSettingsUpdateIndicator } from "./version-update";
 import { renderAbout } from "../pages/about";
 import brandMark from "../assets/brand-mark.png";
 import { calendarIcon } from "./sport-icons";
@@ -88,11 +87,12 @@ function bindChromeOnce() {
     }
   });
 
-  app.addEventListener("dblclick", (ev) => {
-    const t = ev.target as HTMLElement | null;
-    if (t?.closest?.(".titlebar-drag") || t?.closest?.(".nav-brand-text")) {
-      void onWin("maximize");
-    }
+  app.querySelector<HTMLElement>(".app-header")!.addEventListener("mousedown", (event) => {
+    const target = event.target as Element;
+    if (event.button !== 0 || target.closest("button,a,input,select,textarea,summary,[role=button],.my-orders-popup")) return;
+    event.preventDefault();
+    if (event.detail === 2) void onWin("maximize");
+    else void win.startDragging().catch(error => log.warn("chrome", "window_drag_failed", { error: String(error) }));
   });
 
   void syncMaximized();
@@ -115,20 +115,9 @@ function updateWinButtons() {
   });
 }
 
-async function fillNavFoot() {
-  const foot = app.querySelector("#nav_foot");
-  if (!foot) return;
-  try {
-    const version = await getVersion();
-    foot.querySelector(".nav-version")!.textContent = `v${version}`;
-    foot.removeAttribute("hidden");
-  } catch {
-    foot.setAttribute("hidden", "");
-  }
-}
-
 export function openAppUpdates() {void showTab("settings",true);}
 async function showTab(next: Tab, about = false, planId?: string) {
+  const resetScroll = next !== tab || about || !!planId;
   setTab(next);
   const request = ++navigation;
   log.debug("chrome", "show_tab", { tab: next });
@@ -141,6 +130,7 @@ async function showTab(next: Tab, about = false, planId?: string) {
   }
   try {
     disposePage(panel);
+    if (resetScroll) panel.scrollTop = 0;
     await flushTask();
     if (request !== navigation || next !== tab) return;
     if (next === "setup") await renderSetup(panel);
@@ -168,25 +158,23 @@ function mountShell() {
   app.innerHTML = `
     <div class="shell">
       <div class="shell-row">
-        <header class="nav app-header" data-tauri-drag-region>
+        <header class="nav app-header">
           <div class="nav-brand">
-            <div class="nav-brand-text" data-tauri-drag-region>
+            <div class="nav-brand-text">
               <img class="brand-mark" src="${brandMark}" alt="" draggable="false" />
-              <div data-tauri-drag-region><h1 data-tauri-drag-region>XMU Sports</h1><span class="brand-subtitle" data-tauri-drag-region>厦门大学体育场馆预约${import.meta.env.DEV ? ' <small>开发版</small>' : ""}</span></div>
+              <h1>XMU Sports</h1>
             </div>
           </div>
           <nav class="nav-tabs nav-primary" aria-label="主导航">
             <button type="button" data-tab="setup" aria-label="单次预约" class="${tab === "setup" ? "active" : ""}"><span class="nav-tab-label">预约</span></button>
             <button type="button" data-tab="plans" class="${tab === "plans" ? "active" : ""}"><span class="nav-tab-label">长期计划</span></button>
+            <button type="button" data-tab="live" aria-label="运行" class="${tab === "live" ? "active" : ""}${runIndicatorOn ? " has-run-dot" : ""}"><span class="nav-tab-label">进度</span></button>
             <button type="button" data-tab="history" aria-label="历史" class="${tab === "history" ? "active" : ""}"><span class="nav-tab-label">记录</span></button>
           </nav>
+          <div class="header-drag-space" aria-hidden="true"></div>
           <div class="header-actions">
           <section class="my-orders" id="my_orders" aria-label="未核销预约"></section>
-          <nav class="nav-tabs nav-utility" aria-label="应用">
-            <button type="button" data-tab="live" aria-label="运行" class="header-progress ${tab === "live" ? "active" : ""}${runIndicatorOn ? " has-run-dot" : ""}">${SVG.tabHistory}<span class="nav-tab-label">运行/进度</span></button>
-            <button type="button" data-tab="settings" aria-label="设置" class="header-settings ${tab === "settings" ? "active" : ""}">${SVG.tabSettings}</button>
-          </nav>
-          <div class="nav-foot" id="nav_foot" hidden><span class="nav-version"></span></div>
+          <nav class="nav-tabs nav-utility" aria-label="应用"><button type="button" data-tab="settings" aria-label="设置" class="header-settings ${tab === "settings" ? "active" : ""}">${SVG.tabSettings}</button></nav>
           <div class="titlebar-right">${wins}</div>
           </div>
         </header>
@@ -201,11 +189,7 @@ function mountShell() {
   chromeBound = false;
   bindChromeOnce();
   updateNavActive();
-  void fillNavFoot();
-  mountVersionUpdate(app.querySelector("#nav_foot")!, () => {
-    setTab("settings");
-    void showTab("settings", true);
-  });
+  mountSettingsUpdateIndicator(app.querySelector<HTMLButtonElement>(".header-settings")!);
   mountMyOrders(app.querySelector<HTMLElement>("#my_orders")!, { popover: true, icon: calendarIcon });
   if (!dateClockStarted) {
     dateClockStarted = true;

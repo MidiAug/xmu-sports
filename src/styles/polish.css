@@ -1,0 +1,90 @@
+/* Shared desktop rhythm: quiet surfaces, clear task hierarchy and deliberate grouping. */
+.page-heading p { margin-top:6px; color:var(--color-muted); font-size:13px; line-height:1.65; }
+.plans-page,.live-page,.history-page { max-width:1000px; gap:20px; }
+.plans-page .page-heading,.live-page .page-heading,.history-page .page-heading { margin-bottom:2px; }
+.plans-summary { padding:20px; border:0; border-radius:20px; }
+.plan-state-heading { font-size:15px; }
+.plan-next { gap:7px 14px; padding-top:18px; margin-top:4px; }
+.plan-next > strong { font-size:25px; letter-spacing:-.5px; color:var(--color-secondary-ink); }
+.plan-list { grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }
+.plan-list-heading,.plan-list > .empty { grid-column:1 / -1; }
+.plan-list-heading { padding:4px 2px; }
+.plan-card { grid-template-columns:minmax(0,1fr); padding:22px; border-color:transparent; box-shadow:0 3px 18px rgb(26 75 138 / 2%); gap:14px 20px; }
+.plan-card > .plan-actions { grid-column:1; grid-row:auto; justify-content:flex-end; align-self:auto; padding-top:12px; margin:0; border-top:1px solid var(--color-line); }
+.plan-card-top { gap:13px; }
+.plan-sport-icon { position:relative; display:grid; place-items:center; width:42px; height:42px; border-radius:12px; background:var(--color-control); }
+.plan-sport-icon svg { width:25px; height:25px; }
+.plan-sport-icon small { position:absolute; left:-4px; top:-4px; display:grid; place-items:center; width:16px; height:16px; border-radius:6px; background:var(--color-panel); color:var(--color-muted); border:1px solid var(--color-line); font-size:9px; }
+.plan-title { flex-direction:column; align-items:flex-start; gap:3px; }
+.plan-title strong { font-size:16px; }
+.plan-title span { font-size:12px; }
+.plan-schedule { gap:8px 14px; padding-top:4px; }
+.plan-schedule strong { font-size:23px; }
+.plan-schedule > span { padding:3px 9px; border-radius:7px; color:var(--color-secondary-ink); background:var(--color-control); font-size:12px; }
+.plan-dates { padding-top:6px; }
+.plan-card[data-enabled="false"] { background:color-mix(in srgb,var(--color-panel) 70%,var(--color-canvas)); }
+.plan-editor { padding:24px; border-color:var(--color-line); border-radius:20px; }
+.plan-editor h3 { font-size:17px; }
+.live-plan-queue { padding:24px; border:0; border-radius:20px; background:var(--color-panel); }
+.plan-queue-heading h3 { font-size:20px; }
+.plan-queue-schedule { margin:12px 0 20px; font-size:13px; }
+.plan-queue-row { padding:16px 0; gap:14px; }
+.plan-queue-row .plan-priority { width:28px; height:28px; border-radius:9px; background:var(--color-control); }
+.plan-queue-time { font-size:16px; font-weight:550; }
+.plan-queue-status { padding:4px 9px; border-radius:7px; background:var(--color-control); color:var(--color-secondary-ink); }
+.live-env { border:0; padding:0 4px; font-size:12px; }
+.live-page .settings-group-body,.booking-execution { border-radius:18px; border-color:var(--color-line); background:var(--color-panel); overflow:hidden; }
+.live-page .settings-group-title { padding-left:3px; }
+.live-hero { padding:24px; background:var(--color-booking); }
+.live-countdown-value { font-size:38px; line-height:1.3; letter-spacing:-1px; }
+.live-brief { padding:22px 24px; }
+.live-brief-title { font-size:17px; }
+.booking-track { padding:16px 12px; background:var(--color-control); border-radius:12px; }
+.booking-step-icon { border-radius:10px; }
+.booking-details { margin:18px 22px; }
+.live-outcome { padding:22px; border-radius:16px; border-color:var(--color-line); }
+.history-summary-group { padding:0; border-radius:0; background:transparent; }
+.history-filter-selects { padding:0 0 4px; margin-bottom:18px; gap:10px; }
+.history-filter-selects .shell-select-trigger { border:0; background:var(--color-panel); height:38px; border-radius:10px; }
+.history-filter-clear { border:0; background:transparent; color:var(--color-muted); }
+.run-card,.run-card.ok,.run-card.err { border-color:transparent; border-radius:16px; background:var(--color-panel); }
+.run-card-head { padding:19px 20px; gap:13px; align-items:center; }
+.run-card-dot { width:8px; height:8px; margin-top:0; box-shadow:0 0 0 4px color-mix(in srgb,currentColor 8%,transparent); }
+.run-card-title { font-size:14px; font-weight:550; line-height:1.6; }
+.run-card.ok .run-card-title,.run-card.err .run-card-title { color:var(--color-ink); }
+.run-card-meta { margin-top:5px; line-height:1.6; }
+.run-card-body { margin:0 20px 20px; padding:18px 0 0; border-top:1px solid var(--color-line); }
+.run-flow,.run-stages { margin-top:14px; }
+.run-stage-row { min-height:46px; }
+.settings-page { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:18px; max-width:980px; align-items:stretch; }
+.settings-page > .page-heading,.settings-page > .settings-favorites,.settings-page > .msg { grid-column:1 / -1; }
+.settings-page > .page-heading { margin-bottom:4px; }
+.settings-page > .preference-card { border-color:transparent; border-radius:18px; padding:24px; }
+.preference-card-heading h3 { font-size:16px; font-weight:600; }
+.preference-card-heading p { font-size:12px; margin-top:6px; }
+.settings-page .settings-cell-title { font-size:14px; }
+.settings-page .settings-cell-desc { font-size:12px; line-height:1.65; }
+.settings-page .settings-theme-cubes { max-width:none; width:100%; gap:10px; }
+.settings-page .theme-preview { height:65px; border-radius:8px; }
+.settings-page .settings-theme-cube { border-radius:12px; padding:8px; }
+.settings-page .settings-cell { padding:18px 0; }
+.settings-favorites-header h3 { font-size:15px; font-weight:600; }
+.settings-page > .settings-diagnostics { padding:0; }
+.settings-diagnostics summary { padding:22px; }
+.settings-diagnostics summary strong,.settings-about-entry strong { font-size:14px; font-weight:550; }
+.settings-diagnostics summary div > span,.settings-about-entry div > span { font-size:12px; line-height:1.7; }
+.settings-about-entry { align-self:start; min-height:88px; }
+.confirm-ask { padding:25px; border-radius:20px; width:min(400px,100%); }
+.confirm-ask .close-ask-title { font-size:19px; line-height:1.5; }
+.confirm-ask .close-ask-lead { line-height:1.75; }
+.confirm-ask .close-ask-actions { margin-top:24px; gap:10px; }
+.confirm-ask .close-ask-actions .btn { min-height:40px; padding:8px 17px; border-radius:10px; }
+.confirm-ask--structured { width:min(440px,100%); }
+.confirm-ask-summary { display:grid; gap:6px; margin:20px 0; padding:18px 20px; border-radius:14px; background:var(--color-nav-active); }
+.confirm-ask-summary span { font-size:13px; color:var(--color-secondary-ink); }
+.confirm-ask-summary strong { font-size:29px; font-weight:650; letter-spacing:-.7px; line-height:1.3; font-variant-numeric:tabular-nums; }
+.confirm-ask-details { margin:0 0 18px; display:grid; gap:14px; }
+.confirm-ask-details > div { display:grid; grid-template-columns:76px minmax(0,1fr); gap:14px; font-size:13px; line-height:1.7; }
+.confirm-ask-details dt { color:var(--color-muted); }
+.confirm-ask-details dd { margin:0; color:var(--color-ink); overflow-wrap:anywhere; }
+@media(max-width:1080px) { .settings-page > .preference-card { padding:20px; } .settings-page > .settings-diagnostics { padding:0; } }
