@@ -426,7 +426,7 @@ fn apply_run_badge(app: &tauri::AppHandle, on: bool) {
 }
 
 fn sync_run_badge(app: &tauri::AppHandle, state: &AppState) {
-    let on = load_arm().armed || child_running(state);
+    let on = load_arm().armed || child_running(state) || booking_plans::upcoming(app);
     apply_run_badge(app, on);
 }
 
@@ -1019,9 +1019,8 @@ fn disarm_hang(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Stri
 }
 
 #[tauri::command]
-fn set_run_badge(app: tauri::AppHandle, state: State<'_, AppState>, on: Option<bool>) -> Result<(), String> {
-    let flag = on.unwrap_or_else(|| load_arm().armed || child_running(&state));
-    apply_run_badge(&app, flag);
+fn set_run_badge(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    sync_run_badge(&app, &state);
     Ok(())
 }
 

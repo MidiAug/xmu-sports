@@ -1,4 +1,4 @@
-import { toastError } from "./toast";
+import { toastError, toastSuccess } from "./toast";
 import { invoke } from "@tauri-apps/api/core";
 import type { LiveStatus } from "../types";
 import { sports } from "../lib/catalog";
@@ -8,6 +8,7 @@ import { nextPlanRound, type BookingPlansView } from "../lib/booking-plans";
 import { patchHtml } from "./patch-html";
 import { sportIcon } from "./sport-icons";
 import { SVG } from "./icons";
+import { bookingPlans } from "../lib/booking-plans-store";
 
 export function renderPlanQueue(host: HTMLElement, view: BookingPlansView | undefined, status?: LiveStatus | null): boolean {
   const content = document.createElement("div");
@@ -23,7 +24,7 @@ export function renderPlanQueue(host: HTMLElement, view: BookingPlansView | unde
   content.innerHTML = `<div class="plan-queue-overview"><div class="plan-queue-heading"><div><span class="section-eyebrow">长期计划</span><h3></h3></div><button type="button" class="btn ghost live-context-action" data-tab="plans">管理计划${SVG.arrowUpRight}</button></div><p class="plan-queue-schedule"></p></div><ol class="plan-queue-items"></ol><div class="plan-queue-actions"></div>`;
   content.querySelector("h3")!.textContent = pending.length ? "预约结果待确认" : items.length ? `${formatEventTimeHuman(items[0].fireAt)} 开抢` : activeRound ? "本轮进行中" : "计划已暂停";
   content.querySelector(".section-eyebrow")!.textContent = items.length ? "下一次开抢" : pending.length ? "需要处理" : activeRound ? "正在预约" : "预约安排";
-  content.querySelector(".plan-queue-schedule")!.textContent = pending.length ? "请先核对结果，确认前不会自动重复下单" : items.length ? `${items.length} 项待执行 · 按开抢时间排列` : activeRound ? "当前预约结束后完成本轮" : "恢复计划后继续自动预约";
+  content.querySelector(".plan-queue-schedule")!.textContent = pending.length ? "请先核对结果，确认前不会自动重复下单" : items.length ? `${items.length} 项待执行，按开抢时间排列` : activeRound ? "当前预约结束后完成本轮" : "恢复计划后继续自动预约";
   const list = content.querySelector("ol")!;
   if (!items.length) { list.remove(); content.querySelector(".plan-queue-overview")!.classList.add("queue-overview-only"); }
   items.forEach((item, index) => {
@@ -33,12 +34,23 @@ export function renderPlanQueue(host: HTMLElement, view: BookingPlansView | unde
     row.innerHTML = `<span class="plan-queue-icon sport-icon">${sportIcon(sport?.label ?? item.sport)}<small>${index + 1}</small></span><div class="plan-queue-target"><strong></strong><span></span></div><span class="plan-queue-time"></span><span class="plan-queue-status"></span>`;
     row.querySelector<HTMLElement>(".plan-queue-icon")!.dataset.sport = sport?.label ?? item.sport;
     row.querySelector("strong")!.textContent = sport?.label ?? item.sport;
-    row.querySelector(".plan-queue-target > span")!.textContent = `${sport?.venues.find(v => v.id === item.venue || v.ocr_label === item.venue)?.label ?? item.venue} · ${formatMonthDayWeekday(item.date)}`;
+    const venue = document.createElement("span"); venue.textContent = sport?.venues.find(v => v.id === item.venue || v.ocr_label === item.venue)?.label ?? item.venue;
+    const date = document.createElement("span"); date.textContent = formatMonthDayWeekday(item.date);
+    const meta = row.querySelector(".plan-queue-target > span")!;
+    meta.className = "queue-target-meta"; meta.replaceChildren(venue, date);
     row.querySelector(".plan-queue-time")!.textContent = `${item.start}–${item.end}`;
     const source = document.createElement("button"); source.className="queue-source"; source.textContent=item.source;
     source.dataset.tab=item.source === "计划" ? "plans" : "setup";
     if(item.id) source.dataset.planId=item.id;
-    row.querySelector(".plan-queue-status")!.replaceChildren(source,document.createTextNode(` · ${`${formatEventTimeHuman(item.fireAt).replace(/ 开抢$/, "")} 开抢`}`));
+    const fire = document.createElement("span"); fire.textContent = `${formatEventTimeHuman(item.fireAt).replace(/ 开抢$/, "")} 开抢`;
+    const statusRow = row.querySelector(".plan-queue-status")!;
+    statusRow.replaceChildren(source, fire);
+    if (item.source === "计划" && item.id && view?.plans.rules.some(rule => rule.id === item.id) && ["upcoming", "queued"].includes(item.status)) {
+      const skip = document.createElement("button"); skip.type = "button"; skip.className = "queue-skip";
+      skip.dataset.skipPlan = item.id; skip.textContent = "跳过本次";
+      skip.setAttribute("aria-label", `跳过本次${sport?.label ?? item.sport}（${formatMonthDayWeekday(item.date)}）`);
+      statusRow.append(skip);
+    }
     list.append(row);
   });
   const actions = content.querySelector(".plan-queue-actions")!;
@@ -54,6 +66,16 @@ export function renderPlanQueue(host: HTMLElement, view: BookingPlansView | unde
     actions.append(stop);
   }
   patchHtml(host, content.innerHTML);
+  host.querySelectorAll<HTMLButtonElement>("[data-skip-plan]").forEach(button => {
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        const date = await invoke<string>("skip_booking_plan", { id: button.dataset.skipPlan });
+        toastSuccess("已跳过本次", `${formatMonthDayWeekday(date)} 的运动预约`);
+        await bookingPlans.read(true).catch(error => toastError("计划暂未更新", String(error)));
+      } catch (error) { toastError("跳过失败", String(error)); button.disabled = false; }
+    };
+  });
   const stop = host.querySelector<HTMLButtonElement>("[data-stop-round]");
   if (stop) {
     stop.onclick = async () => {

@@ -8,10 +8,10 @@ function paintIndicator() {
   if (on === runIndicatorOn) return;
   setRunIndicatorOn(on);
   app.querySelectorAll('[data-tab="live"]').forEach(btn => btn.classList.toggle("has-run-dot", on));
+  void invoke("set_run_badge").catch(() => {});
 }
 
 export function setRunIndicator(on: boolean) {
-  if (on !== taskActive) void invoke("set_run_badge", { on }).catch(() => {});
   taskActive = on;
   paintIndicator();
 }

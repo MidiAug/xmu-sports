@@ -168,7 +168,28 @@ fn task(rule: &Plan, date: NaiveDate) -> crate::BookingTask {
 
 fn changed(app: &tauri::AppHandle) {
     crate::tray::refresh_plans(app);
+    crate::sync_run_badge(app, &app.state::<crate::AppState>());
     let _ = app.emit("plans-changed", ());
+}
+
+fn has_upcoming(plans: &Plans, now: DateTime<FixedOffset>) -> bool {
+    if plans.paused || plans.attempts.iter().any(|a| a.status == "unconfirmed") {
+        return false;
+    }
+    if plans.attempts.iter().any(|a| a.status == "queued" || a.status == "running") {
+        return true;
+    }
+    let tomorrow = now.date_naive() + Duration::days(1);
+    plans.rules.iter().filter(|p| p.enabled).any(|rule| {
+        let fire = fire_at(skip_date(rule, plans, now));
+        fire >= now && fire.date_naive() <= tomorrow
+    })
+}
+
+pub fn upcoming(app: &tauri::AppHandle) -> bool {
+    let Some(state) = app.try_state::<Store>() else { return false; };
+    let Ok(locked) = state.0.lock() else { return false; };
+    locked.as_ref().is_ok_and(|plans| has_upcoming(plans, china_now()))
 }
 
 #[tauri::command]
@@ -631,9 +652,9 @@ fn tick(app: &tauri::AppHandle) -> Result<(), String> {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
             + 1;
         crate::start_arm_waiter(app.clone(), generation, arm.fire_at);
+        drop(locked);
         crate::sync_run_badge(app, &runtime);
         let _ = app.emit("arm-changed", ());
-        drop(locked);
         changed(app);
     }
     Ok(())
@@ -704,10 +725,14 @@ pub fn start(app: &tauri::AppHandle) {
     }
     app.manage(Store(Mutex::new(loaded)));
     crate::tray::refresh_plans(app);
+    crate::sync_run_badge(app, &app.state::<crate::AppState>());
     let app = app.clone();
     std::thread::spawn(move || {
         let mut counter = 0;
         loop {
+            if counter % 60 == 0 {
+                crate::sync_run_badge(&app, &app.state::<crate::AppState>());
+            }
             if counter % 60 == 0 && enabled(&app) {
                 remind(&app);
                 let _ = app.emit("plans-health", ());
@@ -741,6 +766,30 @@ mod tests {
             first_date: "2026-10-30".into(),
         }
     }
+    #[test]
+    fn upcoming_badge_tracks_opening_day_and_plan_state() {
+        let mut p = catalog_rule();
+        p.first_date = "2026-11-01".into();
+        p.weekdays = vec![1, 2, 3, 4, 5, 6, 7];
+        let mut plans = Plans { rules: vec![p.clone()], ..Plans::default() };
+        assert!(has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")), "tomorrow's opening lights the badge");
+        assert!(!has_upcoming(&plans, at("2026-10-29T23:59:59+08:00")), "distant opening stays quiet");
+        assert!(has_upcoming(&plans, at("2026-10-31T06:00:00+08:00")), "today's future opening lights the badge");
+        plans.paused = true;
+        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+        plans.paused = false;
+        plans.rules[0].enabled = false;
+        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+        plans.rules[0].enabled = true;
+        plans.attempts.push(Attempt { task: task(&p, NaiveDate::from_ymd_opt(2026, 11, 1).unwrap()), sport:p.sport.clone(), account:p.account.clone(), status:"unconfirmed".into(), message:String::new() });
+        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+        plans.attempts[0].status = "queued".into();
+        plans.rules.clear();
+        assert!(has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")), "frozen queue remains active without rules");
+        plans.attempts[0].status = "skipped".into();
+        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+    }
+
     #[test]
     fn dates_follow_sport_day_and_roll_over_year() {
         let mut p = rule();
