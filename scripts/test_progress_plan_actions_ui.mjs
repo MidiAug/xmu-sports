@@ -75,15 +75,21 @@ try {
  const restore=page.locator(`[data-restore-plan="${skippedId}"]`);
  await restore.waitFor();
  await page.clock.runFor(250);
+ assert.equal(await page.locator('.plan-skips-label').count(),1,'only cards with skipped dates show a label');
+ assert.equal(await page.locator('.plan-actions .plan-skip-chip').count(),1,'skipped date sits in the edit action row');
+ const chipBox=await page.locator('.plan-skip-chip').boundingBox(),restoreBox=await restore.boundingBox();
+ assert.ok(restoreBox.y<chipBox.y && restoreBox.x>chipBox.x+chipBox.width/2,'restore button sits at the date chip upper right');
+ await page.clock.runFor(9000);
+ assert.equal(await page.locator('.toast:not(.toast-leave) .toast-action').count(),0,'undo toast expires without focus or hover');
+ await restore.focus();
  await page.locator('.content').evaluate(el=>el.scrollTop=0);
  for(const theme of ['light','dark']) {
   await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
   await page.screenshot({path:`artifacts/progress-plan-actions/restore-${theme}.png`,animations:'disabled'});
  }
- await page.clock.runFor(9000);
- assert.equal(await page.locator('.toast:not(.toast-leave) .toast-action').count(),0,'undo toast expires without focus or hover');
  await restore.click();
  await page.waitForFunction(()=>document.querySelectorAll('[data-restore-plan]').length===0);
+ assert.equal(await page.locator('.plan-skips').count(),0,'restoring the last skipped date removes the entire label and chip area');
  assert.equal(await page.evaluate(()=>window.__plans.rules.every(r=>r.enabled)),true,'restore keeps recurring rules enabled');
  await page.locator('.nav-primary [data-tab="live"]').click();
  await page.waitForFunction(()=>document.querySelectorAll('[data-skip-plan]').length===2);

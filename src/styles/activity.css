@@ -145,13 +145,14 @@
 .queue-skip { margin-left:auto; padding:5px 8px; border:1px solid var(--color-line); border-radius:7px; background:transparent; color:var(--color-secondary-ink); font:inherit; cursor:pointer; }
 .queue-skip:hover:not(:disabled) { background:var(--color-control); color:var(--color-accent); }
 .queue-skip:disabled { color:var(--color-muted); cursor:default; }
-.plan-skipped-date { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border-radius:10px; background:var(--color-control); font-size:12px; }
-.plan-skipped-date > div { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
-.plan-skipped-date span { color:var(--color-muted); }
-.plan-skipped-date strong { font-size:12px; font-weight:500; }
-.plan-skipped-date button { flex:none; border:0; border-radius:6px; padding:5px 6px; background:transparent; color:var(--color-accent); font:inherit; cursor:pointer; }
-.plan-skipped-date button:hover:not(:disabled) { background:var(--color-panel-hover); }
-.plan-skipped-date button:disabled { color:var(--color-muted); cursor:default; }
+.plan-card > .plan-actions { flex-wrap:nowrap; }
+.plan-skips { display:flex; flex:1; align-items:center; min-width:0; gap:10px; margin-right:auto; }
+.plan-skips-label { flex:none; color:var(--color-muted); font-size:11px; }
+.plan-skip-chips { display:flex; flex-wrap:wrap; min-width:0; gap:10px; padding:5px 6px 0 0; }
+.plan-skip-chip { position:relative; padding:4px 12px 4px 9px; border-radius:7px; background:var(--color-control); color:var(--color-secondary-ink); font-size:11px; line-height:18px; white-space:nowrap; }
+.plan-skip-chip button { position:absolute; top:-6px; right:-6px; display:grid; place-items:center; width:20px; height:20px; padding:0; border:1px solid var(--color-line-strong); border-radius:50%; background:var(--color-panel); color:var(--color-muted); cursor:pointer; }
+.plan-skip-chip button:hover:not(:disabled),.plan-skip-chip button:focus-visible { color:var(--color-accent); background:var(--color-control); }
+.plan-skip-chip button:disabled { color:var(--color-muted); cursor:default; }
 
 .live-page > #pending_order_checks:empty { display:none; }
 .live-page .plan-queue-overview { padding:20px 24px; }

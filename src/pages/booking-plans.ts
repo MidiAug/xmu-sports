@@ -4,7 +4,7 @@ import { mountPage } from "../lib/page-lifecycle";
 import { mountShellSelect } from "../ui/select";
 import { askConfirm } from "../ui/confirm-ask";
 import { outcomeFromEvent } from "../lib/run-outcome";
-import { formatEventTimeHuman, formatMonthDayWeekday } from "../lib/format-human";
+import { formatEventTimeHuman, formatMonthDay, formatMonthDayWeekday } from "../lib/format-human";
 import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, restorablePlanSkips, type BookingPlan, type BookingPlansView } from "../lib/booking-plans";
 import { bookingPlans } from "../lib/booking-plans-store";
 import { SVG } from "../ui/icons";
@@ -112,14 +112,14 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       const sport = sports.find(s => s.id === r.sport)!;
       const venue = sport?.venues.find(v => v.id === r.venue);
       const next = view.next.find(n => n.id === r.id);
+      const skipped = restorablePlanSkips(view, r);
       return `<article class="plan-card" draggable="true" data-plan="${r.id}" data-enabled="${r.enabled}">
         <div class="plan-card-top"><span class="plan-priority plan-sport-icon sport-icon" data-sport="${escape(sport?.label ?? r.sport)}" aria-label="优先级 ${index + 1}">${sportIcon(sport?.label ?? r.sport)}<small>${index + 1}</small></span><div class="plan-title"><strong>${escape(sport?.label ?? r.sport)}</strong><span>${escape(venue?.label ?? r.venue)}</span></div>
         <label class="switch plan-enable"><input type="checkbox" aria-label="启用${escape(sport?.label ?? r.sport)}计划" data-enable="${r.id}" ${r.enabled ? "checked" : ""}></label></div>
         <div class="plan-schedule"><strong>${r.start}<span class="plan-time-divider">–</span>${r.end}</strong><span>${weekdaysLabel(r.weekdays)}</span></div>
         <div class="plan-week-strip" aria-label="重复星期：${weekdaysLabel(r.weekdays)}">${days.map((day, i) => `<span data-selected="${r.weekdays.includes(i + 1)}" aria-hidden="true">${day}</span>`).join("")}</div>
         <div class="plan-dates">${next ? `<div><span>下次运动</span><strong>${formatMonthDayWeekday(next.date)}</strong></div><div><span>${view.plans.paused ? "恢复后按计划开抢" : "自动开抢"}</span><strong>${escape(formatEventTimeHuman(next.fire_at))}</strong></div>` : `<div><span>本计划已停用</span><strong>启用后继续安排</strong></div>`}</div>
-        ${restorablePlanSkips(view, r).map(a => `<div class="plan-skipped-date"><div><span>已跳过</span><strong>${formatMonthDayWeekday(a.task.target_date)}</strong></div><button type="button" data-restore-plan="${r.id}" data-restore-date="${escape(a.task.target_date)}">恢复本次</button></div>`).join("")}
-        <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}" aria-label="编辑计划" data-tooltip="编辑">${SVG.edit}</button>
+        <div class="plan-actions">${skipped.length ? `<div class="plan-skips"><span class="plan-skips-label">已跳过</span><div class="plan-skip-chips">${skipped.map(a => `<span class="plan-skip-chip"><span>${formatMonthDay(a.task.target_date)}</span><button type="button" data-restore-plan="${r.id}" data-restore-date="${escape(a.task.target_date)}" data-tooltip="恢复本次" aria-label="恢复${formatMonthDayWeekday(a.task.target_date)}的${escape(sport?.label ?? r.sport)}预约">${SVG.undo}</button></span>`).join("")}</div></div>` : ""}<button type="button" class="btn text" data-edit="${r.id}" aria-label="编辑计划" data-tooltip="编辑">${SVG.edit}</button>
         <details class="plan-more"><summary data-tooltip="更多" aria-label="更多操作">${SVG.more}</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
     }).join(""));
