@@ -8,6 +8,7 @@ import { formatEventTimeHuman, formatMonthDayWeekday } from "../lib/format-human
 import { WEEKDAYS as days, weekdaysLabel, nextPlanRound, type BookingPlan, type BookingPlansView } from "../lib/booking-plans";
 import { bookingPlans } from "../lib/booking-plans-store";
 import { sportIcon } from "../ui/sport-icons";
+import { patchHtml } from "../ui/patch-html";
 
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export async function renderBookingPlans(panel: Element, options?: { focusPlanId?: string }) {
@@ -31,6 +32,10 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
   const list = panel.querySelector<HTMLElement>("#plan_list")!;
   const add = panel.querySelector<HTMLButtonElement>("#plan_add")!;
   const pause = panel.querySelector<HTMLButtonElement>("#plans_pause")!;
+  const setText = (selector: string, value: string) => {
+    const element = panel.querySelector(selector)!;
+    if (element.textContent !== value) element.textContent = value;
+  };
   const fail = (e: unknown) => { if (scope.current()) { message.textContent = String(e); message.className = "msg err"; } };
   const closeMore = (event: MouseEvent | KeyboardEvent) => {
     if (event instanceof KeyboardEvent && event.key !== "Escape") return;
@@ -55,17 +60,17 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       const pending = view.plans.attempts.filter(a => a.status === "unconfirmed");
       panel.querySelector<HTMLElement>(".plans-page")!.dataset.empty = String(!view.plans.rules.length && !pending.length);
       const round = nextPlanRound(view);
-      panel.querySelector("#plans_state")!.textContent = view.plans.paused ? "自动计划已暂停" : view.plans.rules.some(r => r.enabled) ? "自动计划已开启" : "还没有启用的计划";
+      setText("#plans_state", view.plans.paused ? "自动计划已暂停" : view.plans.rules.some(r => r.enabled) ? "自动计划已开启" : "还没有启用的计划");
       panel.querySelector(".plans-summary")!.setAttribute("data-state", pending.length ? "attention" : view.plans.paused || !enabled ? "paused" : "enabled");
-      panel.querySelector("#plans_count")!.textContent = enabled ? `${enabled} 项启用` : "";
-      panel.querySelector("#plans_health")!.textContent = `微信${view.wechat_running ? "正在运行" : "未检测到运行"}，会话将在执行前核验`;
-      panel.querySelector("#plans_next_label")!.textContent = view.plans.paused ? "恢复后按计划开抢" : round?.items.some(i => i.status === "running") ? "当前轮次" : "下次开抢";
-      panel.querySelector("#plans_next")!.textContent = round ? formatEventTimeHuman(round.fireAt) : "等待启用计划";
-      panel.querySelector("#plans_exercise")!.textContent = round ? `预约 ${formatMonthDayWeekday(round.date)} 的运动` : "添加运动、场馆和时段即可开始";
+      setText("#plans_count", enabled ? `${enabled} 项启用` : "");
+      setText("#plans_health", `微信${view.wechat_running ? "正在运行" : "未检测到运行"}，会话将在执行前核验`);
+      setText("#plans_next_label", view.plans.paused ? "恢复后按计划开抢" : round?.items.some(i => i.status === "running") ? "当前轮次" : "下次开抢");
+      setText("#plans_next", round ? formatEventTimeHuman(round.fireAt) : "等待启用计划");
+      setText("#plans_exercise", round ? `预约 ${formatMonthDayWeekday(round.date)} 的运动` : "添加运动、场馆和时段即可开始");
       pause.hidden = !view.plans.rules.length;
-      pause.textContent = view.plans.paused ? "恢复计划" : "全部暂停";
-      pause.disabled = saving || (view.plans.paused && pending.length > 0);
-      add.disabled = editing || saving;
+      setText("#plans_pause", view.plans.paused ? "恢复计划" : "全部暂停");
+      pause.disabled = view.plans.paused && pending.length > 0;
+      add.disabled = editing;
       updateEditorStatus?.();
       if (!editing) paintList();
       paintResults();
@@ -75,13 +80,14 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
   const save = async (rules: BookingPlan[], paused = view.plans.paused) => {
     if (saving) return;
     saving = true;
-    add.disabled = pause.disabled = true;
+    add.setAttribute("aria-disabled", "true");
+    pause.setAttribute("aria-disabled", "true");
     try {
       await invoke("save_booking_plans", { rules, paused });
       message.textContent = "";
       await load(true);
     } catch (e) { fail(e); throw e; }
-    finally { saving = false; add.disabled = editing; pause.disabled = view.plans.paused && view.plans.attempts.some(a => a.status === "unconfirmed"); }
+    finally { saving = false; add.removeAttribute("aria-disabled"); pause.removeAttribute("aria-disabled"); add.disabled = editing; pause.disabled = view.plans.paused && view.plans.attempts.some(a => a.status === "unconfirmed"); }
   };
 
   const move = async (id: string, to: number) => {
@@ -98,7 +104,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       list.querySelector<HTMLButtonElement>("#plan_example")!.onclick = () => openEditor();
       return;
     }
-    list.innerHTML = `<div class="plan-list-heading"><h3>每周安排 <span>${view.plans.rules.length}</span></h3><span>按序预约，可在更多中调整</span></div>` + view.plans.rules.map((r, index) => {
+    patchHtml(list, `<div class="plan-list-heading"><h3>每周安排 <span>${view.plans.rules.length}</span></h3><span>按序预约，可在更多中调整</span></div>` + view.plans.rules.map((r, index) => {
       const sport = sports.find(s => s.id === r.sport)!;
       const venue = sport?.venues.find(v => v.id === r.venue);
       const next = view.next.find(n => n.id === r.id);
@@ -111,9 +117,13 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
         <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}">编辑计划</button>
         <details class="plan-more"><summary>更多</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-copy="${r.id}">复制</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
-    }).join("");
-    list.querySelectorAll<HTMLInputElement>("[data-enable]").forEach(box => box.onchange = () => {
-      void save(view.plans.rules.map(r => r.id === box.dataset.enable ? { ...r, enabled: box.checked } : r)).catch(() => { box.checked = !box.checked; });
+    }).join(""));
+    list.querySelectorAll<HTMLInputElement>("[data-enable]").forEach(box => {
+      box.checked = view.plans.rules.find(r => r.id === box.dataset.enable)!.enabled;
+      box.onchange = () => {
+        if (saving) { box.checked = view.plans.rules.find(r => r.id === box.dataset.enable)!.enabled; return; }
+        void save(view.plans.rules.map(r => r.id === box.dataset.enable ? { ...r, enabled: box.checked } : r)).catch(() => { box.checked = !box.checked; });
+      };
     });
     list.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach(b => b.onclick = () => openEditor(view.plans.rules.find(r => r.id === b.dataset.edit)));
     list.querySelectorAll<HTMLButtonElement>("[data-copy]").forEach(b => b.onclick = () => openEditor({ ...view.plans.rules.find(r => r.id === b.dataset.copy)!, id: crypto.randomUUID(), enabled: false }, true));

@@ -25,7 +25,7 @@ try {
       invoke:async(command,args)=>{
         window.__calls.push({command,args});
         if(command==="get_booking_plans")return {plans:structuredClone(window.__plans),next:window.__plans.rules.filter(r=>r.enabled).map(r=>({id:r.id,date:"2026-10-30",fire_at:"2026-10-29T07:00:00+08:00"})),wechat_running:false};
-        if(command==="save_booking_plans"){if(window.__saveError)throw "模拟保存失败";Object.assign(window.__plans,{rules:structuredClone(args.rules),paused:args.paused});return;}
+        if(command==="save_booking_plans"){if(window.__holdPlanSave)await new Promise(resolve=>window.__finishPlanSave=resolve);if(window.__saveError)throw "模拟保存失败";Object.assign(window.__plans,{rules:structuredClone(args.rules),paused:args.paused});return;}
         if(command==="booking_plan_account")return "a".repeat(64);
         if(command==="skip_booking_plan")return "2026-10-30";
         if(command==="get_startup")return window.__startup;
@@ -51,6 +51,32 @@ try {
   assert.equal(await page.locator('.plan-card').first().locator('.plan-week-strip [data-selected="true"]').count(),7);
   assert.match(await page.locator("#plans_health").innerText(),/微信未检测到运行.*会话/);
   assert.match(await page.locator(".plan-card").first().innerText(),/每天/);
+  // A delayed switch save keeps unrelated controls, card nodes and focus stable.
+  await page.evaluate(()=>{
+    window.__holdPlanSave=true;
+    window.__stableCard=document.querySelectorAll('.plan-card')[1];
+    window.__stableSwitch=document.querySelector('[data-enable]');
+    window.__stableNext=document.querySelector('#plans_next').firstChild;
+    window.__headerStyles=['#plan_add','#plans_pause'].map(selector=>{
+      const el=document.querySelector(selector);return {opacity:getComputedStyle(el).opacity,background:getComputedStyle(el).backgroundColor};
+    });
+  });
+  await page.locator('[data-enable]').first().uncheck();
+  await page.waitForFunction(()=>typeof window.__finishPlanSave==='function');
+  assert.deepEqual(await page.evaluate(()=>['#plan_add','#plans_pause'].map(selector=>{
+    const el=document.querySelector(selector);return {opacity:getComputedStyle(el).opacity,background:getComputedStyle(el).backgroundColor};
+  })),await page.evaluate(()=>window.__headerStyles));
+  await page.evaluate(()=>{window.__holdPlanSave=false;window.__finishPlanSave();});
+  await page.waitForFunction(()=>document.querySelector('#plan_add').getAttribute('aria-disabled')===null);
+  assert.equal(await page.evaluate(()=>window.__stableCard===document.querySelectorAll('.plan-card')[1] && window.__stableSwitch===document.querySelector('[data-enable]') && window.__stableNext===document.querySelector('#plans_next').firstChild),true);
+  assert.equal(await page.locator('[data-enable]').first().evaluate(el=>el===document.activeElement),true);
+  await page.locator('[data-enable]').first().check();
+  await page.waitForFunction(()=>window.__plans.rules[0].enabled && document.querySelector('#plan_add').getAttribute('aria-disabled')===null);
+  await page.evaluate(()=>window.__saveError=true);
+  await page.locator('[data-enable]').first().click();
+  await page.waitForFunction(()=>document.querySelector('#plans_msg').textContent.includes('模拟保存失败'));
+  assert.equal(await page.locator('[data-enable]').first().isChecked(),true,'failed switch save restores the persisted state');
+  await page.evaluate(()=>window.__saveError=false);
   await page.locator("#plans_pause").click();await page.getByText("自动计划已暂停",{exact:true}).waitFor();
   assert.match(await page.locator('.plan-card').first().innerText(),/恢复后按计划/);
   await page.locator('#plan_add').click();
