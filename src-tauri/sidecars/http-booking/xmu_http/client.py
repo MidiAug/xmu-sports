@@ -18,7 +18,7 @@ from urllib.parse import urlencode
 import requests
 
 from .session import BookingError, EntryTicket, ORIGIN
-from .diagnostics import request_timing, api_label, record_exchange
+from .diagnostics import request_timing, api_label, record_exchange, transport_error_type
 
 API = ORIGIN + "/bdlp_h5_fitness_test/public/index.php"
 PAGES = ORIGIN + "/bdlp_h5_fitness_test/view/stadium/"
@@ -288,11 +288,13 @@ class Client:
         started = time.monotonic()
         response = result = None
         error = None
+        error_type = None
+        request_timeout = timeout or (8, 20)
         secrets = self._diagnostic_secrets(fields)
         try:
             response = self.http.post(API + path, data=fields,
                                       headers={"Referer": referer or PAGES + "home.html"},
-                                      timeout=timeout or (8, 20), allow_redirects=False)
+                                      timeout=request_timeout, allow_redirects=False)
             if response.status_code == 401:
                 raise BookingError("SESSION_EXPIRED", "学校接口要求重新登录")
             if response.status_code == 429:
@@ -304,6 +306,7 @@ class Client:
                 raise BookingError("UNEXPECTED_REDIRECT", "接口发生了重定向，未继续发送会话")
             result = response.json()
         except (requests.RequestException, ValueError) as exc:
+            error_type = transport_error_type(exc)
             error = "timeout" if isinstance(exc, requests.Timeout) else "connection" if isinstance(exc, requests.ConnectionError) else "invalid_json" if isinstance(exc, ValueError) else "http_error"
             # Do not expose request objects, cookies or signed login fields.
             raise BookingError("HTTP_FAILED", "体育接口请求失败或响应不是 JSON") from exc
@@ -312,7 +315,7 @@ class Client:
             raise
         finally:
             secrets += self._diagnostic_secrets(fields)
-            record_exchange(path, fields, response=response, result=result, error=error,
+            record_exchange(path, fields, response=response, result=result, error=error, error_type=error_type, timeout=request_timeout,
                             secrets=secrets, elapsed_ms=round((time.monotonic()-started)*1000))
         if not isinstance(result, dict):
             raise BookingError("INVALID_RESPONSE", "体育接口响应结构不符合预期")
@@ -438,6 +441,7 @@ class Client:
         started = time.monotonic()
         response = None
         error = None
+        error_type = None
         try:
             response = self.http.get(API + "/index/index/captcha", params=query,
                                      headers={"Referer": referer}, timeout=(8, 20), allow_redirects=False)
@@ -445,6 +449,7 @@ class Client:
             if not response.content.startswith(b"\x89PNG\r\n\x1a\n"):
                 raise BookingError("CAPTCHA_FETCH_FAILED", "验证码签名或会话验证失败，没有返回 PNG")
         except requests.RequestException as exc:
+            error_type = transport_error_type(exc)
             error = "timeout" if isinstance(exc, requests.Timeout) else "http_error"
             raise BookingError("CAPTCHA_FETCH_FAILED", "验证码请求失败") from exc
         except BookingError as exc:
@@ -453,7 +458,7 @@ class Client:
         finally:
             record_exchange("/index/index/captcha", {}, response=response,
                             result={"image_received":True} if not error else None,
-                            error=error, secrets=[*self._diagnostic_secrets(), *query.values()],
+                            error=error, error_type=error_type, timeout=(8, 20), secrets=[*self._diagnostic_secrets(), *query.values()],
                             elapsed_ms=round((time.monotonic()-started)*1000), method="GET")
         return response.content
 

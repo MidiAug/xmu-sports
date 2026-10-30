@@ -131,6 +131,21 @@ def test_transport_failure_keeps_request_but_never_exception_text():
     assert "private" not in json.dumps(events)
 
 
+@pytest.mark.parametrize("exception,kind", [
+    (requests.exceptions.ConnectTimeout, "connect_timeout"),
+    (requests.exceptions.ReadTimeout, "read_timeout"),
+    (requests.exceptions.ProxyError, "proxy"),
+    (requests.exceptions.SSLError, "tls"),
+    (requests.ConnectionError, "connection"),
+    (requests.Timeout, "timeout"),
+])
+def test_transport_subtypes_and_configured_timeouts_are_safe(exception, kind):
+    events = capture_call(exchange_client(failure=exception("private-url?token=private-ticket")))
+    assert events[0]["error_type"] == kind
+    assert events[0]["timeout_seconds"] == {"connect": 8, "read": 20}
+    assert "private" not in json.dumps(events)
+
+
 def test_large_replies_explicitly_report_truncation():
     from xmu_http.diagnostics import MAX_BODY_CHARS
     events = capture_call(exchange_client(reply({"status":0,"info":"x" * (MAX_BODY_CHARS+100)})))

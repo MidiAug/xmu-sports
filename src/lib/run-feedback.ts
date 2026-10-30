@@ -16,7 +16,7 @@ let lastToastedOutcomeKey = "";
 
 export function seedRunFeedback(s: LiveStatus) {
   prevRunning = Boolean(s.running);
-  const o = outcomeFromEvent(s.last_event);
+  const o = outcomeFromEvent(s.last_event, s.recent_events);
   lastToastedOutcomeKey = o ? outcomeKey(o) : "";
   seeded = true;
   setLiveStatusCache(s);
@@ -43,7 +43,7 @@ export function ingestLiveStatus(s: LiveStatus): void {
   }
 
   if (!running && prevRunning) {
-    const o = outcomeFromEvent(s.last_event);
+    const o = outcomeFromEvent(s.last_event, s.recent_events);
     if (o) {
       const key = outcomeKey(o);
       if (key !== lastToastedOutcomeKey) {

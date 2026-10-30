@@ -43,7 +43,21 @@ def redact(value, secrets=(), depth=0, public_names=False):
     return value
 
 
-def record_exchange(path, fields, *, response=None, result=None, error=None, secrets=(), elapsed_ms=0, method="POST"):
+def transport_error_type(exc):
+    import requests
+    for cls, kind in ((requests.exceptions.ConnectTimeout, "connect_timeout"),
+                      (requests.exceptions.ReadTimeout, "read_timeout"),
+                      (requests.exceptions.ProxyError, "proxy"),
+                      (requests.exceptions.SSLError, "tls"),
+                      (requests.Timeout, "timeout"),
+                      (requests.ConnectionError, "connection"),
+                      (ValueError, "invalid_json")):
+        if isinstance(exc, cls):
+            return kind
+    return "http_error"
+
+
+def record_exchange(path, fields, *, response=None, result=None, error=None, error_type=None, timeout=None, secrets=(), elapsed_ms=0, method="POST"):
     current = _current.get()
     if current is None:
         return
@@ -67,6 +81,10 @@ def record_exchange(path, fields, *, response=None, result=None, error=None, sec
     if error:
         # Exception strings may contain signed URLs; only keep their category.
         event["error"] = error
+        if error_type:
+            event["error_type"] = error_type
+    if timeout:
+        event["timeout_seconds"] = {"connect": timeout[0], "read": timeout[1]}
     current.exchange_count += 1
     if current.exchange_sink:
         try:

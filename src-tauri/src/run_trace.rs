@@ -820,6 +820,36 @@ pub struct HistoryEvent {
     pub platform: Option<String>,
 }
 
+/// A terminal failure may expose a small exchange summary without polling raw replies.
+pub fn failure_exchange(runs_root: &Path, task_id: &str, run_id: &str) -> Option<Value> {
+    let valid = |key: &str| !key.is_empty() && key != "." && key != ".."
+        && key.bytes().all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b));
+    if !valid(task_id) || !valid(run_id) { return None; }
+    let file = File::open(runs_root.join(task_id).join(run_id).join("events.jsonl")).ok()?;
+    let mut latest = None;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        let Ok(event) = serde_json::from_str::<Value>(&line) else { continue; };
+        if event["stage"] != "http_exchange" || event["task_id"] != task_id || event["run_id"] != run_id { continue; }
+        let http = &event["payload"]["http"];
+        let mut summary = serde_json::Map::new();
+        for key in ["api", "method", "phase", "elapsed_ms", "http_status", "error", "error_type", "content_type", "timeout_seconds"] {
+            if let Some(value) = http.get(key) { summary.insert(key.into(), value.clone()); }
+        }
+        if let Some(request) = http["request"].as_object() {
+            let request: serde_json::Map<String, Value> = request.iter().take(16).map(|(key, value)| {
+                let compact = if value.to_string().len() <= 256 { value.clone() } else { json!("较长参数，请查看导出日志") };
+                (key.clone(), compact)
+            }).collect();
+            summary.insert("request".into(), Value::Object(request));
+        }
+        if let Some(info) = http["response"]["info"].as_str() {
+            summary.insert("response".into(), json!({"info":info.chars().take(300).collect::<String>()}));
+        }
+        latest = Some(Value::Object(summary));
+    }
+    latest
+}
+
 pub fn history_event_from_line(line: &str) -> Option<HistoryEvent> {
     let v: Value = serde_json::from_str(line).ok()?;
     // Large diagnostic replies belong on disk/export, not in UI polling payloads.
@@ -1054,6 +1084,26 @@ pub fn safe_evidence_name(run_id: &str, step: u32, reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn failure_summary_is_scoped_and_does_not_expose_large_responses() {
+        let root = tmp_root("failure-summary");
+        let trace = RunTraceHandle::open(&root, "task", "run", json!({}), None, RunTraceConfig::default()).unwrap();
+        trace.try_event("http_exchange", None, "upstream_reply", None, None, None,
+            json!({"http":{"api":"order_list","method":"POST","phase":"checking_orders","error":"timeout","error_type":"read_timeout","elapsed_ms":1875,"request":{"p":"2","long":"x".repeat(1000)},"response":{"info":"upstream reason","data":{"private":"not-for-ui"}}}}));
+        trace.finish("failed", Some("HTTP_FAILED"));
+        let summary = failure_exchange(&root, "task", "run").unwrap();
+        assert_eq!(summary["request"]["p"], "2");
+        assert_eq!(summary["error_type"], "read_timeout");
+        assert_eq!(summary["elapsed_ms"], 1875);
+        assert!(summary["request"]["long"].as_str().unwrap().len() < 256);
+        assert!(summary["response"]["data"].is_null());
+        assert!(!summary.to_string().contains("not-for-ui"));
+        assert!(failure_exchange(&root, "task", "other").is_none());
+        assert!(failure_exchange(&root, "../task", "run").is_none());
+        assert!(failure_exchange(&root, "task", "..").is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn upstream_evidence_is_saved_without_entering_live_or_reloaded_ui_history() {
         let root = tmp_root("upstream-evidence");

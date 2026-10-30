@@ -1,4 +1,5 @@
 import type { RunEvent } from "../types";
+import { diagnoseRunFailure, type RunFailure } from "./run-failure";
 
 /** 跑态结局（持久条 + toast 共用）。见 2026-09-22-app-toast-outcome-design.md */
 
@@ -12,6 +13,7 @@ export type RunOutcome = {
   detail: string;
   pageId: string | null;
   ts: string | null;
+  failure?: RunFailure;
 };
 
 const MINIPROGRAM_OPEN_GUIDE = "请先在电脑微信手动打开“厦大体育”，点击右上角“更多”→“添加到桌面”，完成后回到本应用重试；未提交预约。";
@@ -246,7 +248,7 @@ function mapCode(code: string): { kind: OutcomeKind; title: string; detail: stri
 }
 
 /** 从 last_event 推导可展示结局；中间步骤返回 null */
-export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | null {
+export function outcomeFromEvent(ev: RunEvent | null | undefined, events: RunEvent[] = []): RunOutcome | null {
   if (!ev) return null;
   const action = ev.action ?? "";
   const result = (ev.result ?? "").trim();
@@ -265,6 +267,7 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
   }
 
   if (action === "fail" || action.endsWith("_failed")) {
+    const failure = diagnoseRunFailure(ev, events);
     const code = result && result !== "failed" ? result : action;
     const m = mapCode(code);
     const loginTitle = code === "LOGIN_CONFIRM_REQUIRED" ? ({
@@ -292,15 +295,16 @@ export function outcomeFromEvent(ev: RunEvent | null | undefined): RunOutcome | 
     } as Record<string,string>)[ev.http?.reason ?? ""] : undefined;
     if (["SUBMIT_UNKNOWN", "RESULT_UNCONFIRMED", "ORDER_RECHECK_UNCONFIRMED"].includes(code)) {
       return { kind: "info", code, title: m.title, detail: ev.http?.message || m.detail,
-        pageId: ev.page_id ?? null, ts: ev.ts ?? null };
+        pageId: ev.page_id ?? null, ts: ev.ts ?? null, failure };
     }
     return {
       kind: "error",
       code,
-      title: loginTitle || (m.kind === "error" ? m.title : `失败：${code}`),
-      detail: ["MINIPROGRAM_NOT_VISIBLE","UIA_TARGET_MISSING","MINIPROGRAM_LAUNCH_FAILED"].includes(ev.http?.reason ?? code) ? MINIPROGRAM_OPEN_GUIDE : ev.http?.message || m.detail,
+      title: loginTitle || failure.title || (m.kind === "error" ? m.title : `失败：${code}`),
+      detail: ["MINIPROGRAM_NOT_VISIBLE","UIA_TARGET_MISSING","MINIPROGRAM_LAUNCH_FAILED"].includes(ev.http?.reason ?? code) ? MINIPROGRAM_OPEN_GUIDE : failure.summary || ev.http?.message || m.detail,
       pageId: ev.page_id ?? null,
       ts: ev.ts ?? null,
+      failure,
     };
   }
 

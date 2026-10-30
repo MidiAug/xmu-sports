@@ -49,7 +49,8 @@ try {
     assert.equal(human.formatFireAtHuman("2026-10-15T07:00:00+08:00",new Date("2026-10-14T16:30:00Z")),"今天 07:00 开抢",zone);
   }
 } finally { if(oldZone === undefined) delete process.env.TZ; else process.env.TZ=oldZone; }
-const outcomeUrl=compile(read("src/lib/run-outcome.ts"));
+const failureUrl=compile(read("src/lib/run-failure.ts"));
+const outcomeUrl=compile(read("src/lib/run-outcome.ts").replace('"./run-failure"',JSON.stringify(failureUrl)));
 const {outcomeFromEvent}=await import(outcomeUrl);
 for (const [reason,title] of [["UIA_STADIUM_ENTRY_NOT_FOUND","首页未找到场馆预约入口"],
   ["UIA_LOGIN_CONTROL_NOT_FOUND","未找到可操作的立即登录"],["UIA_AUTH_CONTROL_NOT_FOUND","未找到可操作的协议或授权控件"],

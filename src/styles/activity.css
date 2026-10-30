@@ -47,6 +47,20 @@
 .booking-event-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:10px; line-height:18px; }
 .booking-details .live-timeline li > span { min-width:0; overflow-wrap:anywhere; }
 .booking-execution .booking-run-id { margin:0; padding:12px 0 6px; border-top:1px solid var(--color-line); font-size:10px; }
+.booking-failure-details { margin:0 26px 18px; border:1px solid var(--color-line); border-radius:10px; background:var(--color-control); }
+.booking-failure-details summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; list-style:none; cursor:pointer; font-size:12px; }
+.booking-failure-details summary::-webkit-details-marker { display:none; }
+.booking-failure-details summary > span:last-child { display:flex; align-items:center; gap:8px; color:var(--color-muted); font-size:11px; }
+.booking-failure-details[open] summary svg { transform:rotate(180deg); }
+.booking-failure-content { padding:0 12px 12px; font-size:12px; line-height:1.7; user-select:text; }
+.booking-failure-content dl { display:grid; gap:7px; padding-top:12px; margin:0; border-top:1px solid var(--color-line); }
+.booking-failure-content dl > div { display:grid; grid-template-columns:74px minmax(0,1fr); gap:10px; }
+.booking-failure-content dt { color:var(--color-muted); }
+.booking-failure-content dd { margin:0; overflow-wrap:anywhere; }
+.booking-failure-content p { margin:12px 0 0; color:var(--color-muted); }
+.booking-failure-request { margin-top:12px; }
+.booking-failure-request > span { color:var(--color-muted); font-size:11px; }
+.booking-failure-request pre { margin:6px 0 0; padding:8px 10px; border-radius:7px; background:var(--color-panel); white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; }
 .live-page[data-idle="true"] #live_single_context .settings-group-body { background:transparent; border:0; padding:0; }
 .activity-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:calc(100dvh - 300px); padding:32px 20px; text-align:center; background:transparent; border:0; box-shadow:none; }
 .activity-empty-icon { display:grid; place-items:center; width:88px; height:88px; margin-bottom:24px; border-radius:28px; background:color-mix(in srgb,var(--color-accent) 8%,var(--color-canvas)); color:var(--color-accent); }

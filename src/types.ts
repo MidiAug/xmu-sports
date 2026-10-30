@@ -48,8 +48,16 @@ export type BookingTask = {
   court_offset?: number;
 };
 
+export type HttpExchangeEvidence = {
+  api?: string; method?: string; error?: string; error_type?: string; http_status?: number; content_type?: string;
+  request?: Record<string, unknown>; response?: unknown; timeout_seconds?: {connect: number; read: number};
+  phase?: string; elapsed_ms?: number;
+};
 export type RunEvent = {
-  http?: { phase?: string; message?: string; reason?: string; verified?: boolean; court?: string; date?: string; time?: string; order_id?: number | string;
+  http?: HttpExchangeEvidence & { phase?: string; message?: string; reason?: string; verified?: boolean; court?: string; date?: string; time?: string; order_id?: number | string;
+    failure_exchange?: HttpExchangeEvidence;
+    captcha_requested?: boolean; execution_proof?: {add_order_calls?: number};
+    diagnostics?: {http?: Record<string, {count?: number; errors?: Record<string, number>}>};
     submitted_target?: { sport?: string; venue?: string; date?: string; time?: string; end?: string; court?: string | null };
     elapsed_ms?: number; remaining_seconds?: number; candidate_index?: number;
     check_attempt?: number; check_total?: number; retry_after_seconds?: number;

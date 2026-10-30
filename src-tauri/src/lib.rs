@@ -820,7 +820,14 @@ fn get_live_status(state: State<'_, AppState>) -> Result<LiveStatus, String> {
     recent_events.extend(run_trace::read_recent_run_events(&runs_dir(),pending_orders::TRACE_TASK,120)?.into_iter().map(history_to_run_event));
     recent_events.sort_by(|a,b|a.ts.cmp(&b.ts));
     if recent_events.len()>120 {recent_events.drain(..recent_events.len()-120);}
-    let last_event = recent_events.last().cloned();
+    let mut last_event = recent_events.last().cloned();
+    if let Some(event) = last_event.as_mut().filter(|event| event.action.as_deref() == Some("fail")) {
+        if let Some(summary) = event.run_id.as_deref().and_then(|run| run_trace::failure_exchange(&runs_dir(), &event.task_id, run)) {
+            if let Some(http) = event.http.as_mut().and_then(Value::as_object_mut) {
+                http.insert("failure_exchange".into(), summary);
+            }
+        }
+    }
     let armed = arm.armed
         && task
             .as_ref()

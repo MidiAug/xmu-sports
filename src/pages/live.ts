@@ -4,7 +4,7 @@ import { bookingPlans, type PlansSnapshot } from "../lib/booking-plans-store";
 import { invoke } from "@tauri-apps/api/core";
 import type { LiveStatus, RunEvent, WechatProbe } from "../types";
 import { ingestLiveStatus } from "../lib/run-feedback";
-import { outcomeFromEvent } from "../lib/run-outcome";
+import { outcomeFromEvent, type RunOutcome } from "../lib/run-outcome";
 import { clearLiveTick, setRunIndicator } from "../lib/run-indicator";
 import {
   formatTargetBrief,
@@ -52,7 +52,20 @@ function outcomeBarHtml(ev: RunEvent | null): string {
     </div>`;
 }
 
-function executionHtml(st: LiveStatus | null, detailsOpen = false): string {
+function failureDetailsHtml(outcome: RunOutcome | null, open: boolean) {
+  const failure = outcome?.failure;
+  if (!failure) return "";
+  const pairs = [["错误分类", failure.category], ["错误码", outcome.code], ["失败阶段", failure.phase], ["提交状态", failure.submission]];
+  if (failure.api) pairs.push(["接口", `${failure.method ?? ""} ${failure.api}`.trim()]);
+  pairs.push(["HTTP状态", failure.status !== undefined ? String(failure.status) : failure.errorType ? "未收到HTTP响应" : "未记录"]);
+  if (failure.elapsedMs !== undefined) pairs.push(["该请求耗时", `${(failure.elapsedMs / 1000).toFixed(3)} 秒`]);
+  if (failure.timeout) pairs.push(["请求时限", `连接 ${failure.timeout.connect} 秒，读取 ${failure.timeout.read} 秒`]);
+  if (failure.errorType) pairs.push(["传输记录", failure.errorType]);
+  if (failure.serverMessage) pairs.push(["学校说明", failure.serverMessage]);
+  return `<details class="booking-failure-details" ${open ? "open" : ""}><summary><span>失败详情</span><span>${escText(failure.category)}${SVG.chevron}</span></summary><div class="booking-failure-content"><dl>${pairs.map(([label, value]) => `<div><dt>${escText(label)}</dt><dd>${escText(value)}</dd></div>`).join("")}</dl><p>${escText(failure.explanation)}</p>${failure.request ? `<div class="booking-failure-request"><span>请求参数（已脱敏）</span><pre>${escText(JSON.stringify(failure.request, null, 2))}</pre></div>` : ""}</div></details>`;
+}
+
+function executionHtml(st: LiveStatus | null, detailsOpen = false, failureOpen = false): string {
   const last = st?.last_event ?? null;
   const events = currentRunEvents(st?.recent_events ?? (last ? [last] : []), last);
   if (!events.length || (!events.some(event => event.http || event.result?.startsWith("http_")) && !(st?.running && (st.task?.executor === "http" || st.operation === "recheck")))) return "";
@@ -90,7 +103,7 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false): string {
     : running && st?.task ? formatTaskSportVenue(st.task) : "本次预约目标";
   const date = result?.date ?? target?.date ?? (!recheckOnly && running ? st?.task?.target_date : "") ?? "";
   const slot = result?.time ?? (target ? `${target.time ?? ""}–${target.end ?? ""}` : !recheckOnly && running ? `${st?.task?.target_time_start ?? ""}–${st?.task?.target_time_end ?? ""}` : "");
-  const outcome = last ? outcomeFromEvent(last) : null;
+  const outcome = last ? outcomeFromEvent(last, events) : null;
   const state = running ? "running" : uncertain ? "unconfirmed" : failed ? "failed" : (result?.verified || last?.result === "http_auth_ready") ? "success" : "finished";
   const confirming = running && latestPhase && progressStep(latestPhase) === "order";
   const title = running ? recheckOnly ? "正在再次查单" : confirming ? "正在确认预约结果" : st?.operation === "scheduled" && st.armed ? "定时预约准备中" : authOnly ? "正在检查体育登录" : prepareOnly ? "正在检查预约条件" : "预约进行中" : outcome?.title ?? "预约流程已结束";
@@ -99,6 +112,7 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false): string {
   return `<section class="booking-execution ${state}${authOnly ? " booking-auth" : ""}${running ? "" : " booking-recent"}" aria-label="预约执行状态">
     <div class="booking-execution-head"><span class="booking-state-icon" aria-hidden="true">${running ? '<span class="booking-spinner"></span>' : state === "success" ? "✓" : failed ? "!" : "·"}</span><div class="booking-head-copy"><span class="booking-eyebrow">${authOnly ? "体育登录" : prepareOnly ? "预约条件检查" : recheckOnly ? running ? "只读查单" : "最近一次查单" : running ? "正在执行" : "最近一次预约"}</span><h2 role="status">${escText(title)}</h2></div><span class="booking-elapsed">${running ? "已用时" : "总用时"}<strong>${elapsedLabel(events, running)}</strong></span>${running ? '<button type="button" class="btn ghost booking-stop" id="disarm_hang">停止</button>' : ""}</div>
     <p class="booking-current-detail">${escText(detail)}</p>${confirming ? '<p class="booking-current-detail">正在只读查单；停止只会结束后续检查，已经发送的预约不会被撤回。</p>' : ""}
+    ${!running ? failureDetailsHtml(outcome, failureOpen) : ""}
     ${!authOnly && (target || running && st?.task) ? `<div class="booking-target"><strong>${escText(venueLabel)}</strong><div><span>${escText(date)}</span><span>${escText(slot)}</span><span>${escText(court ? `${court} 号场地` : "自动选择场地")}</span></div>${result?.order_id ? `<small>订单号 ${escText(String(result.order_id))}</small>` : ""}</div>` : ""}
     ${!authOnly ? `<ol class="booking-track${recheckOnly ? " recheck-only" : authOnly ? " auth-only" : ""}" aria-label="执行步骤">${steps}</ol>` : ""}
     <details class="booking-details" ${detailsOpen ? "open" : ""}><summary><span class="booking-details-label">${SVG.tabHistory}<span>过程记录</span><span class="booking-event-count">${rows.length} 条</span></span><span class="booking-chevron">${SVG.chevron}</span></summary><div class="booking-details-content"><ol class="live-timeline" aria-label="预约过程记录" tabindex="0">${timeline}</ol><p class="booking-run-id">${escText(`执行编号 ${last?.run_id ?? ""}`)}</p></div></details>
@@ -112,7 +126,7 @@ function recoveryHtml(event: RunEvent | null): string {
   const login = ["LOGIN_CONFIRM_REQUIRED", "SESSION_EXPIRED", "NO_ENTRY", "RUNTIME_UNAVAILABLE", "RUNTIME_UNSUPPORTED", "LOGIN_FOCUS_REQUIRED"].includes(code);
   const uncertain = ["SUBMIT_UNKNOWN", "RESULT_UNCONFIRMED", "http_submitted", "ORDER_RECHECK_UNCONFIRMED"].includes(code);
   if (login || uncertain) return `<div class="task-busy-note"><span>${uncertain ? "可在待确认记录点击「再次查单」，或在小程序「我的预约」核对；不会自动重发。" : "完成体育登录并进入场馆预约后，可以重新执行原任务。"}</span><button type="button" class="btn ghost" id="open_booking">打开小程序${uncertain ? "确认" : "登录"}</button></div>`;
-  if (event?.action === "fail") return '<div class="task-busy-note"><span>可调整日期、场馆或备选策略，再尝试预约。</span><button type="button" class="btn ghost" data-tab="setup">修改预约目标</button></div>';
+  if (event?.action === "fail" && /^(SLOT_|DATE_|VENUE_|NOT_OPEN|BOOKING_CLOSED|INVALID_SLOT|FALLBACKS_EXHAUSTED)/.test(code)) return '<div class="task-busy-note"><span>可调整日期、场馆或备选策略，再尝试预约。</span><button type="button" class="btn ghost" data-tab="setup">修改预约目标</button></div>';
   return "";
 }
 
@@ -160,6 +174,7 @@ function paintLiveBody(
   const previousPending = panel.querySelector("#pending_order_checks")?.innerHTML ?? "";
   const auxiliaryOpen = panel.querySelector<HTMLDetailsElement>(".live-auxiliary")?.open ?? false;
   const detailsOpen = panel.querySelector<HTMLDetailsElement>(".booking-details")?.open ?? false;
+  const failureOpen = panel.querySelector<HTMLDetailsElement>(".booking-failure-details")?.open ?? false;
   const timelineTop = previousTimeline?.scrollTop ?? 0;
   const followTimeline = !previousTimeline || previousTimeline.scrollHeight - previousTimeline.clientHeight - timelineTop < 32;
   clearLiveTick();
@@ -178,7 +193,7 @@ function paintLiveBody(
   }
 
   const wxText = !knownWx ? "检测中…" : wxRunning ? "已运行" : "未运行";
-  const executionBlock = executionHtml(st, detailsOpen);
+  const executionBlock = executionHtml(st, detailsOpen, failureOpen);
   const outcomeBlock = !running && !executionBlock ? outcomeBarHtml(ev) : "";
 
   const auxiliary = !running && Boolean(ev?.action === "done" && (ev.result === "http_auth_ready" || ev.result === "http_prepared" || st?.operation === "auth" || st?.operation === "prepare"));

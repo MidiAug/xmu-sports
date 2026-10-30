@@ -129,11 +129,28 @@ try {
  await page.waitForFunction(()=>document.querySelector('[data-order-recheck]')?.disabled===false);
  await page.screenshot({path:'artifacts/progress-unified/unconfirmed-stopped.png'});
  await page.evaluate(()=>{
-  const event={...window.__live.last_event,result:'HTTP_FAILED',http:{phase:'checking_orders'}};
+  const event={...window.__live.last_event,result:'HTTP_FAILED',http:{phase:'checking_orders',captcha_requested:false}};
+  const exchange={...event,action:'http_exchange',result:'upstream_reply',http:{api:'order_list',method:'POST',phase:'checking_orders',request:{p:'2'},elapsed_ms:1875,error:'timeout'}};
+  event.http.failure_exchange=exchange.http;
   window.__live={...window.__live,last_event:event,recent_events:[event]};window.__pendingOrders=[];window.__emit('run-changed');
  });
- await page.getByRole('status').filter({hasText:'学校接口请求失败'}).first().waitFor();
+ await page.getByRole('status').filter({hasText:'订单查询超时'}).first().waitFor();
  await page.waitForFunction(()=>document.querySelector('#pending_order_checks').children.length===0);
+ await page.locator('.booking-failure-details summary').click();
+ const failureContent=await page.locator('.booking-failure-content').innerText();
+ assert.match(failureContent,/HTTP_FAILED/);assert.match(failureContent,/未发送预约提交/);
+ assert.match(failureContent,/POST 查询预约列表/);assert.match(failureContent,/未收到HTTP响应/);
+ assert.match(failureContent,/1\.875 秒/);assert.match(failureContent,/未区分连接和读取/);
+ assert.deepEqual(JSON.parse(await page.locator('.booking-failure-request pre').innerText()),{p:'2'});
+ for(const width of [1100,960]) {
+  await page.setViewportSize({width,height:900});
+  for(const theme of ['light','dark']) {
+   await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+   await page.screenshot({path:`artifacts/progress-unified/failure-detail-${theme}-${width}.png`});
+  }
+ }
+ await page.evaluate(()=>window.__emit('run-changed'));await page.clock.runFor(100);
+ assert.equal(await page.locator('.booking-failure-details').getAttribute('open'),'','failure details stay open through status refresh');
  await page.screenshot({path:'artifacts/progress-unified/pre-submit-timeout.png'});
  await page.evaluate(()=>{
   const event={task_id:'launch-failed',ts:'2026-10-30T12:02:00+08:00',action:'fail',result:'LOGIN_CONFIRM_REQUIRED',http:{reason:'MINIPROGRAM_NOT_VISIBLE',message:'旧的未显示提示'}};
