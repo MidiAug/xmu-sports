@@ -1,5 +1,5 @@
 /* Activity surfaces: one overview, readable targets, quiet supporting details. */
-.live-heading-actions { display:flex; align-items:center; gap:16px; min-height:34px; }
+.live-heading-actions { display:flex; align-items:center; gap:16px; min-height:34px; margin-left:auto; }
 .live-heading-actions .live-env { display:flex; gap:0; padding:0; margin:0; }
 .live-heading-actions .live-env-value { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--color-muted); }
 .live-plan-queue { padding:0; border:1px solid var(--color-line); overflow:hidden; }
@@ -86,6 +86,11 @@
 .live-workspace[data-context="true"]:has(.booking-recent) #live_single_context { grid-column:2; grid-row:1; }
 .live-workspace[data-context="true"] #live_single_context { padding:24px; border:1px solid var(--color-line); border-radius:18px; background:var(--color-panel); }
 .live-workspace[data-context="true"] #live_single_context .settings-group-title { margin:0 0 22px; padding:0; font-size:12px; color:var(--color-muted); }
+.live-draft-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 0 22px; }
+.live-workspace[data-context="true"] #live_single_context .live-draft-heading .settings-group-title { margin:0; }
+.live-draft-heading .btn { display:inline-flex; align-items:center; gap:6px; padding:4px 0 4px 8px; font-size:12px; color:var(--color-muted); }
+.live-draft-heading .btn:hover { color:var(--color-accent); }
+.booking-details-content { display:flow-root; }
 .live-workspace[data-context="true"] #live_single_context .settings-group-body { border:0; border-radius:0; padding:0; background:transparent; }
 .live-workspace[data-context="true"] #live_single_context .live-brief { margin:0; padding:0; background:transparent; }
 .live-draft-place { margin:8px 0 0; color:var(--color-muted); font-size:12px; line-height:1.7; }

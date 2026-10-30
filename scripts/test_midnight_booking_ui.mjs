@@ -112,7 +112,7 @@ try {
     await rollover.locator(`[data-date="${target}"]`).click(); await rollover.clock.runFor(300);
     await rollover.clock.runFor(2200);
     await rollover.locator(`[data-date="${target}"][aria-pressed="true"]`).waitFor();
-    assert.equal(await rollover.locator(`[data-date="${target}"] > span`).innerText(), relative);
+    assert.equal(await rollover.locator(`[data-date="${target}"] > .date-relative`).innerText(), relative);
     assert.equal(await rollover.locator('[data-date="2026-10-27"]').count(), 0, 'old today leaves the range');
     assert.equal(await rollover.locator('[data-date="2026-10-30"]').count(), 1, 'new day-after-tomorrow appears');
     assert.equal(await rollover.locator('#setup_primary').innerText(), '定时预约');
@@ -132,7 +132,8 @@ try {
   await page.evaluate(()=>document.documentElement.dataset.shellTheme='light');
   await showLive({});
   assert.equal(await page.locator('#arm_hang,#trial_run,#http_prepare').count(),0);
-  await page.getByRole('button',{name:'修改单次预约',exact:true}).waitFor();
+  await page.locator('.live-draft-heading').getByRole('button',{name:'修改',exact:true}).waitFor();
+  assert.equal(await page.locator('#live_configuration').isVisible(),false);
   await page.screenshot({path:`${output}/live-idle.png`});
   await showLive({armed:true,fire_at:'2026-10-28T07:00:00+08:00'});
   await page.locator('#live_remain').waitFor();

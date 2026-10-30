@@ -33,7 +33,7 @@
 .plan-schedule { justify-content:space-between; gap:8px; padding-top:2px; }
 .plan-schedule strong { font-size:28px; font-weight:600; line-height:1.25; letter-spacing:-.7px; }
 .plan-schedule > strong { display:flex; align-items:center; }
-.plan-time-divider { display:inline-block; width:14px; height:2px; margin:0 10px; border-radius:2px; background:var(--color-muted); font-size:0; flex:none; }
+.plan-schedule .plan-time-divider { display:inline-block; width:14px; height:2px; margin:0 10px; border-radius:2px; background:var(--color-muted); font-size:0; flex:none; }
 .plan-schedule > span { color:var(--color-muted); font-size:12px; }
 .plan-week-strip { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
 .plan-week-strip > span { display:grid; place-items:center; height:32px; border-radius:8px; color:var(--color-muted); background:var(--color-control); font-size:12px; }

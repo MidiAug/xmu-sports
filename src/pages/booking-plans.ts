@@ -68,7 +68,8 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
       setText("#plans_health", `微信${view.wechat_running ? "正在运行" : "未检测到运行"}，会话将在执行前核验`);
       setText("#plans_next_label", view.plans.paused ? "恢复后按计划开抢" : round?.items.some(i => i.status === "running") ? "当前轮次" : "下次开抢");
       setText("#plans_next", round ? formatEventTimeHuman(round.fireAt) : "等待启用计划");
-      setText("#plans_exercise", round ? `预约 ${formatMonthDayWeekday(round.date)} 的运动` : "添加运动、场馆和时段即可开始");
+      const roundSports = round ? [...new Set(round.items.map(item => sports.find(s => s.id === item.sport || s.ocr_label === item.sport)?.label ?? item.sport))].join("、") : "";
+      setText("#plans_exercise", round ? `预约 ${formatMonthDayWeekday(round.date)} 的${roundSports}` : "添加运动、场馆和时段即可开始");
       pause.hidden = !view.plans.rules.length;
       setText("#plans_pause", view.plans.paused ? "恢复计划" : "全部暂停");
       pause.disabled = view.plans.paused && pending.length > 0;
@@ -116,7 +117,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
         <div class="plan-schedule"><strong>${r.start}<span class="plan-time-divider">–</span>${r.end}</strong><span>${weekdaysLabel(r.weekdays)}</span></div>
         <div class="plan-week-strip" aria-label="重复星期：${weekdaysLabel(r.weekdays)}">${days.map((day, i) => `<span data-selected="${r.weekdays.includes(i + 1)}" aria-hidden="true">${day}</span>`).join("")}</div>
         <div class="plan-dates">${next ? `<div><span>下次运动</span><strong>${formatMonthDayWeekday(next.date)}</strong></div><div><span>${view.plans.paused ? "恢复后按计划开抢" : "自动开抢"}</span><strong>${escape(formatEventTimeHuman(next.fire_at))}</strong></div>` : `<div><span>本计划已停用</span><strong>启用后继续安排</strong></div>`}</div>
-        <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}">${SVG.edit}<span>编辑</span></button>
+        <div class="plan-actions"><button type="button" class="btn text" data-edit="${r.id}" aria-label="编辑计划" data-tooltip="编辑">${SVG.edit}</button>
         <details class="plan-more"><summary data-tooltip="更多" aria-label="更多操作">${SVG.more}</summary><div><button type="button" data-skip="${r.id}" ${!next ? "disabled" : ""}>${next ? `跳过 ${formatMonthDayWeekday(next.date)}` : "跳过下一次"}</button><button type="button" data-up="${r.id}" ${index === 0 ? "disabled" : ""}>上移</button><button type="button" data-down="${r.id}" ${index === view.plans.rules.length - 1 ? "disabled" : ""}>下移</button><button type="button" data-delete="${r.id}">删除</button></div></details></div>
       </article>`;
     }).join(""));

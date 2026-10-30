@@ -10,10 +10,11 @@ export function renderPlanQueue(host: HTMLElement, view: BookingPlansView): bool
   if (!hasPlanActivity(view)) { patchHtml(host, ""); return false; }
   const content = document.createElement("div");
   const round = nextPlanRound(view);
+  const roundSports = round ? [...new Set(round.items.map(item => sports.find(s => s.id === item.sport || s.ocr_label === item.sport)?.label ?? item.sport))].join("、") : "";
   const pending = view.plans.attempts.filter(a => a.status === "unconfirmed");
   content.innerHTML = `<div class="plan-queue-overview"><div class="plan-queue-heading"><div><span class="section-eyebrow">长期计划</span><h3></h3></div><button type="button" class="btn ghost" data-tab="plans">管理计划<span aria-hidden="true">↗</span></button></div><p class="plan-queue-schedule"></p></div><ol class="plan-queue-items"></ol><div class="plan-queue-actions"></div>`;
   content.querySelector("h3")!.textContent = pending.length ? "有预约结果需要核对" : view.plans.paused ? "自动计划已暂停" : round?.items.some(i => i.status === "running") ? "本轮预约队列" : "下一轮自动预约";
-  content.querySelector(".plan-queue-schedule")!.textContent = pending.length ? `${pending.length} 项结果待确认，请先处理后再恢复计划` : round ? `${view.plans.paused ? "恢复后按计划 " : ""}${formatEventTimeHuman(round.fireAt)} 开抢，预约 ${formatMonthDayWeekday(round.date)} 的运动` : "暂无待执行项目";
+  content.querySelector(".plan-queue-schedule")!.textContent = pending.length ? `${pending.length} 项结果待确认，请先处理后再恢复计划` : round ? `${view.plans.paused ? "恢复后按计划 " : ""}${formatEventTimeHuman(round.fireAt)} 开抢，预约 ${formatMonthDayWeekday(round.date)} 的${roundSports}` : "暂无待执行项目";
   const list = content.querySelector("ol")!;
   round?.items.forEach((item, index) => {
     const sport = sports.find(s => s.id === item.sport);

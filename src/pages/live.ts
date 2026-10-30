@@ -102,7 +102,7 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false): string {
     <p class="booking-current-detail">${escText(detail)}</p>${confirming ? '<p class="booking-current-detail">正在只读查单；停止只会结束后续检查，已经发送的预约不会被撤回。</p>' : ""}
     ${!authOnly && (target || running && st?.task) ? `<div class="booking-target"><strong>${escText(venueLabel)}</strong><div><span>${escText(date)}</span><span>${escText(slot)}</span><span>${escText(court ? `${court} 号场地` : "自动选择场地")}</span></div>${result?.order_id ? `<small>订单号 ${escText(String(result.order_id))}</small>` : ""}</div>` : ""}
     ${!authOnly ? `<ol class="booking-track${recheckOnly ? " recheck-only" : authOnly ? " auth-only" : ""}" aria-label="执行步骤">${steps}</ol>` : ""}
-    <details class="booking-details" ${detailsOpen ? "open" : ""}><summary><span>过程记录</span><span>${rows.length} 条 <span class="booking-chevron">⌄</span></span></summary><ol class="live-timeline" aria-label="预约过程记录">${timeline}</ol><p class="booking-run-id">${escText(`执行编号 ${last?.run_id ?? ""}`)}</p></details>
+    <details class="booking-details" ${detailsOpen ? "open" : ""}><summary><span>过程记录</span><span>${rows.length} 条 <span class="booking-chevron">⌄</span></span></summary><div class="booking-details-content"><ol class="live-timeline" aria-label="预约过程记录">${timeline}</ol><p class="booking-run-id">${escText(`执行编号 ${last?.run_id ?? ""}`)}</p></div></details>
   </section>`;
 }
 
@@ -143,6 +143,20 @@ function envRowHtml(wxText: string, wxRunning: boolean): string {
         <span id="wx_text">微信（${wxText}）</span>
       </span>
     </div>`;
+}
+
+/** Match the closed cards, excluding the process content from the shared height. */
+function alignLiveCards(panel: Element) {
+  const execution = panel.querySelector<HTMLElement>(".booking-recent");
+  const draft = panel.querySelector<HTMLElement>('#live_single_context');
+  if (!execution || !draft || draft.hidden) return;
+  execution.style.minHeight = "";
+  draft.style.minHeight = "";
+  const details = execution.querySelector<HTMLDetailsElement>(".booking-details")!;
+  const expandedHeight = details.open ? details.querySelector<HTMLElement>(".booking-details-content")!.getBoundingClientRect().height : 0;
+  const closedHeight = Math.max(execution.getBoundingClientRect().height - expandedHeight, draft.getBoundingClientRect().height);
+  execution.style.minHeight = `${closedHeight + expandedHeight}px`;
+  draft.style.minHeight = `${closedHeight}px`;
 }
 
 function paintPlanContext(panel: Element, status: LiveStatus | null, snapshot: PlansSnapshot) {
@@ -216,7 +230,7 @@ function paintLiveBody(
   } else {
     mainBlock = `
       <div class="settings-group">
-        ${t ? '<p class="settings-group-title">单次预约草稿</p>' : ""}
+        ${t ? '<div class="live-draft-heading"><p class="settings-group-title">单次预约草稿</p><button type="button" class="btn text" id="live_draft_edit" data-tab="setup">修改<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>' : ""}
         <div class="settings-group-body well-flush">
           ${taskBriefHtml(t, { withSetupCta: true })}
         </div>
@@ -225,7 +239,7 @@ function paintLiveBody(
 
   patchHtml(panel, `
     <div class="page-stack live-page" data-idle="${!busy && !t && !executionBlock && !outcomeBlock}">
-      <div class="page-heading"><div><h2>运行进度</h2><p>当前进度、执行队列与预约结果</p></div><div class="live-heading-actions">${envRowHtml(wxText, wxRunning)}<button type="button" class="btn ghost" id="live_configuration" ${t ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : busy ? "查看配置" : "修改单次预约"}</button></div></div>
+      <div class="page-heading"><div><h2>运行进度</h2><p>当前进度、执行队列与预约结果</p></div><div class="live-heading-actions"><button type="button" class="btn ghost" id="live_configuration" ${t && (busy || t.plan_id) ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : "查看配置"}</button>${envRowHtml(wxText, wxRunning)}</div></div>
       <section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section>
       <div class="live-workspace" data-context="${!!t && !busy}">${outcomeBlock}
       ${executionBlock}
@@ -236,6 +250,9 @@ function paintLiveBody(
     ${stopping ? '<p class="task-busy-note" role="status">正在停止，请等待已发送请求的结果确认。</p>' : ""}
   `);
   paintPlanContext(panel, st, bookingPlans.snapshot());
+  const details = panel.querySelector<HTMLDetailsElement>(".booking-details");
+  if (details) details.ontoggle = () => alignLiveCards(panel);
+  alignLiveCards(panel);
   const pendingHost=panel.querySelector<HTMLElement>("#pending_order_checks");
   if (pendingHost) void mountOrderRecheck(pendingHost,busy,()=>!opts?.scope || opts.scope.current());
   if (stopping) {
@@ -318,6 +335,9 @@ async function pollWhileRunning(panel: Element, scope?: PageScope) {
 export async function renderLive(panel: Element, opts?: RenderLiveOpts) {
   const scope = mountPage(panel);
   scope.onDispose(clearLiveTick);
+  const resizeCards = () => alignLiveCards(panel);
+  window.addEventListener("resize", resizeCards);
+  scope.onDispose(() => window.removeEventListener("resize", resizeCards));
   const gen = bumpLiveRenderGen();
   const statusOnly = Boolean(opts?.statusOnly);
 

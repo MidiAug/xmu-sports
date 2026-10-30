@@ -9,17 +9,21 @@ await server.listen();
 const browser=await launchBrowser();
 mkdirSync('artifacts/ui-details',{recursive:true});
 try {
-  const context=await browser.newContext({viewport:{width:960,height:600}});
+  const context=await browser.newContext({viewport:{width:960,height:600},reducedMotion:"reduce"});
   const data=shellData();
   data.plans.rules[0].weekdays=[1];
+  Object.assign(data.plans.rules[1],{start:"09:00",end:"10:30"});
   await context.addInitScript(installShellFixture,data);
   const page=await context.newPage();
   await page.clock.install({time:new Date("2026-10-30T12:00:00+08:00")});
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`);
   await page.locator('.plan-card').first().waitFor();
+  assert.match(await page.locator('#plans_exercise').innerText(),/的健身房$/);
+  assert.equal(await page.locator('[data-edit]').first().innerText(),'');
   const divider=page.locator('.plan-time-divider').first();
   const line=await divider.boundingBox(), time=await divider.locator('..').boundingBox();
   assert.ok(Math.abs(line.y+line.height/2-time.y-time.height/2)<1);
+  assert.equal(await divider.evaluate(el=>getComputedStyle(el).fontSize),'0px','only the single CSS divider is visible');
   await page.locator('#plan_add').click();
   await page.locator('#plan_sport .shell-select-trigger').click();
   await page.locator(`#plan_sport [data-value="${data.plans.rules[0].sport}"]`).click();
@@ -30,6 +34,7 @@ try {
   assert.ok(await arranged.first().isDisabled());
   for(const theme of ['light','dark']) {
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+    await page.clock.runFor(250);
     await page.screenshot({path:`artifacts/ui-details/arranged-${theme}.png`});
   }
   await page.keyboard.press('Escape');
@@ -40,6 +45,13 @@ try {
   await page.locator('[data-days="1,2,3,4,5"]').click();
   await page.locator('#plan_slot .shell-select-trigger').click();
   assert.ok(await arranged.count()>0,'weekday changes refresh badges');
+  await page.keyboard.press('Escape');
+  await page.locator('#plan_sport .shell-select-trigger').click();
+  await page.locator(`#plan_sport [data-value="${data.plans.rules[1].sport}"]`).click();
+  await page.locator('#plan_slot .shell-select-trigger').click();
+  const nine=page.locator('#plan_slot [data-value="09:00|10:30"]');
+  assert.equal(await nine.isDisabled(),true,'existing 09:00 ping-pong plan blocks creating the same slot');
+  assert.match(await nine.innerText(),/已编排/);
   await page.keyboard.press('Escape');
   await page.locator('#plan_cancel').click();
   await page.locator('[data-edit]').first().click();
@@ -57,6 +69,7 @@ try {
   await page.locator('.settings-about-entry').click();
   for(const theme of ['light','dark']) {
     await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+    await page.clock.runFor(250);
     await page.screenshot({path:`artifacts/ui-details/about-${theme}.png`});
   }
   await page.locator('.app-header [data-tab="setup"]').click();
@@ -73,6 +86,45 @@ try {
   await page.getByRole('tooltip').waitFor();
   assert.match(await page.getByRole('tooltip').innerText(),/^更新于 \d\d:\d\d$/);
   await page.screenshot({path:'artifacts/ui-details/tooltip-dark.png'});
+  // Independent sports block their actual exercise dates, and pause frees them.
+  await page.evaluate(()=>{
+    const [gym,ping]=window.__plans.rules;
+    gym.first_date=ping.first_date='2026-10-30';
+    gym.weekdays=[6];ping.weekdays=[7];
+    window.__emit('plans-changed');
+  });
+  const sportChoice=id=>page.locator(`#sport_host [data-value="${id}"]`);
+  await sportChoice('健身房').click();
+  const tomorrow=page.locator('[data-date="2026-10-31"]'), later=page.locator('[data-date="2026-11-01"]');
+  await page.waitForFunction(()=>document.querySelector('[data-date="2026-10-31"]').disabled);
+  assert.equal(await later.isEnabled(),true);
+  assert.equal(await sportChoice('健身房').isEnabled(),true);
+  await sportChoice('乒乓球').click();
+  assert.equal(await tomorrow.isEnabled(),true);
+  assert.equal(await later.isDisabled(),true);
+  const selected=await page.locator('.booking-date-option.on').getAttribute('data-date');
+  await later.evaluate(el=>el.click());
+  assert.equal(await page.locator('.booking-date-option.on').getAttribute('data-date'),selected);
+  for(const theme of ['light','dark']) {
+    await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+    await page.clock.runFor(250);
+    await page.screenshot({path:`artifacts/ui-details/planned-dates-${theme}.png`});
+  }
+  await page.evaluate(()=>{window.__plans.paused=true;window.__emit('plans-changed');});
+  await page.waitForFunction(()=>!document.querySelector('[data-date="2026-11-01"]').disabled);
+  await later.click();
+  assert.equal(await later.getAttribute('aria-pressed'),'true');
+  await page.evaluate(()=>{window.__plans.paused=false;window.__emit('plans-changed');});
+  await page.waitForFunction(()=>document.querySelector('[data-date="2026-11-01"]').disabled);
+  assert.equal(await later.getAttribute('aria-pressed'),'true','restoring keeps the saved actual date');
+  assert.equal(await page.locator('#setup_primary').isDisabled(),true);
+  await page.evaluate(()=>{
+    window.__next[1]={...window.__next[0],id:window.__plans.rules[1].id};window.__emit('plans-changed');
+  });
+  await page.locator('.app-header [data-tab="plans"]').click();
+  await page.waitForFunction(()=>document.querySelector('#plans_exercise').textContent.includes('健身房、乒乓球'));
+  await page.screenshot({path:'artifacts/ui-details/plan-summary-dark.png'});
+  await page.locator('.plan-card').nth(1).screenshot({path:'artifacts/ui-details/plan-card-dark.png'});
   await page.evaluate(()=>{
     const events=[{ts:'2026-10-30T11:59:00+08:00',task_id:'login-fixture',action:'spawn',result:'http_auth'},{ts:'2026-10-30T11:59:02+08:00',task_id:'login-fixture',action:'done',result:'http_auth_ready'}];
     window.__live={...window.__live,task:window.__task,recent_events:events,last_event:events[1],operation:'auth'};
@@ -82,9 +134,29 @@ try {
   await page.locator('.booking-details').waitFor();
   const draft=page.locator('#live_single_context');
   const before=await draft.boundingBox();
+  const closed=await page.locator('.booking-recent').boundingBox();
+  assert.ok(Math.abs(before.height-closed.height)<1,'closed execution and draft match');
+  assert.equal(await page.locator('#live_configuration').isVisible(),false);
+  const env=await page.locator('.live-heading-actions .live-env').boundingBox();
+  const heading=await page.locator('.live-page .page-heading').boundingBox();
+  assert.ok(Math.abs(env.x+env.width-heading.x-heading.width)<1,'WeChat status aligns to heading right edge');
+  const draftHeading=page.locator('.live-draft-heading');
+  assert.equal(await draftHeading.getByRole('button',{name:'修改',exact:true}).count(),1);
+  await page.screenshot({path:'artifacts/ui-details/live-closed-dark.png'});
   await page.locator('.booking-details summary').click();
-  assert.equal((await draft.boundingBox()).height,before.height,'expanded process does not stretch the draft card');
+  await page.clock.runFor(50);
+  assert.ok(Math.abs((await draft.boundingBox()).height-before.height)<1,'expanded process does not stretch the draft card');
+  assert.ok((await page.locator('.booking-recent').boundingBox()).height>closed.height);
+  const summaryAfter=await page.locator('.booking-details summary').boundingBox();
+  await page.locator('.booking-details summary').click();
+  await page.clock.runFor(50);
+  assert.ok(Math.abs((await page.locator('.booking-details summary').boundingBox()).y-summaryAfter.y)<1,'summary never jumps on toggle');
+  assert.ok(Math.abs((await page.locator('.booking-recent').boundingBox()).height-before.height)<1);
+  await page.locator('.booking-details summary').click();
+  await page.clock.runFor(50);
   await page.screenshot({path:'artifacts/ui-details/live-expanded-dark.png'});
+  await page.locator('#live_draft_edit').click();
+  await page.locator('.setup-page').waitFor();
   assert.equal(await page.evaluate(()=>window.__calls.some(c=>['start_http_run','arm_hang','cancel_my_order'].includes(c.command))),false);
-  console.log('UI details passed: arranged slots, weekday updates, centered separator, keyboard tooltip/Esc and refresh padding; offline fixture only');
+  console.log('UI details passed: arranged slots/dates, pause/resume, specific round sports, equal closed cards, stable expansion, inline edit and right-aligned WeChat; offline fixture only');
 } finally {await browser.close();await server.close();}

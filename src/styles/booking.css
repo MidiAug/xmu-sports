@@ -43,13 +43,16 @@
 .booking-date-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
 .booking-date-option { appearance:none; font:inherit; color:var(--color-ink); background:transparent; border:1px solid var(--color-line); cursor:pointer; display:grid; grid-template-columns:auto auto auto; justify-content:center; align-items:center; gap:9px; min-height:62px; padding:10px; border-radius:12px; }
 .booking-date-option:hover:not(:disabled):not(.on) { background:var(--color-panel-hover); }
-.booking-date-option:disabled { cursor:default; }
+.date-plan-badge { grid-column:1 / -1; font-size:11px; line-height:16px; color:var(--color-muted); }
+.date-plan-badge[hidden] { display:none; }
 .booking-date-option .date-relative { font-size:13px; font-weight:400; color:var(--color-secondary-ink); }
 .booking-date-option .date-number { font-size:26px; font-weight:500; line-height:1; letter-spacing:-.6px; }
 .booking-date-option small { display:grid; gap:1px; font-size:12px; line-height:18px; }
 .booking-date-option.on { border-color:transparent; background:var(--color-nav-active); }
 .booking-date-option.on .date-relative,.booking-date-option.on .date-number { color:var(--color-accent); }
 .booking-date-option.on small { color:var(--color-accent); }
+.booking-date-option:disabled { cursor:default; background:var(--color-control); border-color:transparent; color:var(--color-muted); }
+.booking-date-option:disabled :is(.date-relative,.date-number,small) { color:var(--color-muted); }
 .booking-date-hint { font-size:12px; line-height:1.7; margin:10px 0 0; color:var(--color-muted); }
 .booking-date-hint.is-warning { padding:8px 10px; border-radius:8px; color:var(--color-warning); background:color-mix(in srgb,var(--color-warning) 8%,transparent); }
 .booking-date-hint:empty { display:none; }

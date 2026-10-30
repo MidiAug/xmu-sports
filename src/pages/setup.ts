@@ -352,7 +352,6 @@ export async function renderSetup(panel: Element) {
   }
 
   function syncAvailabilityOptions() {
-    syncSportHints();
     const vn=currentVenue();
     if (!vn) return;
     const keep=slotSelect.getValue();
@@ -398,9 +397,8 @@ export async function renderSetup(panel: Element) {
   type SelectApi = ReturnType<typeof mountShellSelect>;
   let sportSelect!: SelectApi;
   let planHints: PlanHints | undefined;
-  let sportHintsKey = "";
   const refreshPlanHints = async () => {
-    try { const next = await bookingPlans.read(); if (scope.current()) { planHints = next; syncSportHints(); updateSummary(); } }
+    try { const next = await bookingPlans.read(); if (scope.current()) { planHints = next; updateSummary(); } }
     catch (error) { log.warn("setup", "plan_hints_failed", { err: String(error) }); }
   };
 
@@ -456,17 +454,7 @@ export async function renderSetup(panel: Element) {
   scope.onDispose(() => advancedLayout.disconnect());
 
   function sportOptions(): SelectOption[] {
-    return selectable.map((s) => {
-      const planned = hasBookingPlan(planHints, s.id, targetDate, availabilitySessionCache.account);
-      return { value: s.ocr_label, label: s.label, badge: planned ? "已计划" : undefined, disabled: planned };
-    });
-  }
-
-  function syncSportHints() {
-    const options = sportOptions(), key = JSON.stringify(options);
-    if (key === sportHintsKey) return;
-    sportHintsKey = key;
-    sportSelect.setOptions(options, sportSelect.getValue());
+    return selectable.map(s => ({ value: s.ocr_label, label: s.label }));
   }
 
   function venueOptions(sp: Sport): SelectOption[] {
@@ -568,18 +556,22 @@ export async function renderSetup(panel: Element) {
   });
 
   function syncDateOptions() {
-    syncSportHints();
     const today = todayISO();
     if (dateOptionsDay !== today) {
       dateOptionsDay = today;
       panel.querySelector("#date_months")!.textContent = [...new Set(bookingDateOptions().map(option => `${Number(option.value.slice(5,7))}月`))].join(" / ");
       dateOptionsEl.innerHTML = bookingDateOptions().map(option => `
         <button type="button" class="booking-date-option" data-date="${option.value}" aria-label="${option.label} ${formatMonthDayWeekday(option.value)}" aria-pressed="false">
-          <span class="date-relative">${option.label}</span><strong class="date-number">${option.value.slice(8)}</strong><small><span>${Number(option.value.slice(5,7))}月</span><span>周${"日一二三四五六"[new Date(`${option.value}T00:00:00Z`).getUTCDay()]}</span></small>
+          <span class="date-relative">${option.label}</span><strong class="date-number">${option.value.slice(8)}</strong><small><span>${Number(option.value.slice(5,7))}月</span><span>周${"日一二三四五六"[new Date(`${option.value}T00:00:00Z`).getUTCDay()]}</span></small><span class="date-plan-badge" hidden>已编排</span>
         </button>`).join("");
     }
     dateOptionsEl.querySelectorAll<HTMLButtonElement>("[data-date]").forEach(button => {
       const selected = button.dataset.date === targetDate;
+      const arranged = hasBookingPlan(planHints, findSport(sportSelect.getValue())?.id ?? "", button.dataset.date!, availabilitySessionCache.account);
+      button.disabled = arranged;
+      button.querySelector<HTMLElement>(".date-plan-badge")!.hidden = !arranged;
+      const option = bookingDateOptions().find(option => option.value === button.dataset.date)!;
+      button.setAttribute("aria-label", `${option.label} ${formatMonthDayWeekday(option.value)}${arranged ? "，已编排" : ""}`);
       button.classList.toggle("on", selected);
       button.setAttribute("aria-pressed", String(selected));
     });
@@ -604,7 +596,7 @@ export async function renderSetup(panel: Element) {
   dateOptionsEl.addEventListener("click", event => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-date]");
     const value = button?.dataset.date;
-    if (busy || starting || !value || !isSelectableTargetDate(value)) return;
+    if (busy || starting || button?.disabled || !value || !isSelectableTargetDate(value)) return;
     targetDate = value;
     syncDateOptions();
     scheduleSave();
@@ -757,7 +749,7 @@ export async function renderSetup(panel: Element) {
   scheduleAvailability();
   void refreshPlanHints();
   scope.onDispose(bookingPlans.subscribe(snapshot => {
-    if (snapshot.view && !snapshot.error) { planHints = snapshot.view; syncSportHints(); updateSummary(); }
+    if (snapshot.view && !snapshot.error) { planHints = snapshot.view; updateSummary(); }
   }));
   end();
 }
