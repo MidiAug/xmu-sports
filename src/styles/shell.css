@@ -52,9 +52,9 @@ h1,h2,h3,button,summary,.page-heading { user-select:none; }
 .my-orders-list { display:flex; flex-direction:column; gap:12px; }
 .my-order { padding:16px; border-radius:13px; border:1px solid var(--color-line); background:var(--color-panel-2); }
 .my-order p { margin:0; }
-.my-order-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.my-order-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .my-order-name { font-size:13px; font-weight:600; line-height:1.6; }
-.my-order-time { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; margin:12px 0 5px !important; font-variant-numeric:tabular-nums; }
+.my-order-time { display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; margin:6px 0 5px !important; font-variant-numeric:tabular-nums; }
 .my-order-day { color:var(--color-accent); font-size:12px; }
 .my-order-time strong { font-size:19px; font-weight:650; }
 .my-order-court,.my-order-cancel-reason { color:var(--color-muted); font-size:12px; line-height:1.6; }

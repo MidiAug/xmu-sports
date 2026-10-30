@@ -154,7 +154,8 @@
 .plan-skip-chip button:hover:not(:disabled),.plan-skip-chip button:focus-visible { color:var(--color-accent); background:var(--color-panel); }
 .plan-skip-chip button:disabled { color:var(--color-muted); cursor:default; }
 
-.live-page > #pending_order_checks:empty { display:none; }
+.live-page #pending_order_checks:empty { display:none; }
+.live-secondary #pending_order_checks .settings-cell { align-items:start; flex-wrap:wrap; gap:12px; }
 .live-page .plan-queue-overview { padding:20px 24px; }
 .live-page .plan-queue-row { padding:16px 0; gap:12px 16px; }
 .live-results { padding:20px 24px; border:1px solid var(--color-line); border-radius:16px; background:var(--color-panel); }
@@ -166,7 +167,7 @@
 .live-results [data-result] { color:var(--color-muted); font-size:12px; } .live-results [data-result="succeeded"] { color:var(--color-ok); }
 
 .live-board { display:grid; grid-template-columns:minmax(0,1fr); gap:20px; align-items:start; }
-.live-board:has(.live-secondary .live-auxiliary),.live-board:has(.live-secondary .booking-recent),.live-board:has(.live-secondary .live-results) { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); }
+.live-board:has(.live-secondary .live-auxiliary),.live-board:has(.live-secondary .booking-execution),.live-board:has(.live-secondary .live-results),.live-board:has(.live-secondary #pending_order_checks:not(:empty)) { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); }
 .live-primary { display:flex; flex-direction:column; gap:20px; min-width:0; }
 .live-secondary { min-width:0; }
 .live-board .live-plan-queue { margin-top:0; }
@@ -176,6 +177,14 @@
 .live-board .plan-queue-items { padding:4px 22px; }
 .live-board .plan-queue-time { font-size:18px; }
 .live-secondary .booking-head-copy h2 { font-size:19px; }
+.live-secondary .booking-execution-head { gap:10px; }
+.live-secondary .booking-current-detail { margin-bottom:18px; }
+.live-secondary .booking-current-detail:empty { display:none; }
+.live-secondary .booking-target { margin:0 26px; padding:14px 0; }
+.live-secondary .booking-track { margin:16px 26px; padding:10px 0; }
+.live-secondary .booking-track li { gap:6px; font-size:10px; }
+.live-secondary .booking-step-icon { width:24px; height:24px; font-size:10px; }
+.live-secondary .booking-track li:not(:last-child)::after { top:12px; left:calc(50% + 16px); width:calc(100% - 32px); }
 .live-secondary .live-auxiliary > summary { flex-wrap:wrap; gap:6px 12px; }
 @media(max-width:800px) { .live-board:has(.live-secondary) { grid-template-columns:minmax(0,1fr); } }
 

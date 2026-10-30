@@ -65,9 +65,46 @@ try {
   window.__live={...window.__live,task:{...window.__task,task_id:'active'},running:true,armed:false,operation:'booking',recent_events:[event],last_event:event};window.__emit('run-changed');
  });
  await page.locator('.booking-execution.running').waitFor();
- await page.locator('.live-results').waitFor();
+ assert.equal(await page.locator('.live-results').count(),0,'current progress replaces historical results while running');
+ assert.equal(await page.locator('.live-secondary .booking-execution.running').count(),1,'execution occupies the right result column');
+ assert.equal(await page.locator('.live-primary .booking-execution').count(),0,'execution does not create a wide primary card');
  assert.equal(await page.locator('#live_single_context').isVisible(),false);
  await page.screenshot({path:'artifacts/progress-unified/running-dark.png'});
+ await page.evaluate(()=>{
+  window.__pendingOrders=[{request_ref:'a'.repeat(64),can_recheck:false,reason:'旧记录缺少原账号或实际场次快照，请在小程序核对',target:{sport:'乒乓球',venue:'测试场馆',date:'2026-10-31',time:'19:30',end:'21:00'}}];
+  window.__emit('run-changed');
+ });
+ await page.locator('#pending_order_checks .settings-group').waitFor();
+ assert.equal(await page.locator('.live-secondary #pending_order_checks').count(),1);
+ await page.evaluate(()=>{window.__holdPending=true;window.__pendingNode=document.querySelector('#pending_order_checks .settings-group');window.__executionNode=document.querySelector('#live_execution .booking-execution');});
+ const executionBox=await page.locator('#live_execution').boundingBox();
+ for(const phase of ['server_precheck','submitting','order_accepted','verifying_order']) {
+  const reads=await page.evaluate(()=>window.__calls.filter(c=>c.command==='list_pending_orders').length);
+  await page.evaluate(phase=>{
+   const event={...window.__live.last_event,ts:'2026-10-30T12:01:02+08:00',result:phase,http:{phase}};
+   window.__live.last_event=event;window.__live.recent_events.push(event);window.__emit('run-changed');
+  },phase);
+  await page.waitForFunction(before=>window.__calls.filter(c=>c.command==='list_pending_orders').length>before,reads);
+  assert.equal(await page.evaluate(()=>window.__pendingNode===document.querySelector('#pending_order_checks .settings-group')),true,'pending rows are retained while their replacement read is in flight');
+  assert.ok(Math.abs((await page.locator('#live_execution').boundingBox()).y-executionBox.y)<1,'pending reads do not move the execution card');
+ }
+ await page.evaluate(()=>{window.__holdPending=false;window.__pendingResolvers.forEach(resolve=>resolve());});
+ await page.screenshot({path:'artifacts/progress-unified/confirming-dark.png'});
+ await page.evaluate(()=>{
+  const event={...window.__live.last_event,action:'done',result:'http_verified',http:{verified:true,target:{sport:'乒乓球',venue:'测试场馆',date:'2026-10-31',time:'19:30',end:'21:00'}}};
+  window.__live={...window.__live,running:false,last_event:event,recent_events:[...window.__live.recent_events,event]};window.__pendingOrders=[];window.__emit('run-changed');
+ });
+ await page.locator('#live_execution .booking-execution.success').waitFor();
+ assert.equal(await page.locator('.live-results').count(),0,'the result stays in the same card without a second results component');
+ assert.equal(await page.evaluate(()=>window.__executionNode===document.querySelector('#live_execution .booking-execution')),true,'the same right-hand card changes from progress to result');
+ await page.waitForFunction(()=>document.querySelector('#pending_order_checks').children.length===0);
+ for(const width of [1100,960]) {
+  await page.setViewportSize({width,height:760});
+  for(const theme of ['light','dark']) {
+   await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+   await page.screenshot({path:`artifacts/progress-unified/result-${theme}-${width}.png`});
+  }
+ }
  await page.evaluate(()=>{
   const event={task_id:'launch-failed',ts:'2026-10-30T12:02:00+08:00',action:'fail',result:'LOGIN_CONFIRM_REQUIRED',http:{reason:'MINIPROGRAM_NOT_VISIBLE',message:'旧的未显示提示'}};
   window.__live={...window.__live,running:false,armed:false,operation:'auth',last_event:event,recent_events:[event]};window.__emit('run-changed');

@@ -141,7 +141,8 @@ function paintPlanContext(panel: Element, status: LiveStatus | null, snapshot: P
   const results = panel.querySelector<HTMLElement>("#live_plan_results");
   const labels: Record<string,string> = {succeeded:"已约到",existing:"已有预约",failed:"未约到"};
   const attempts = snapshot.view?.plans.attempts.filter(a => labels[a.status] && a.task.task_id !== status?.last_event?.task_id).slice(-3).reverse() ?? [];
-  if(results) patchHtml(results, attempts.length ? `<section class="live-results"><header><h3>最近预约结果</h3><button class="btn text" data-tab="history">查看记录 →</button></header>${attempts.map(a=>`<article><div><strong>${escText(a.task.sport)}</strong><p>${escText(`${a.task.venue} · ${formatTargetBrief(a.task)}`)}</p></div><span data-result="${a.status}">${labels[a.status]}</span></article>`).join("")}</section>` : "");
+  const hasExecution = Boolean(panel.querySelector("#live_execution")?.childElementCount);
+  if(results) patchHtml(results, !status?.running && !hasExecution && attempts.length ? `<section class="live-results"><header><h3>最近预约结果</h3><button class="btn text" data-tab="history">查看记录 →</button></header>${attempts.map(a=>`<article><div><strong>${escText(a.task.sport)}</strong><p>${escText(`${a.task.venue} · ${formatTargetBrief(a.task)}`)}</p></div><span data-result="${a.status}">${labels[a.status]}</span></article>`).join("")}</section>` : "");
   const empty = panel.querySelector<HTMLElement>(".live-upcoming-empty");
   if (empty) empty.hidden = scheduled || !!status?.running;
   const draft = panel.querySelector<HTMLElement>("#live_single_context");
@@ -156,6 +157,7 @@ function paintLiveBody(
 ) {
   const previousTimeline = panel.querySelector<HTMLElement>(".live-timeline");
   const previousQueue = panel.querySelector("#live_plan_queue")?.innerHTML ?? "";
+  const previousPending = panel.querySelector("#pending_order_checks")?.innerHTML ?? "";
   const auxiliaryOpen = panel.querySelector<HTMLDetailsElement>(".live-auxiliary")?.open ?? false;
   const detailsOpen = panel.querySelector<HTMLDetailsElement>(".booking-details")?.open ?? false;
   const timelineTop = previousTimeline?.scrollTop ?? 0;
@@ -188,7 +190,7 @@ function paintLiveBody(
   patchHtml(panel, `
     <div class="page-stack live-page" data-idle="${!busy && !t && !executionBlock && !outcomeBlock}">
       <div class="page-heading"><div><h2>预约进度</h2><p>下一次开抢与最近预约结果</p></div><div class="live-heading-actions"><button type="button" class="btn ghost" id="live_configuration" ${t && running ? "" : "hidden"} data-tab="${t?.plan_id ? "plans" : "setup"}" ${t?.plan_id ? `data-plan-id="${escText(t.plan_id)}"` : ""}>${t?.plan_id ? "查看本项计划" : "查看配置"}</button>${envRowHtml(wxText, wxRunning)}</div></div>
-      <div id="pending_order_checks"></div><div class="live-board"><div class="live-primary">${running ? resultBlock : ""}<section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section><div class="live-upcoming-empty" hidden>${t ? '<div class="activity-empty"><p class="live-brief-title">没有待执行预约</p><p class="live-brief-sub">启动单次定时或启用计划后，在这里查看开抢安排</p><p class="live-brief-cta"><button class="btn primary" data-tab="setup">去预约</button></p></div>' : emptyProgressHtml()}</div><div id="live_single_context" hidden>${mainBlock}</div></div><aside class="live-secondary"><div class="live-workspace">${!running && !auxiliary ? resultBlock : ""}<div id="live_plan_results"></div>${auxiliary ? resultBlock : ""}
+      <div class="live-board"><div class="live-primary"><section id="live_plan_queue" class="live-plan-queue">${previousQueue}</section><div class="live-upcoming-empty" hidden>${t ? '<div class="activity-empty"><p class="live-brief-title">没有待执行预约</p><p class="live-brief-sub">启动单次定时或启用计划后，在这里查看开抢安排</p><p class="live-brief-cta"><button class="btn primary" data-tab="setup">去预约</button></p></div>' : emptyProgressHtml()}</div><div id="live_single_context" hidden>${mainBlock}</div></div><aside class="live-secondary"><div class="live-workspace"><div id="live_execution">${!auxiliary ? resultBlock : ""}</div><div id="live_plan_results"></div><div id="live_auxiliary">${auxiliary ? resultBlock : ""}</div><div id="pending_order_checks">${previousPending}</div>
       ${!running ? recoveryHtml(ev) : ""}
       </div></aside></div>
     </div>
