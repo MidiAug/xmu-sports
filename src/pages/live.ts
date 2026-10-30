@@ -10,7 +10,7 @@ import {
   formatTargetBrief,
   formatTaskSportVenue,
 } from "../lib/format-human";
-import { BOOKING_STEPS, currentRunEvents, elapsedLabel, progressMessage, progressStep } from "../lib/booking-progress";
+import { BOOKING_STEPS, bookingProgressState, currentRunEvents, elapsedLabel, progressMessage } from "../lib/booking-progress";
 import { log } from "../lib/log";
 import { toastError, toastSuccess } from "../ui/toast";
 import { mountPage, type PageScope } from "../lib/page-lifecycle";
@@ -73,13 +73,9 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false, failureOpen =
   const authOnly = st?.operation === "auth" || last?.result === "http_auth_ready" || events.some(event => event.result === "auth_check_started");
   const prepareOnly = st?.operation === "prepare" || last?.result === "http_prepared" || events.some(event => event.result === "prepare_started");
   const recheckOnly = st?.operation === "recheck" || events.some(event => event.result === "recheck_started");
-  const phaseEvents = events.filter(event => event.action === "http_phase");
-  const latestPhase = phaseEvents.at(-1);
   const uncertain = ["SUBMIT_UNKNOWN", "RESULT_UNCONFIRMED", "http_submitted", "ORDER_RECHECK_UNCONFIRMED"].includes(last?.result ?? "");
   const failed = !uncertain && (last?.action === "fail" || last?.action === "cancelled");
-  const active = failed && last?.http?.phase ? progressStep(last) : latestPhase ? progressStep(latestPhase) : "auth";
-  const observed = new Set(phaseEvents.map(progressStep));
-  if (last?.action === "done" && !["http_prepared", "http_auth_ready"].includes(last.result ?? "")) observed.add("order");
+  const { active, observed } = bookingProgressState(events, last);
   const steps = (recheckOnly ? BOOKING_STEPS.filter(([id]) => ["auth", "order"].includes(id)) : authOnly ? BOOKING_STEPS.slice(0, 1) : BOOKING_STEPS).map(([id, label],stepIndex) => {
     const current = running && active === id;
     const error = failed && active === id;
@@ -105,7 +101,7 @@ function executionHtml(st: LiveStatus | null, detailsOpen = false, failureOpen =
   const slot = result?.time ?? (target ? `${target.time ?? ""}–${target.end ?? ""}` : !recheckOnly && running ? `${st?.task?.target_time_start ?? ""}–${st?.task?.target_time_end ?? ""}` : "");
   const outcome = last ? outcomeFromEvent(last, events) : null;
   const state = running ? "running" : uncertain ? "unconfirmed" : failed ? "failed" : (result?.verified || last?.result === "http_auth_ready") ? "success" : "finished";
-  const confirming = running && latestPhase && progressStep(latestPhase) === "order";
+  const confirming = running && active === "order";
   const title = running ? recheckOnly ? "正在再次查单" : confirming ? "正在确认预约结果" : st?.operation === "scheduled" && st.armed ? "定时预约准备中" : authOnly ? "正在检查体育登录" : prepareOnly ? "正在检查预约条件" : "预约进行中" : outcome?.title ?? "预约流程已结束";
   const detail = running ? (last ? progressMessage(last) : "正在启动…") : outcome?.detail ?? (last ? progressMessage(last) : "");
   const court = result?.court ?? selected ?? target?.court;

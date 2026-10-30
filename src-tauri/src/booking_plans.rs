@@ -1021,6 +1021,50 @@ mod tests {
     }
 
     #[test]
+    fn multiple_sports_keep_frozen_priority_and_stop_on_shared_failures() {
+        let first = catalog_rule();
+        let data = catalog();
+        let sport = data["sports"].as_array().unwrap().iter().find(|s| s["enabled"] != false && s["id"] != first.sport).unwrap();
+        let venue = &sport["venues"][0];
+        let slot = &venue["time_slots"][0];
+        let second = Plan { id:uuid::Uuid::new_v4().to_string(), sport:sport["id"].as_str().unwrap().into(),
+            venue:venue["id"].as_str().unwrap().into(), start:slot["start"].as_str().unwrap().into(), end:slot["end"].as_str().unwrap().into(), ..first.clone() };
+        let rules = vec![first.clone(), second.clone()];
+        validate(&rules).unwrap();
+        let mut plans = Plans { rules, ..Plans::default() };
+        freeze_round(&mut plans, at("2026-10-29T06:59:00+08:00"));
+        assert_eq!(plans.attempts.len(),2);
+        let first_task = plans.attempts[0].task.clone();
+        let second_task = plans.attempts[1].task.clone();
+        assert_eq!(first_task.plan_id.as_deref(),Some(first.id.as_str()));
+        assert_eq!(second_task.plan_id.as_deref(),Some(second.id.as_str()));
+        assert_ne!(first_task.task_id,second_task.task_id);
+        plans.rules.reverse();
+        plans.attempts[0].status = "running".into();
+        freeze_round(&mut plans, at("2026-10-29T07:00:00+08:00"));
+        assert_eq!(plans.attempts.len(),2,"editing priority must not duplicate or reorder the frozen round");
+        let frozen = plans.clone();
+        for outcome in [Ok("http_verified".into()), Err("SLOT_OCCUPIED".into())] {
+            let mut round = frozen.clone();
+            apply_outcome(&mut round,&first_task,&outcome);
+            assert!(!round.paused);
+            assert_eq!(round.attempts[1].status,"queued");
+            assert_eq!(round.attempts[1].task.task_id,second_task.task_id);
+            round.attempts[1].status = "running".into();
+            apply_outcome(&mut round,&second_task,&Ok("http_verified".into()));
+            assert_eq!(round.attempts[1].status,"succeeded");
+            assert_eq!(round.attempts[0].task.task_id,first_task.task_id);
+        }
+        for code in ["HTTP_FAILED","RATE_LIMITED","ACCOUNT_CHANGED","SUBMIT_UNKNOWN"] {
+            let mut round = frozen.clone();
+            apply_outcome(&mut round,&first_task,&Err(code.into()));
+            assert!(round.paused);
+            assert_eq!(round.attempts[1].status,"queued");
+            assert!(due_plan(&round,at("2026-10-29T07:00:03+08:00")).is_none());
+        }
+    }
+
+    #[test]
     fn frozen_queue_keeps_targets_and_order_and_expires_without_replaying() {
         let first = catalog_rule();
         let mut second = first.clone();

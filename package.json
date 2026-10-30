@@ -15,7 +15,7 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "test:recheck": "node scripts/test_order_recheck.mjs",
-    "test:plans": "node scripts/test_booking_plan_hints.mjs && node scripts/test_booking_plans.mjs && node scripts/test_booking_plans_store.mjs && node scripts/test_booking_plans_ui.mjs && node scripts/test_shell_navigation_ui.mjs",
+    "test:plans": "node scripts/test_booking_plan_hints.mjs && node scripts/test_booking_plans.mjs && node scripts/test_booking_plans_store.mjs && node scripts/test_booking_plans_ui.mjs && node scripts/test_shell_navigation_ui.mjs && node scripts/test_plan_round_progress_ui.mjs",
     "test:orders": "node scripts/test_my_orders.mjs",
     "test:ui": "node scripts/test_ui.mjs"
   },

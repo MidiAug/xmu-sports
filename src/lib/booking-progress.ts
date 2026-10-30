@@ -57,11 +57,11 @@ const PHASES: Record<string, [string, string]> = {
   waiting_login_entry: ["auth", "等待新票据；请在小程序确认登录并进入场馆预约"],
   validating_login_entry: ["auth", "发现新票据，验证会话与本人账号"],
   login_entry_rejected: ["auth", "新入口仍被服务器拒绝，等待登录确认"],
-  checking_orders: ["query", "检查已有预约，避免重复下单"],
+  checking_orders: ["auth", "检查已有预约，避免重复下单"],
   resolving_venue: ["query", "匹配运动与场馆"],
   querying_slots: ["query", "查询目标日期的实时场次"],
   waiting_slot_retry: ["query", "场次查询返回参数错误，等待 2 秒后重试一次"],
-  selecting_candidate: ["query", "选择候选时段"],
+  selecting_candidate: ["auth", "准备候选时段"],
   discovering_fallbacks: ["query", "首选场次不可约，查询备选时段"],
   candidate_rejected: ["verify", "候选场次未通过预约检查"],
   waiting_open: ["query", "等待学校发布场次（最多 5 秒）"],
@@ -69,9 +69,9 @@ const PHASES: Record<string, [string, string]> = {
   server_precheck: ["verify", "请求学校校验预约资格"],
   checking_config: ["verify", "读取预约规则与确认信息"],
   slot_ready: ["verify", "场次与预约资格校验通过"],
-  warming: ["captcha", "准备本地验证码识别组件"],
+  warming: ["auth", "准备本地验证码识别组件，尚未获取验证码"],
   captcha: ["captcha", "获取并识别验证码"],
-  captcha_recognized: ["captcha", "验证码识别完成，准备提交"],
+  captcha_recognized: ["captcha", "验证码识别完成，继续核验实时场次"],
   captcha_retry: ["captcha", "验证码未通过，换图后重新校验（合计最多 3 次）"],
   submitting: ["submit", "发送预约请求，等待学校响应"],
   order_accepted: ["submit", "学校已接受预约，继续查单确认"],
@@ -85,13 +85,29 @@ const PHASES: Record<string, [string, string]> = {
 };
 
 export const BOOKING_STEPS = [
-  ["auth", "登录检测"], ["captcha", "验证码"], ["query", "实时场次"],
+  ["auth", "准备检查"], ["captcha", "验证码"], ["query", "实时场次"],
   ["verify", "预约校验"], ["submit", "提交预约"], ["order", "查单确认"],
 ] as const;
 
 export function progressStep(event: RunEvent): string {
   if (event.action === "done") return "order";
   return PHASES[event.http?.phase ?? event.result ?? ""]?.[0] ?? "auth";
+}
+
+export function bookingProgressState(events: RunEvent[], last: RunEvent | null) {
+  const phases = events.filter(event => event.action === "http_phase");
+  let start = 0;
+  for (let i = 0; i < phases.length; i++) {
+    if (["captcha_retry", "selecting_candidate"].includes(phases[i].http?.phase ?? phases[i].result ?? "")) start = i;
+  }
+  const observed = new Set(phases.slice(start).map(progressStep));
+  // A captcha denial restarts fresh slot checks; the original account checks still belong to this attempt.
+  if ((phases[start]?.http?.phase ?? phases[start]?.result) === "captcha_retry"
+      && phases.slice(0, start).some(event => progressStep(event) === "auth")) observed.add("auth");
+  if (last?.action === "done" && !["http_prepared", "http_auth_ready"].includes(last.result ?? "")) observed.add("order");
+  const active = last?.action === "fail" && last.http?.phase ? progressStep(last)
+    : phases.length ? progressStep(phases[phases.length - 1]) : "auth";
+  return { active, observed };
 }
 
 export function progressMessage(event: RunEvent): string {
