@@ -331,7 +331,7 @@ pub async fn booking_plan_account(app: tauri::AppHandle) -> Result<String, Strin
         let _query = crate::availability::QUERY
             .lock()
             .map_err(|_| "查询状态不可用")?;
-        if crate::busy_now(&app)
+        if crate::child_running(&app.state::<crate::AppState>())
             || crate::availability::recovering()
             || crate::my_orders::mutating()
         {

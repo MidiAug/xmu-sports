@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { BookingPlansView } from "./booking-plans";
+import { hasUpcomingPlan, type BookingPlansView } from "./booking-plans";
+import { setPlanRunIndicator } from "./run-indicator";
 import { addDaysISO, localDateISO } from "./time";
 
 export type PlansSnapshot = { view?: BookingPlansView; error?: unknown };
@@ -46,6 +47,13 @@ export const bookingPlans = createBookingPlansStore(() => invoke<BookingPlansVie
 
 export async function startBookingPlansUpdates() {
   const stops = await Promise.all(["plans-changed", "plans-health"].map(event => listen(event, () => bookingPlans.invalidate())));
+  const stopIndicator = bookingPlans.subscribe(snapshot => {
+    if (!snapshot.error && snapshot.view) {
+      const now = new Date(); const today = localDateISO(now);
+      setPlanRunIndicator(hasUpcomingPlan(snapshot.view, today, addDaysISO(today,1), now.getTime()));
+    }
+  });
+  void bookingPlans.read().catch(() => {});
   let day: string;
   let timer: number;
   const armMidnight = () => {
@@ -62,5 +70,5 @@ export async function startBookingPlansUpdates() {
   // Paused plans have no health events, but their date previews must still roll over.
   armMidnight();
   document.addEventListener("visibilitychange", onVisible);
-  return () => { stops.forEach(stop => stop()); window.clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
+  return () => { stopIndicator(); stops.forEach(stop => stop()); window.clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
 }

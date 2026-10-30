@@ -146,7 +146,6 @@
 .live-secondary .live-auxiliary > summary { flex-wrap:wrap; gap:6px 12px; }
 @media(max-width:800px) { .live-board:has(.live-secondary) { grid-template-columns:minmax(0,1fr); } }
 
-.live-column-title { margin:0; font-size:14px; color:var(--color-secondary-ink); font-weight:550; }
 .live-primary:has(#live_single_context:not([hidden])) .live-upcoming-empty { display:none; }
 .live-plan-queue .queue-overview-only { border-bottom:0; }
 .live-plan-queue:not(:has(.plan-queue-row)):not(:has(.plan-queue-actions > *)) .plan-queue-actions { display:none; }

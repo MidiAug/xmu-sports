@@ -4,8 +4,12 @@ import ts from "typescript";
 const timeSource=readFileSync(new URL("../src/lib/time.ts",import.meta.url),"utf8");
 const timeJs=ts.transpileModule(timeSource,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
 const timeUrl=`data:text/javascript;base64,${Buffer.from(timeJs).toString("base64")}`;
+const plansJs=ts.transpileModule(readFileSync(new URL('../src/lib/booking-plans.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;
+const plansUrl=`data:text/javascript;base64,${Buffer.from(plansJs).toString('base64')}`;
 const source=readFileSync(new URL("../src/lib/booking-plans-store.ts",import.meta.url),"utf8")
   .replace('"./time"',JSON.stringify(timeUrl))
+  .replace('"./booking-plans"',JSON.stringify(plansUrl))
+  .replace('import { setPlanRunIndicator } from "./run-indicator";','const setPlanRunIndicator=()=>{};')
   .replace('import { invoke } from "@tauri-apps/api/core";','const invoke=()=>Promise.reject(new Error("unused host boundary"));')
   .replace('import { listen } from "@tauri-apps/api/event";','const listen=async()=>()=>{};');
 const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext}}).outputText;

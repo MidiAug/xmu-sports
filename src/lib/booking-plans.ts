@@ -40,3 +40,11 @@ export function hasPlanActivity(view: BookingPlansView | undefined) {
   return Boolean(view && (view.plans.rules.some(r => r.enabled)
     || view.plans.attempts.some(a => ["queued", "running", "unconfirmed"].includes(a.status))));
 }
+
+/** Future openings in the visible planning horizon; a paused plan is not queued. */
+export function hasUpcomingPlan(view: BookingPlansView | undefined, today: string, tomorrow: string, now: number): boolean {
+  if (!view || view.plans.paused || view.plans.attempts.some(a => a.status === "unconfirmed")) return false;
+  if (view.plans.attempts.some(a => a.status === "queued" || a.status === "running")) return true;
+  return view.next.some(next => [today,tomorrow].includes(next.fire_at.slice(0,10)) && Date.parse(next.fire_at) >= now
+    && view.plans.rules.some(rule => rule.id === next.id && rule.enabled));
+}

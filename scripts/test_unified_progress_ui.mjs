@@ -23,6 +23,11 @@ try {
  assert.equal(await page.evaluate(()=>window.__calls.filter(c=>c.command==='booking_plan_account').length),1,'one verified identity request per new editor/save');
  await page.locator('.nav-primary [data-tab="live"]').click();await page.locator('.plan-queue-row').first().waitFor();
  assert.equal(await page.locator('.plan-queue-row').count(),2,'single and recurring share one queue');
+ const primary=await page.locator('.live-plan-queue').boundingBox(),secondary=await page.locator('.live-secondary').boundingBox();
+ assert.ok(Math.abs(primary.y-secondary.y)<1,'left and right cards start at the same height');
+ assert.equal(await page.locator('.live-column-title').count(),0);
+ assert.equal(await page.evaluate(()=>window.__live.armed),true,'creating a plan leaves the single timer armed');
+
  assert.match(await page.locator('.plan-queue-row').first().innerText(),/乒乓球/);
  assert.equal(await page.locator('.live-auxiliary .booking-execution').isVisible(),false);
  assert.equal(await page.locator('#live_single_context').isVisible(),false,'armed task is not a draft');
@@ -67,6 +72,21 @@ try {
  assert.match(await page.locator('.booking-current-detail').innerText(),/更多.*添加到桌面.*重试/);
  assert.equal(await page.locator('#open_booking').count(),0,'do not send the user into a failing launch retry loop');
  await page.screenshot({path:'artifacts/progress-unified/launch-failed-dark.png'});
+ await page.evaluate(()=>{
+   window.__live={...window.__live,task:null,running:false,armed:false,last_event:null,recent_events:[]};
+   window.__plans.paused=false;window.__plans.attempts=[];
+   window.__emit('run-changed');window.__emit('plans-changed');
+ });
+ const progressTab=page.locator('.nav-primary [data-tab="live"]');
+ await page.waitForFunction(()=>document.querySelector('.nav-primary [data-tab="live"]').classList.contains('has-run-dot'));
+ await page.evaluate(()=>{window.__emit('run-changed');});
+ await page.clock.runFor(100);
+ assert.ok((await progressTab.getAttribute('class')).includes('has-run-dot'),'idle status does not erase a plan opening indicator');
+ await page.evaluate(()=>{window.__plans.paused=true;window.__emit('plans-changed');});
+ await page.waitForFunction(()=>!document.querySelector('.nav-primary [data-tab="live"]').classList.contains('has-run-dot'));
+ await page.evaluate(()=>{window.__plans.paused=false;window.__next.forEach(n=>n.fire_at='2026-11-02T07:00:00+08:00');window.__emit('plans-changed');});
+ await page.clock.runFor(100);
+ assert.ok(!(await progressTab.getAttribute('class')).includes('has-run-dot'),'distant openings do not light the near-term indicator');
  assert.equal(await page.evaluate(()=>window.__calls.some(c=>['arm_hang','start_http_run','cancel_my_order'].includes(c.command))),false);
  console.log('Unified progress passed: single/plan chronological queue, pause, draft distinction, collapsed login, compact navigation and one identity request for create/save');
 } finally {await browser.close();await server.close();}
