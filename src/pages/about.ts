@@ -16,7 +16,7 @@ export async function renderAbout(panel: Element, back: () => void) {
   panel.closest<HTMLElement>(".content")?.scrollTo({ top: 0 });
   panel.innerHTML = `<div class="page-stack about-page">
     <div class="about-navigation"><button class="about-back" type="button"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14 6-6 6 6 6M8 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><span>返回</span></button></div>
-    <div class="about-layout"><header class="about-identity"><img class="about-mark" src="${appIcon}" width="64" height="64" alt="XMU Sports 图标"><div class="about-identity-copy"><h3>XMU Sports</h3><p id="about_version"></p></div></header><div class="about-main">
+    <div class="about-layout"><header class="about-identity"><img class="about-mark" src="${appIcon}" width="128" height="86" alt="XMU Sports 图标"><div class="about-identity-copy"><h3>XMU Sports</h3><p id="about_version"></p></div></header><div class="about-main">
     <section class="preference-card about-section" aria-labelledby="update_title">
       <div class="about-row"><div><h3 id="update_title">应用更新</h3><p id="update_status" role="status" aria-live="polite">${updateHint}</p></div><button class="btn ghost about-update-button" id="update_action" type="button">检查更新</button></div>
       <div class="about-download-route"><label id="update_route_label">下载线路</label><div id="update_route" aria-labelledby="update_route_label"></div></div>
