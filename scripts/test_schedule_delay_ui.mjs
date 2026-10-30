@@ -27,7 +27,7 @@ try {
       }
     };
   });
-  await page.goto("http://127.0.0.1:1421");
+  await page.goto(process.env.XMU_TEST_BASE_URL ?? "http://127.0.0.1:1421");
   await page.locator(".task-advanced summary").click();
   const delay=page.locator("#fire_delay");
   await delay.fill("10");

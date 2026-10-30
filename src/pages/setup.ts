@@ -127,8 +127,10 @@ export async function renderSetup(panel: Element) {
       <fieldset class="task-fields" id="task_fields" ${busy ? "disabled" : ""}>
       <section class="booking-form-card">
         <div class="booking-location-row">
-        <div class="settings-cell booking-sport-section"><p class="settings-cell-title">运动</p><div id="sport_host"></div></div>
-        <div class="settings-cell booking-venue-section"><p class="settings-cell-title">场馆</p><div class="venue-picker">${locationIcon}<div id="venue_host"></div></div></div>
+          <div class="booking-location-heading"><span class="booking-sport-label">运动</span>
+            <div class="settings-cell booking-venue-section"><p class="settings-cell-title sr-only">场馆</p><div class="venue-picker">${locationIcon}<div id="venue_host"></div></div></div>
+          </div>
+          <div class="settings-cell booking-sport-section"><div id="sport_host"></div></div>
         </div>
         <div class="booking-date-section">
           <div class="booking-section-heading"><h3>运动日期</h3><span id="date_months"></span></div>
@@ -437,7 +439,7 @@ export async function renderSetup(panel: Element) {
       scheduleSave();
       paintAvailability();
     },
-    { label: "时段" },
+    { label: "时段", kind: "slot" },
   );
   scope.onDispose(slotSelect.dispose);
 
@@ -529,11 +531,11 @@ export async function renderSetup(panel: Element) {
     refreshSlots(venueSlotPrefs[prefer]);
   }
 
-  sportSelect = mountShellSelect(sportHost, sportOptions(), defaultSport.ocr_label, (v) => {
+  sportSelect = mountChoiceGroup(sportHost, sportOptions(), defaultSport.ocr_label, (v) => {
     refreshVenues(v);
     scheduleSave();
     scheduleAvailability();
-  }, { compact: true, columns: selectable.length > 4, icon: sportIcon });
+  }, { label: "运动", kind: "sport", icon: sportIcon });
   venueSelect.setOptions(venueOptions(defaultSport), defaultVenue.ocr_label);
   slotSelect.setOptions(slotOptions(defaultVenue), defaultSlotKey);
   refreshCourts(defaultVenue);

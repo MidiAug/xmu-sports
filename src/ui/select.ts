@@ -9,7 +9,7 @@ export function mountShellSelect(
   options: SelectOption[],
   selected: string,
   onChange: (value: string) => void,
-  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean; matchTrigger?:boolean; icon?: (value: string) => string },
+  opts?: { wide?: boolean; columns?: boolean; center?: boolean; compact?: boolean; matchTrigger?:boolean },
 ): { getValue: () => string; setOptions: (opts: SelectOption[], sel?: string) => void; setDisabled: (disabled: boolean) => void } {
   let value = selected;
   let selectOpts = options;
@@ -40,8 +40,7 @@ export function mountShellSelect(
     const menu = host.querySelector(".shell-select-menu") as HTMLElement;
     const valueEl = host.querySelector(".shell-select-value") as HTMLElement;
     const cur = selectOpts.find((o) => o.value === value);
-    const icon = (value: string) => opts?.icon ? `<span class="sport-icon" data-sport="${escape(value)}">${opts.icon(value)}</span>` : "";
-    valueEl.innerHTML = `${icon(value)}<span class="shell-select-main">${escape(cur?.label ?? value)}</span>${cur?.badge ? `<span class="shell-select-badge ${badgeClass(cur.badge)}">${escape(cur.badge)}</span>` : ""}`;
+    valueEl.innerHTML = `<span class="shell-select-main">${escape(cur?.label ?? value)}</span>${cur?.badge ? `<span class="shell-select-badge ${badgeClass(cur.badge)}">${escape(cur.badge)}</span>` : ""}`;
     host.classList.toggle("has-option-details", selectOpts.some(o=>o.badge));
     host.classList.toggle("has-disabled-value", !!cur?.disabled);
     menu.classList.toggle("shell-select-menu--cols", useColumns());
@@ -51,7 +50,7 @@ export function mountShellSelect(
         const checkClass = o.value === value ? "shell-select-check" : "shell-select-check spacer";
         return `<li>
           <button type="button" role="option" aria-selected="${o.value === value}" aria-disabled="${!!o.disabled}" ${o.disabled ? "disabled" : ""} tabindex="-1" class="shell-select-option ${on}" data-value="${escape(o.value)}">
-            <span class="shell-select-option-label"><span class="shell-select-option-main">${opts?.icon ? `<span class="shell-select-option-text">${icon(o.value)}${escape(o.label)}</span>` : escape(o.label)}${o.badge ? `<span class="shell-select-badge ${badgeClass(o.badge)}">${escape(o.badge)}</span>` : ""}</span></span>
+            <span class="shell-select-option-label"><span class="shell-select-option-main">${escape(o.label)}${o.badge ? `<span class="shell-select-badge ${badgeClass(o.badge)}">${escape(o.badge)}</span>` : ""}</span></span>
             <span class="${checkClass}">${SVG.check}</span>
           </button>
         </li>`;
@@ -96,7 +95,7 @@ export function mountShellSelect(
     const bottom = Math.min(window.innerHeight - 8, (container?.bottom ?? window.innerHeight) - 8);
     if (anchor.bottom < top || anchor.top > bottom || right <= left) { close(host); return; }
     const detailed=selectOpts.some(o=>o.badge);
-    const wantedWidth = opts?.matchTrigger ? anchor.width : compact ? Math.min(320, Math.max(opts?.icon && useColumns() ? 320 : 280, anchor.width))
+    const wantedWidth = opts?.matchTrigger ? anchor.width : compact ? Math.min(320, Math.max(280, anchor.width))
       : Math.max(anchor.width, detailed ? 420 : useColumns() ? selectOpts.length >= 9 ? 400 : 300 : anchor.width);
     const width = Math.min(wantedWidth, right - left);
     const columns = useColumns() ? Math.max(1, Math.min(compact || detailed ? 2 : selectOpts.length >= 9 ? 3 : 2, Math.floor((width - 12) / (compact ? 130 : detailed ? 190 : 124)))) : 1;

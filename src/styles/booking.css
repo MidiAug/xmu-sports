@@ -6,17 +6,18 @@
 .task-fields { display:block; }
 .booking-form-card { padding:22px 24px 16px; border:0; border-radius:20px; background:var(--color-panel); box-shadow:0 8px 32px rgb(26 75 138 / 2%); }
 .booking-form-card .settings-cell { display:flex; flex-direction:column; align-items:stretch; gap:8px; margin:0; padding:0; border:0; min-width:0; }
-.booking-form-card .settings-cell-title,.booking-section-heading h3 { font-size:14px; line-height:20px; font-weight:600; color:var(--color-secondary-ink); }
-.booking-location-row { display:grid; grid-template-columns:minmax(155px,.85fr) minmax(0,1.65fr); gap:16px; }
+.booking-form-card .settings-cell-title,.booking-section-heading h3,.booking-sport-label { font-size:14px; line-height:20px; font-weight:600; color:var(--color-secondary-ink); }
+.booking-location-row { display:flex; flex-direction:column; gap:10px; }
+.booking-location-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:32px; }
+.booking-location-heading .booking-venue-section { max-width:78%; }
 #sport_host { width:100%; min-width:0; max-width:none; }
-#sport_host .shell-select-trigger { min-height:44px; border:0; border-radius:12px; padding:0 12px; }
-#sport_host .shell-select-value { gap:8px; }
-#sport_host .shell-select-option-main { gap:6px; }
-#sport_host .shell-select-option-text { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
-#sport_host .shell-select-option { min-height:40px; }
-#sport_host .shell-select-option:disabled .sport-icon { opacity:.45; }
 .choice-group { min-width:0; position:relative; }
 .choice-option { appearance:none; border:1px solid transparent; background:var(--color-control); color:var(--color-ink); font:inherit; font-size:13px; line-height:20px; cursor:pointer; border-radius:12px; display:flex; justify-content:center; align-items:center; gap:7px; min-width:0; padding:11px 12px; transition:background .15s,color .15s; }
+.choice-main { display:inline-flex; align-items:center; justify-content:center; gap:8px; white-space:nowrap; }
+.choice-group--sport { display:flex; flex-wrap:wrap; gap:8px; }
+.choice-group--sport .choice-option { flex:1 1 calc((100% - 16px) / 3); flex-wrap:wrap; gap:4px 8px; padding:10px 8px; min-height:46px; font-size:14px; }
+.choice-group--sport:has(> :nth-child(4):last-child) .choice-option { flex-basis:calc((100% - 8px) / 2); }
+.choice-option:disabled .sport-icon { opacity:.45; }
 .choice-label { white-space:nowrap; }
 .sport-icon { display:flex; flex:none; color:var(--color-accent); }
 .sport-icon svg { width:22px; height:22px; }
@@ -30,10 +31,10 @@
 .choice-option:disabled { background:var(--color-control); color:var(--color-muted); cursor:default; }
 .choice-option:disabled:hover { background:var(--color-control); }
 .choice-option .shell-select-badge { font-size:10px; margin-left:0; flex:none; }
-.venue-picker { display:flex; align-items:center; gap:10px; padding-left:13px; border-radius:12px; background:var(--color-control); }
-.venue-picker > svg { width:20px; height:20px; color:var(--color-muted); flex:none; }
+.venue-picker { display:flex; align-items:center; gap:6px; padding-left:8px; border-radius:8px; background:var(--color-control); }
+.venue-picker > svg { width:16px; height:16px; color:var(--color-muted); flex:none; }
 .venue-picker .shell-select { flex:1; width:auto; min-width:0; max-width:none; }
-.venue-picker .shell-select-trigger { width:100%; min-height:44px; border:0; padding-left:0; background:transparent; font-size:14px; }
+.venue-picker .shell-select-trigger { width:100%; min-height:32px; height:32px; border:0; padding:0 8px 0 0; background:transparent; font-size:12px; }
 .venue-picker:hover { background:var(--color-btn-fill-hover); }
 .booking-date-section { margin:20px 0 18px; padding:18px 0 0; border-top:1px solid var(--color-line); }
 .booking-section-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }

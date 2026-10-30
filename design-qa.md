@@ -1,6 +1,22 @@
 # Desktop booking redesign QA — 2026-10-30
 
-## Current follow-up: compact booking layout
+## Current follow-up: colorful direct sport grid
+
+The latest user correction rejects the sport dropdown and explicitly restores colorful direct choices without horizontal scrolling. It supersedes the dropdown decision in the historical follow-up below.
+
+- Visual direction: original user-selected blue/white/mint mock and the latest direct-selection correction. Baseline capture: `artifacts/compact-booking/setup-light-1100-final.png`; revised browser capture: `artifacts/sport-grid/five-sports-light.png`. Both are 1100 × 760 pixels, CSS viewport 1100 × 760, DPR 1, with the same badminton/tomorrow/19:00–20:00 fixture state. Only favorite count differs; the baseline hides its options behind a dropdown.
+- Combined evidence opened and compared: `artifacts/sport-grid/dropdown-vs-grid.png` (full view) and `artifacts/sport-grid/selection-detail.png` (focused selection area). Additional evidence: `artifacts/sport-grid/eight-sports-dark-minimum.png` at 960 × 600.
+- Resolved P2: hidden sport choices no longer meet the user's desired visual/interaction direction. Restored colored library icons and directly clickable choices in wrapping rows; four favorites form two columns, other counts use approximately three per row with the last row filling the available width. No internal horizontal or vertical sport scroll area. Venue sits in a compact selector at the top right of the same section.
+- Typography/layout: retained the compact 24px page title and existing confirmation hierarchy; sport names use 14px text with 22px icons, grouped on one line. Status badges may wrap separately. The extra height for visible choices is intentional; the main content scrolls at minimum height while the confirmation action stays reachable.
+- Colors/assets: existing subdued control fills, blue selected state, locally generated brand mark and vendored MingCute icons are unchanged. Dark mode preserves navy/mint surfaces and distinct icon accents. No new decorative imagery or font dependencies.
+- Copy/state: sport names and venue are actual catalog values, with all favorites directly visible. Existing planned/locked/disabled states remain enforced; selection updates the real booking summary. No duplicated hidden sport label is needed because the group already has its accessible name.
+- Validation: `npm test`, production build and all 11 UI groups passed. Updated 3/4/5/8-favorite tests cover balanced rows, no internal overflow, icon/name alignment, disabled hover/click, keyboard selection, actual summary updates, selected-time visibility after resize and first-screen primary action. A previously hardcoded delay-test URL was corrected to honor the runner's isolated base URL after a connection-refused failure; the complete suite then passed. Final browser console inspection found no error entries.
+- Native development launch: `npm run tauri:dev` successfully compiled and opened this checkout's `src-tauri/target/debug/xmu-sports.exe`; process path, native window and the loaded `http://127.0.0.1:1420/` document were verified. Native screenshot and accessibility state showed the new four-sport wrapping layout with the user's existing draft. No real booking, cancellation or explicit login action was clicked. Installer acceptance and exhaustive display-scale testing remain out of scope.
+- Post-comparison result: no actionable P0/P1/P2 findings in the reviewed states. Desktop development process is left running for user inspection.
+
+final result: passed
+
+## Historical follow-up: compact booking layout
 
 The user corrected the first implementation: the title and sport/venue section were too large, sport selection should not require horizontal scrolling, and the two fields should share a row. This correction supersedes the first implementation's large typography and sport rail described in the historical review below.
 
