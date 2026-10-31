@@ -34,13 +34,14 @@ def test_lock_zero_capacity_and_unknown_unavailable_are_not_occupancy():
     assert rejection_code("每个账号每天最多只能预约1个时段(2026-10-13)") == "ACCOUNT_LIMIT"
 
 
-def test_only_explicit_candidate_order_is_used_and_finished_batch_is_reused(monkeypatch, tmp_path):
+@pytest.mark.parametrize("failure_code", ["SLOT_OCCUPIED", "SLOT_LOCKED"])
+def test_only_explicit_candidate_order_is_used_and_finished_batch_is_reused(monkeypatch, tmp_path, failure_code):
     calls = []
     def run(item, *args, **options):
         calls.append(item.court)
         assert item.date == target().date and item.time == target().time
         if len(calls) == 1:
-            return {"ok": False, "state": "rejected", "code": "SLOT_OCCUPIED"}
+            return {"ok": False, "state": "rejected", "code": failure_code}
         return {"ok": True, "state": "submitted", "verified": True}
     setup_batch(monkeypatch, tmp_path, run)
     result = app.run_candidates(target(), fallbacks=[{"court": "03"}, {"court": "04"}], commit=True, idempotency_key="batch")

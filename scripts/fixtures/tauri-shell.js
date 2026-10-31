@@ -10,7 +10,8 @@ export function installShellFixture(data) {
   window.__task = data.task ?? null;
   window.__live = {task:window.__task,armed:false,running:false,recent_events:[],last_event:null,fire_at:null,...data.live};
   window.__startup = {supported:true,enabled:true,hidden:true};
-  window.__prefs = {favorite_sport_ids:[],venue_slot_prefs:{},autostart_hidden:true};
+  window.__prefs = {favorite_sport_ids:[],venue_slot_prefs:{},autostart_hidden:true,
+    allow_time_fallback:data.task?.allow_time_fallback ?? false,time_fallback_order:data.task?.time_fallback_order ?? 'down_then_up',...data.prefs};
   const callbacks = new Map(), listeners = new Map();
   let serial = 0;
   window.__emit = (event, payload = {}) => {

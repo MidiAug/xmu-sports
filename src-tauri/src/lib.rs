@@ -177,6 +177,10 @@ pub struct ShellPrefs {
     pub detailed_diagnostics: bool,
     #[serde(default = "default_true")]
     pub autostart_hidden: bool,
+    #[serde(default)]
+    pub allow_time_fallback: bool,
+    #[serde(default = "default_time_fallback_order")]
+    pub time_fallback_order: String,
 }
 
 fn default_true() -> bool {
@@ -193,6 +197,8 @@ impl Default for ShellPrefs {
             venue_slot_prefs: std::collections::HashMap::new(),
             detailed_diagnostics: false,
             autostart_hidden: true,
+            allow_time_fallback: false,
+            time_fallback_order: default_time_fallback_order(),
         }
     }
 }
@@ -277,14 +283,35 @@ fn ensure_dirs() -> Result<(), String> {
 }
 
 fn load_shell_prefs() -> ShellPrefs {
-    let p = shell_prefs_path();
-    if !p.is_file() {
-        return ShellPrefs::default();
+    let raw = match fs::read_to_string(shell_prefs_path()) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => "{}".into(),
+        Err(_) => return ShellPrefs::default(),
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&raw) else { return ShellPrefs::default(); };
+    let Ok(mut prefs) = serde_json::from_value::<ShellPrefs>(value.clone()) else { return ShellPrefs::default(); };
+    if value.get("allow_time_fallback").is_none() || value.get("time_fallback_order").is_none() {
+        let legacy = read_task().ok().flatten();
+        migrate_booking_prefs(&mut prefs, &value, legacy.as_ref());
+        if let Err(error) = save_shell_prefs_disk(&prefs) {
+            log::warn!(target: "prefs", "[booking_preferences_migration_failed] {error}");
+        }
     }
-    match fs::read_to_string(&p) {
-        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
-        Err(_) => ShellPrefs::default(),
+    prefs
+}
+
+fn migrate_booking_prefs(prefs: &mut ShellPrefs, raw: &Value, legacy: Option<&BookingTask>) {
+    if raw.get("allow_time_fallback").is_none() {
+        prefs.allow_time_fallback = legacy.is_some_and(|task| task.allow_time_fallback);
     }
+    if raw.get("time_fallback_order").is_none() {
+        prefs.time_fallback_order = legacy.map(|task| task.time_fallback_order.clone()).unwrap_or_else(default_time_fallback_order);
+    }
+}
+
+fn apply_booking_prefs(task: &mut BookingTask, prefs: &ShellPrefs) {
+    task.allow_time_fallback = prefs.allow_time_fallback;
+    task.time_fallback_order = prefs.time_fallback_order.clone();
 }
 
 fn save_shell_prefs_disk(prefs: &ShellPrefs) -> Result<(), String> {
@@ -505,7 +532,8 @@ fn spawn_http_inner(app: tauri::AppHandle, state: &AppState, until: Option<Strin
     if availability::recovering() || my_orders::mutating() {return Err("登录或订单操作进行中，请稍候".into());}
     if load_arm().armed { return Err("已有定时任务，请先取消定时预约".into()); }
     ensure_dirs()?;
-    let task = read_task()?.ok_or_else(|| "请先在任务页配置预约目标".to_string())?;
+    let mut task = read_task()?.ok_or_else(|| "请先在任务页配置预约目标".to_string())?;
+    apply_booking_prefs(&mut task, &load_shell_prefs());
     spawn_task_inner(app, state, until, task)
 }
 
@@ -771,6 +799,11 @@ fn scheduled_run_active(app: &tauri::AppHandle, run_gen: u64, arm_gen: u64) -> b
     state.arm_gen.load(Ordering::SeqCst) == arm_gen && run_control::run_still_active(app, run_gen)
 }
 
+fn expired_plan_arm(arm: &ArmFile, now: DateTime<FixedOffset>) -> bool {
+    arm.armed && arm.task.as_ref().is_some_and(|task| task.plan_id.is_some())
+        && parse_fire_at(&arm.fire_at).is_ok_and(|fire| now >= fire)
+}
+
 fn resume_arm_if_needed(app: &tauri::AppHandle) {
     let arm = load_arm();
     if arm.task.as_ref().is_some_and(|task|task.plan_id.is_some()) && !booking_plans::enabled(app) {
@@ -1004,7 +1037,8 @@ fn arm_hang(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<String,
     let _guard = state.task_gate.lock().map_err(|_| "任务状态不可用")?;
     if availability::recovering() || my_orders::mutating() {return Err("登录或订单操作进行中，请稍候".into());}
     if load_arm().armed {return Err("已有定时预约，请先停止本轮或取消定时".into());}
-    let task = read_task()?.ok_or_else(|| "请先在任务页配置预约目标".to_string())?;
+    let mut task = read_task()?.ok_or_else(|| "请先在任务页配置预约目标".to_string())?;
+    apply_booking_prefs(&mut task, &load_shell_prefs());
     let fire = parse_fire_at(&task.fire_at)?;
     let now = Local::now().fixed_offset();
     booking_eligibility::check_logged(&task, if fire > now { fire } else { now })?;
@@ -1089,6 +1123,9 @@ fn get_shell_prefs() -> Result<ShellPrefs, String> {
 
 #[tauri::command]
 fn save_shell_prefs(prefs: ShellPrefs) -> Result<(), String> {
+    if !matches!(prefs.time_fallback_order.as_str(), "up_then_down" | "down_then_up") {
+        return Err("请选择有效的候选时段顺序".into());
+    }
     save_shell_prefs_disk(&prefs)
 }
 
@@ -1375,6 +1412,28 @@ pub fn run() {
 #[cfg(test)]
 mod task_snapshot_tests {
     use super::*;
+    #[test]
+    fn shared_booking_preferences_migrate_legacy_task_once_and_apply_to_new_tasks() {
+        let mut legacy: BookingTask = serde_json::from_value(serde_json::json!({"task_id":"legacy",
+            "sport":"羽毛球","venue":"场馆","target_date":"2026-11-02","fire_at":"2026-11-01T07:00:00+08:00",
+            "target_time_start":"09:00","target_time_end":"10:00","allow_time_fallback":true,"time_fallback_order":"up_then_down"})).unwrap();
+        let mut prefs = ShellPrefs::default();
+        migrate_booking_prefs(&mut prefs, &serde_json::json!({}), Some(&legacy));
+        assert!(prefs.allow_time_fallback);
+        assert_eq!(prefs.time_fallback_order,"up_then_down");
+        legacy.allow_time_fallback = false;
+        apply_booking_prefs(&mut legacy, &prefs);
+        assert!(legacy.allow_time_fallback);
+        assert_eq!(legacy.target_time_start,"09:00");
+        let mut explicit = ShellPrefs::default();
+        let explicit_raw = serde_json::to_value(&explicit).unwrap();
+        migrate_booking_prefs(&mut explicit, &explicit_raw, Some(&legacy));
+        assert!(!explicit.allow_time_fallback);
+        assert_eq!(explicit.time_fallback_order,"down_then_up");
+        let mut empty = ShellPrefs::default();
+        migrate_booking_prefs(&mut empty, &serde_json::json!({}), None);
+        assert!(!empty.allow_time_fallback);
+    }
     #[test]
     fn closing_with_plans_requires_confirmation_even_before_a_run_starts() {
         assert_eq!(close_action(true, false, false, true, false), CloseAction::Confirm);

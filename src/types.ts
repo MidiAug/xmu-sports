@@ -95,6 +95,8 @@ export type ShellPrefs = {
   /** When true, observations keep full OCR hits (may include WeChat UI text). */
   detailed_diagnostics?: boolean;
   autostart_hidden?: boolean;
+  allow_time_fallback?: boolean;
+  time_fallback_order?: FallbackOrder;
 };
 
 export type WechatGlance = {

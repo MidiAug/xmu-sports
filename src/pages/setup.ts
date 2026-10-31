@@ -60,8 +60,10 @@ export async function renderSetup(panel: Element) {
 
   let favoriteIds: string[] | undefined;
   let venueSlotPrefs: Record<string, string> = {};
+  let bookingPrefs: ShellPrefs | undefined;
   try {
     const prefs = await invoke<ShellPrefs>("get_shell_prefs");
+    bookingPrefs = prefs;
     favoriteIds = prefs.favorite_sport_ids;
     venueSlotPrefs = { ...(prefs.venue_slot_prefs ?? {}) };
   } catch {
@@ -112,8 +114,8 @@ export async function renderSetup(panel: Element) {
     venueSlotPrefs[defaultVenue.ocr_label],
   );
   const taskId = saved?.task_id || crypto.randomUUID();
-  let fallbackOrder: FallbackOrder =
-    saved?.time_fallback_order === "up_then_down" ? "up_then_down" : "down_then_up";
+  const allowFallback = bookingPrefs?.allow_time_fallback ?? saved?.allow_time_fallback ?? false;
+  const fallbackOrder: FallbackOrder = bookingPrefs?.time_fallback_order ?? saved?.time_fallback_order ?? "down_then_up";
   let busy = Boolean(liveStatusCache?.armed || liveStatusCache?.running);
   let starting = false;
   let targetDate = date;
@@ -167,31 +169,7 @@ export async function renderSetup(panel: Element) {
               <button type="button" class="stepper-btn" id="delay_next" aria-label="增加一秒">+</button>
             </div>
           </div>
-          <div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">目标时段满了就约邻近时段</p>
-              <p class="settings-cell-desc">优先仍是你选的时段</p>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="allow_fallback" aria-label="邻近时段" ${saved?.allow_time_fallback ? "checked" : ""} />
-            </label>
-          </div>
-          <div class="settings-cell" id="fallback_order_wrap" ${saved?.allow_time_fallback ? "" : "hidden"}>
-            <div>
-              <p class="settings-cell-title">邻近顺序</p>
-              <p class="settings-cell-desc">同样近时，先试更早还是更晚</p>
-            </div>
-            <div class="seg-shell">
-              <div class="seg" id="fallback_order_seg">
-                <button type="button" data-order="up_then_down"${
-                  fallbackOrder === "up_then_down" ? ' class="on"' : ""
-                }>先更早</button>
-                <button type="button" data-order="down_then_up"${
-                  fallbackOrder === "down_then_up" ? ' class="on"' : ""
-                }>先更晚</button>
-              </div>
-            </div>
-          </div>
+          <div class="settings-cell"><div><p class="settings-cell-title">候选时段</p><p class="settings-cell-desc">${allowFallback ? fallbackOrder === "up_then_down" ? "已开启 · 先更早" : "已开启 · 先更晚" : "未开启"}，单次与长期计划共用</p></div><button type="button" class="btn ghost" data-tab="settings">预约偏好</button></div>
         </div>
       </div>
       </details>
@@ -212,9 +190,6 @@ export async function renderSetup(panel: Element) {
     </div>
   `;
 
-  const allowEl = panel.querySelector("#allow_fallback") as HTMLInputElement;
-  const orderWrap = panel.querySelector("#fallback_order_wrap") as HTMLElement;
-  const orderSeg = panel.querySelector("#fallback_order_seg") as HTMLElement;
 
   const sportHost = panel.querySelector("#sport_host") as HTMLElement;
   const venueHost = panel.querySelector("#venue_host") as HTMLElement;
@@ -559,19 +534,6 @@ export async function renderSetup(panel: Element) {
   refreshCourts(defaultVenue);
   venueSlotPrefs[defaultVenue.ocr_label] = defaultSlotKey;
 
-  allowEl.addEventListener("change", () => {
-    orderWrap.hidden = !allowEl.checked;
-    scheduleSave();
-  });
-
-  orderSeg.querySelectorAll("[data-order]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      fallbackOrder = (btn as HTMLButtonElement).dataset.order as FallbackOrder;
-      orderSeg.querySelectorAll("[data-order]").forEach((b) => b.classList.remove("on"));
-      btn.classList.add("on");
-      scheduleSave();
-    });
-  });
 
   function syncDateOptions() {
     const today = todayISO();
@@ -663,7 +625,7 @@ export async function renderSetup(panel: Element) {
       fire_delay_seconds: fireDelayEl.valueAsNumber,
       target_time_start: start,
       target_time_end: end,
-      allow_time_fallback: allowEl.checked,
+      allow_time_fallback: allowFallback,
       time_fallback_order: fallbackOrder,
       prefer_court: currentVenue()?.has_courts ? courtSelect.getValue() || null : null,
       court_offset: 0,

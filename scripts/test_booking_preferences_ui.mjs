@@ -1,0 +1,60 @@
+// Real settings/setup controllers with an offline host boundary. No booking calls.
+import assert from 'node:assert/strict';
+import {mkdirSync} from 'node:fs';
+import {launchBrowser} from './lib/browser.mjs';
+import {installShellFixture} from './fixtures/tauri-shell.js';
+import {shellData} from './fixtures/shell-data.mjs';
+const base=process.env.XMU_TEST_BASE_URL;
+assert.ok(base,'Set XMU_TEST_BASE_URL to an isolated Vite server');
+const output='artifacts/booking-preferences';mkdirSync(output,{recursive:true});
+const browser=await launchBrowser();
+try {
+  const context=await browser.newContext({viewport:{width:1100,height:760}});
+  const data={...shellData(),prefs:{allow_time_fallback:true,time_fallback_order:'up_then_down'}};
+  await context.addInitScript(installShellFixture,data);
+  const page=await context.newPage(),errors=[];
+  page.on('pageerror',error=>errors.push(error.message));
+  await page.goto(base);
+  await page.getByRole('button',{name:'设置',exact:true}).click();
+  const toggle=page.locator('#allow_fallback');
+  await toggle.waitFor();
+  assert.equal(await toggle.isChecked(),true);
+  assert.equal(await page.locator('[data-order="up_then_down"]').getAttribute('aria-pressed'),'true');
+  await page.locator('[data-order="down_then_up"]').click();
+  await page.waitForFunction(()=>window.__prefs.time_fallback_order==='down_then_up');
+  await toggle.uncheck();
+  await page.waitForFunction(()=>window.__prefs.allow_time_fallback===false);
+  assert.equal(await page.locator('#fallback_order_wrap').isVisible(),false);
+  await page.evaluate(()=>window.failSave=true);
+  await toggle.click();
+  await page.locator('#settings_msg').filter({hasText:'模拟保存失败'}).waitFor();
+  assert.equal(await toggle.isChecked(),false,'failed save restores the shared preference');
+  await page.evaluate(()=>window.failSave=false);
+  await toggle.check();
+  await page.waitForFunction(()=>window.__prefs.allow_time_fallback===true);
+  await page.locator('[data-order="up_then_down"]').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>window.__prefs.time_fallback_order==='up_then_down');
+  assert.deepEqual(await page.evaluate(()=>window.__prefs.venue_slot_prefs),{});
+  for(const [theme,width,height] of [['light',1100,760],['dark',960,600]]) {
+    await page.setViewportSize({width,height});
+    await page.locator(`[data-theme="${theme}"]`).click();
+    await page.locator('#booking_preferences').scrollIntoViewIfNeeded();
+    assert.ok(await toggle.isVisible());
+    assert.ok(await page.locator('[data-order="up_then_down"]').isVisible());
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    await page.screenshot({path:`${output}/${theme}-${width}.png`});
+  }
+  await page.locator('[data-tab="setup"]').first().click();
+  await page.locator('#fire_delay').waitFor({state:'attached'});
+  assert.equal(await page.locator('#allow_fallback').count(),0,'setup uses shared settings rather than a second switch');
+  await page.locator('.task-advanced summary').click();
+  await page.locator('#fire_delay').fill('3');
+  await page.waitForFunction(()=>window.__task?.fire_delay_seconds===3);
+  assert.equal(await page.evaluate(()=>window.__task.allow_time_fallback),true);
+  assert.equal(await page.evaluate(()=>window.__task.time_fallback_order),'up_then_down');
+  assert.equal((await page.evaluate(()=>window.__calls)).some(c=>['start_http_run','arm_hang'].includes(c.command)),false);
+  assert.deepEqual(errors,[]);
+  await context.close();
+  console.log('Shared booking preferences passed: persisted settings, failure rollback, keyboard, light/dark minimum window, and single-task snapshot; no live operations');
+} finally {await browser.close();}

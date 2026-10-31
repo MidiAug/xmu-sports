@@ -202,7 +202,7 @@ try {
   await page.locator('[data-date="2026-10-31"]').click();
   assert.equal(await page.locator('[data-date="2026-10-31"]').isEnabled(),true);
   assert.equal(await gymOption.isEnabled(),true);
-  await page.locator('[data-tab="settings"]').click();await page.locator('#startup_enabled:not(:disabled)').waitFor();
+  await page.locator('.app-header [data-tab="settings"]').click();await page.locator('#startup_enabled:not(:disabled)').waitFor();
   await page.locator('.favorite-edit').click();
   const favorite=page.locator('[data-fav-sport]').first();
   const unaffected=page.locator('[data-fav-sport]').nth(1);

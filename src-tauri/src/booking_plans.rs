@@ -128,7 +128,8 @@ fn validate(rules: &[Plan]) -> Result<(), String> {
 
 pub fn next_date(rule: &Plan, plans: &Plans, now: DateTime<FixedOffset>) -> NaiveDate {
     let first = NaiveDate::parse_from_str(&rule.first_date, "%Y-%m-%d").unwrap_or(now.date_naive());
-    let start = (now.date_naive() + Duration::days(1)).max(first);
+    let days = if now.time() < NaiveTime::from_hms_opt(7, 0, 0).unwrap() { 1 } else { 2 };
+    let start = (now.date_naive() + Duration::days(days)).max(first);
     (0..)
         .map(|offset| start + Duration::days(offset))
         .find(|date| {
@@ -175,7 +176,7 @@ fn task(rule: &Plan, date: NaiveDate) -> crate::BookingTask {
     serde_json::from_value(json!({"task_id":format!("plan-{}-{date}",rule.id),"plan_id":rule.id,
         "sport":sport["ocr_label"],"venue":venue["ocr_label"],"target_date":date.to_string(),
         "fire_at":fire_at(date).to_rfc3339(),"target_time_start":rule.start,"target_time_end":rule.end,
-        "executor":"http","allow_time_fallback":false})).unwrap()
+        "executor":"http"})).unwrap()
 }
 
 fn changed(app: &tauri::AppHandle) {
@@ -603,23 +604,27 @@ fn due_plan(
     plans.rules.iter().filter(|p| p.enabled).find_map(|p| {
         let date = next_date(p, plans, now);
         let fire = fire_at(date);
-        (now >= fire - Duration::seconds(60)).then(|| (p.clone(), date, fire))
+        (now >= fire - Duration::seconds(60) && now < fire).then(|| (p.clone(), date, fire))
     })
 }
 
-fn freeze_round(plans: &mut Plans, now: DateTime<FixedOffset>) {
+fn freeze_round(plans: &mut Plans, now: DateTime<FixedOffset>, prefs: &crate::ShellPrefs) {
     if let Some((_, date, _)) = due_plan(plans, now) {
         let round: Vec<_> = plans
             .rules
             .iter()
             .filter(|p| p.enabled && next_date(p, plans, now) == date)
-            .map(|p| Attempt {
-                reversible_skip: false,
-                task: task(p, date),
-                sport: p.sport.clone(),
-                account: p.account.clone(),
-                status: "queued".into(),
-                message: "本轮目标已冻结，修改从下一轮生效".into(),
+            .map(|p| {
+                let mut frozen = task(p, date);
+                crate::apply_booking_prefs(&mut frozen, prefs);
+                Attempt {
+                    reversible_skip: false,
+                    task: frozen,
+                    sport: p.sport.clone(),
+                    account: p.account.clone(),
+                    status: "queued".into(),
+                    message: "本轮目标已冻结，修改从下一轮生效".into(),
+                }
             })
             .collect();
         plans.attempts.extend(round);
@@ -660,7 +665,9 @@ fn tick(app: &tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
     let mut next = plans.clone();
-    freeze_round(&mut next, now);
+    if due_plan(&next, now).is_some() {
+        freeze_round(&mut next, now, &crate::load_shell_prefs());
+    }
     let date = (now.date_naive() + Duration::days(1)).to_string();
     let due = next
         .attempts
@@ -746,32 +753,44 @@ fn remind(app: &tauri::AppHandle) {
     }
 }
 
-fn recover_interrupted(plans: &mut Plans, arm: &crate::ArmFile) -> bool {
+fn recover_interrupted(plans: &mut Plans, arm: &crate::ArmFile, now: DateTime<FixedOffset>) -> bool {
     let mut changed = false;
     let was_paused = plans.paused;
+    let mut unconfirmed = false;
     // The persisted arm is cleared before a send. Only that pre-send snapshot may resume.
-    for attempt in plans.attempts.iter_mut().filter(|a| a.status == "running") {
-        if was_paused || !arm.armed || arm.task_id != attempt.task.task_id {
+    for attempt in plans.attempts.iter_mut().filter(|a| matches!(a.status.as_str(), "running" | "queued")) {
+        if attempt.status == "running" && (was_paused || !arm.armed || arm.task_id != attempt.task.task_id) {
             attempt.status = "unconfirmed".into();
             attempt.message = "上次运行中断，请先查单；未重复提交".into();
             changed = true;
+            unconfirmed = true;
+        } else if crate::parse_fire_at(&attempt.task.fire_at).is_ok_and(|fire| now >= fire) {
+            attempt.status = "missed".into();
+            attempt.message = "已错过开抢时间，未补跑".into();
+            changed = true;
         }
     }
-    if changed {
+    if unconfirmed {
         plans.paused = true;
     }
     changed
 }
 
 pub fn start(app: &tauri::AppHandle) {
+    let now = china_now();
+    let arm = crate::load_arm();
     let mut loaded = load();
     if let Ok(plans) = &mut loaded {
-        let arm = crate::load_arm();
-        if recover_interrupted(plans, &arm) | expire_queued(plans, china_now()) {
+        if recover_interrupted(plans, &arm, now) | expire_queued(plans, now) {
             if let Err(error) = persist(plans) {
                 loaded = Err(error);
             }
         }
+    }
+    // Use the same startup instant for the attempt and its persisted arm.
+    if crate::expired_plan_arm(&arm, now) {
+        let _ = crate::clear_arm_file();
+        log::info!(target: "arm", "[resume_cleared] reason=missed_plan fire_at={}", arm.fire_at);
     }
     app.manage(Store(Mutex::new(loaded)));
     crate::tray::refresh_plans(app);
@@ -904,7 +923,7 @@ mod tests {
     #[test]
     fn outcomes_skip_same_sport_across_rule_ids_but_not_accounts() {
         let p = rule();
-        let now = at("2026-10-29T10:00:00+08:00");
+        let now = at("2026-10-29T06:59:00+08:00");
         let task=serde_json::from_value(json!({"task_id":"old","sport":"健身","venue":"另一场馆","target_date":"2026-10-30","fire_at":"2026-10-29T07:00:00+08:00","target_time_start":"16:30","target_time_end":"18:00"})).unwrap();
         let mut plans = Plans::default();
         plans.attempts.push(Attempt {
@@ -979,7 +998,7 @@ mod tests {
             message: "".into(),
         });
         assert_eq!(
-            due_plan(&plans, at("2026-10-29T10:00:00+08:00"))
+            due_plan(&plans, now)
                 .unwrap()
                 .0
                 .id,
@@ -1032,7 +1051,7 @@ mod tests {
         let rules = vec![first.clone(), second.clone()];
         validate(&rules).unwrap();
         let mut plans = Plans { rules, ..Plans::default() };
-        freeze_round(&mut plans, at("2026-10-29T06:59:00+08:00"));
+        freeze_round(&mut plans, at("2026-10-29T06:59:00+08:00"), &crate::ShellPrefs::default());
         assert_eq!(plans.attempts.len(),2);
         let first_task = plans.attempts[0].task.clone();
         let second_task = plans.attempts[1].task.clone();
@@ -1041,7 +1060,7 @@ mod tests {
         assert_ne!(first_task.task_id,second_task.task_id);
         plans.rules.reverse();
         plans.attempts[0].status = "running".into();
-        freeze_round(&mut plans, at("2026-10-29T07:00:00+08:00"));
+        freeze_round(&mut plans, at("2026-10-29T07:00:00+08:00"), &crate::ShellPrefs::default());
         assert_eq!(plans.attempts.len(),2,"editing priority must not duplicate or reorder the frozen round");
         let frozen = plans.clone();
         for outcome in [Ok("http_verified".into()), Err("SLOT_OCCUPIED".into())] {
@@ -1075,12 +1094,12 @@ mod tests {
             ..Plans::default()
         };
         let now = at("2026-10-29T06:59:00+08:00");
-        freeze_round(&mut plans, now);
+        freeze_round(&mut plans, now, &crate::ShellPrefs::default());
         assert_eq!(plans.attempts.len(), 2);
         assert_eq!(plans.attempts[0].task.plan_id.as_ref(), Some(&first.id));
         plans.rules.reverse();
         plans.rules[0].start = "22:00".into();
-        freeze_round(&mut plans, now);
+        freeze_round(&mut plans, now, &crate::ShellPrefs::default());
         assert_eq!(plans.attempts.len(), 2);
         assert_eq!(plans.attempts[1].task.target_time_start, second.start);
         assert!(!expire_queued(&mut plans, at("2026-10-29T23:59:59+08:00")));
@@ -1099,7 +1118,7 @@ mod tests {
             rules: vec![p],
             ..Plans::default()
         };
-        freeze_round(&mut plans, now);
+        freeze_round(&mut plans, now, &crate::ShellPrefs::default());
         plans.attempts[0].status = "running".into();
         let frozen = plans.attempts[0].task.clone();
         let arm = crate::ArmFile {
@@ -1109,14 +1128,62 @@ mod tests {
             task: Some(frozen),
             account_fingerprint: Some("a".repeat(64)),
         };
-        assert!(!recover_interrupted(&mut plans, &arm));
+        assert!(!recover_interrupted(&mut plans, &arm, now));
         assert!(!plans.paused);
-        assert!(recover_interrupted(&mut plans, &crate::ArmFile::default()));
+        assert!(recover_interrupted(&mut plans, &crate::ArmFile::default(), now));
         assert!(plans.paused);
         assert_eq!(plans.attempts[0].status, "unconfirmed");
         let restored: Plans =
             serde_json::from_str(&serde_json::to_string(&plans).unwrap()).unwrap();
         assert!(due_plan(&restored, now).is_none());
+    }
+
+    #[test]
+    fn missed_opening_never_freezes_or_resumes_a_round_on_restart() {
+        let rule = catalog_rule();
+        let before = at("2026-10-31T06:59:00+08:00");
+        let mut second = rule.clone();
+        second.id = uuid::Uuid::new_v4().to_string();
+        second.account = "b".repeat(64);
+        let mut plans = Plans { rules: vec![rule, second], ..Plans::default() };
+        freeze_round(&mut plans, before, &crate::ShellPrefs::default());
+        plans.attempts[0].status = "running".into();
+        let frozen = plans.attempts[0].task.clone();
+        let arm = crate::ArmFile { armed:true, task_id:frozen.task_id.clone(), fire_at:frozen.fire_at.clone(),
+            task:Some(frozen), account_fingerprint:Some("a".repeat(64)) };
+        assert!(!crate::expired_plan_arm(&arm, at("2026-10-31T06:59:59+08:00")));
+        for now in [at("2026-10-31T07:00:00+08:00"), at("2026-10-31T20:50:19+08:00")] {
+            let mut restored = plans.clone();
+            assert!(crate::expired_plan_arm(&arm, now));
+            assert!(recover_interrupted(&mut restored, &arm, now));
+            assert!(restored.attempts.iter().all(|a| a.status == "missed"));
+            assert!(!restored.paused);
+            assert!(due_plan(&restored, now).is_none());
+            let mut no_snapshot = Plans {rules:restored.rules.clone(), ..Plans::default()};
+            freeze_round(&mut no_snapshot, now, &crate::ShellPrefs::default());
+            assert!(no_snapshot.attempts.is_empty());
+            assert_eq!(next_date(&no_snapshot.rules[0], &no_snapshot, now).to_string(), "2026-11-02");
+        }
+        let mut unknown = plans.clone();
+        recover_interrupted(&mut unknown, &crate::ArmFile::default(), at("2026-10-31T20:50:19+08:00"));
+        assert_eq!(unknown.attempts[0].status,"unconfirmed");
+        assert!(unknown.paused);
+        let mut single = arm;
+        single.task.as_mut().unwrap().plan_id = None;
+        assert!(!crate::expired_plan_arm(&single, at("2026-10-31T20:50:19+08:00")));
+    }
+
+    #[test]
+    fn recurring_freeze_uses_shared_preferences_and_keeps_existing_snapshots() {
+        let mut plans = Plans {rules:vec![catalog_rule()], ..Plans::default()};
+        let prefs = crate::ShellPrefs {allow_time_fallback:true, time_fallback_order:"up_then_down".into(), ..Default::default()};
+        let now = at("2026-10-29T06:59:00+08:00");
+        freeze_round(&mut plans, now, &prefs);
+        assert!(plans.attempts[0].task.allow_time_fallback);
+        assert_eq!(plans.attempts[0].task.time_fallback_order,"up_then_down");
+        freeze_round(&mut plans, now, &crate::ShellPrefs::default());
+        assert_eq!(plans.attempts.len(),1);
+        assert!(plans.attempts[0].task.allow_time_fallback);
     }
 
     #[test]
@@ -1135,7 +1202,7 @@ mod tests {
         let rule = catalog_rule();
         let mut plans = Plans { rules: vec![rule.clone()], ..Plans::default() };
         let now = at("2026-10-29T06:59:00+08:00");
-        freeze_round(&mut plans, now);
+        freeze_round(&mut plans, now, &crate::ShellPrefs::default());
         assert_eq!(skip_date(&rule, &plans, now).to_string(), "2026-10-30");
         plans.attempts[0].status = "running".into();
         assert_eq!(skip_date(&rule, &plans, now).to_string(), "2026-10-31");

@@ -23,7 +23,7 @@ try {
   });
   const page=await context.newPage();
   await page.goto(process.env.XMU_TEST_BASE_URL ?? "http://127.0.0.1:1425");
-  const settings=async()=>{await page.locator('[data-tab="settings"]').click();await page.locator('.settings-about-entry').click();await page.locator('.about-identity').waitFor();};
+  const settings=async()=>{await page.locator('.app-header [data-tab="settings"]').click();await page.locator('.settings-about-entry').click();await page.locator('.about-identity').waitFor();};
   await settings();
   const action=page.locator('#update_action');
   const singleButton=async()=>assert.equal(await page.locator('.about-update-button').count(),1);
