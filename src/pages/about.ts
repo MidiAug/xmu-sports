@@ -6,7 +6,7 @@ import { renderReleaseNotes } from "../lib/release-notes";
 import { mountShellSelect } from "../ui/select";
 
 const REPOSITORY = "https://github.com/MidiAug/xmu-sports";
-const appIcon = new URL("../assets/brand-mark.png", import.meta.url).href;
+const appIcon = new URL("../assets/brand-mark.svg", import.meta.url).href;
 const updateHint = import.meta.env.DEV ? "开发版仅手动检查更新" : "启动后自动检查，成功后间隔24小时；失败后1小时重试";
 export async function renderAbout(panel: Element, back: () => void) {
   const scope = mountPage(panel);

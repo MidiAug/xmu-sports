@@ -29,7 +29,7 @@ import { mountMyOrders } from "./my-orders";
 import { mountSettingsUpdateIndicator } from "./version-update";
 import { renderAbout } from "../pages/about";
 import { mountTooltips } from "./tooltip";
-import brandMark from "../assets/brand-mark.png";
+import brandMark from "../assets/brand-mark.svg";
 import { calendarIcon } from "./sport-icons";
 
 const win = getCurrentWindow();
