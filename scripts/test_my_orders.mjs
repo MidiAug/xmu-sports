@@ -25,7 +25,7 @@ const browser=await launchBrowser();
 try {
  const page=await browser.newPage({viewport:{width:970,height:815}});
  await page.setContent(`<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div class="shell"><header class="app-header"><div class="nav-brand"><h1>XMU Sports</h1></div><nav class="nav-tabs"><button>预约</button><button>计划</button></nav><section class="my-orders" id="orders" aria-label="未核销预约"></section></header><main class="content"><h2>运行状态</h2><p>查看执行进度与预约结果</p></main></div></body></html>`);
- await page.evaluate(async url=>{
+ await page.evaluate(async ({url,icon})=>{
   window.__calls=[];window.__toasts=[];window.__now=Date.parse("2026-10-26T12:00:00+08:00");
   Date.now=()=>window.__now;
   Object.defineProperty(crypto,"randomUUID",{configurable:true,value:()=>"123e4567-e89b-42d3-a456-426614174000"});
@@ -52,8 +52,8 @@ try {
    if(command==="cancel_my_order")return new Promise(resolve=>{window.__cancelFinish=()=>{window.__rows=window.__rows.filter(row=>row.details_id!==args.detailsId);resolve({ok:true,state:"cancelled"});};});
    throw new Error(command);
   };
-  (await import(url)).mountMyOrders(document.querySelector("#orders"),{popover:true});
- },moduleUrl);
+  (await import(url)).mountMyOrders(document.querySelector("#orders"),{popover:true,icon});
+ },{url:moduleUrl,icon:readFileSync('src/assets/icons/calendar-line.svg','utf8')});
  await page.waitForFunction(()=>document.querySelectorAll(".my-order").length===2);
  await page.locator(".my-orders-toggle").hover();
  await page.locator('.my-orders-popup').waitFor({state:'visible'});
@@ -248,6 +248,26 @@ try {
  await page.waitForFunction(()=>document.querySelector(".my-orders-status").textContent.includes("暂无"));
  await page.evaluate(()=>{window.__rows=[{order_id:"52",details_id:"81",venue:"思明校区风雨球馆",sport:"羽毛球",court:"03 号场地",date:"2026-10-28",start:"08:00",end:"09:00",can_cancel:true}];window.__authFailure=true;window.__now+=1800001;window.__intervals.forEach(fn=>fn());});
  await page.waitForFunction(()=>document.querySelector(".my-orders-status")?.textContent.includes("登录状态已失效"));
+ for(const theme of ['light','dark']) {
+  await page.evaluate(theme=>document.documentElement.dataset.shellTheme=theme,theme);
+  for(const width of [1100,960,760]) {
+   await page.setViewportSize({width,height:700});
+   const entry=await page.locator('.header-orders-button').evaluate(button=>{
+    const label=button.querySelector('span:not(.orders-count)');
+    const range=document.createRange();range.selectNodeContents(label);
+    return {button:button.getBoundingClientRect().toJSON(),lines:range.getClientRects().length,
+     children:[...button.children].map(child=>child.getBoundingClientRect().toJSON())};
+   });
+   assert.equal(entry.button.width,132,'login state keeps the fixed entry width');
+   assert.equal(entry.lines,1,'我的预约 stays on one line with the real calendar icon and login badge');
+   for(const child of entry.children) {
+    assert.ok(child.left>=entry.button.left && child.right<=entry.button.right,'entry content stays inside its button');
+    assert.ok(child.top>=entry.button.top && child.bottom<=entry.button.bottom,'entry content stays vertically inside its button');
+   }
+   for(let i=1;i<entry.children.length;i++)assert.ok(entry.children[i-1].right<=entry.children[i].left+.5,'icon, title and status do not overlap');
+   await page.screenshot({path:`artifacts/sidebar-orders/login-entry-${theme}-${width}.png`});
+  }
+ }
  const authBefore=await page.evaluate(()=>window.__calls.filter(c=>c.command==="reauthenticate_availability").length);
  assert.equal(authBefore,0,"background auth failure must not open WeChat automatically");
  const beforeLogin=await queries();
