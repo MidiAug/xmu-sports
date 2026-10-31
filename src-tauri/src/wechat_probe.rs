@@ -62,6 +62,13 @@ fn title_is_miniprogram(title: &str) -> bool {
 
 unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let ctx = &mut *(lparam.0 as *mut EnumCtx);
+    // Own-window text retrieval synchronously calls the UI thread, which may
+    // already be waiting for the plan lock held by this background probe.
+    let mut owner_pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, Some(&mut owner_pid));
+    if owner_pid == 0 || owner_pid == std::process::id() {
+        return TRUE;
+    }
     let visible = IsWindowVisible(hwnd).as_bool();
 
     let mut buf = [0u16; 512];
@@ -71,11 +78,6 @@ unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
     }
     let title = String::from_utf16_lossy(&buf[..n as usize]);
     if title.is_empty() || title.contains("预约助手") {
-        return TRUE;
-    }
-    let mut owner_pid: u32 = 0;
-    GetWindowThreadProcessId(hwnd, Some(&mut owner_pid));
-    if owner_pid == std::process::id() {
         return TRUE;
     }
 

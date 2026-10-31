@@ -17,15 +17,17 @@ pub fn is_miniprogram_title(title:&str)->bool {title.contains("厦大体育") &&
 
 unsafe extern "system" fn collect(hwnd:HWND, data:LPARAM)->BOOL {
     let out=&mut *(data.0 as *mut Vec<NativeSurface>);
+    // GetWindowText sends WM_GETTEXT for our own windows. Never wait on the UI
+    // thread while background discovery may hold a task/plan lock.
+    let mut pid=0;
+    GetWindowThreadProcessId(hwnd,Some(&mut pid));
+    if pid==0 || pid==std::process::id() {return TRUE;}
     if !IsWindowVisible(hwnd).as_bool() {return TRUE;}
     let mut buf=[0u16;512];
     let n=GetWindowTextW(hwnd,&mut buf);
     if n<=0 {return TRUE;}
     let title=String::from_utf16_lossy(&buf[..n as usize]);
     if !is_miniprogram_title(&title) {return TRUE;}
-    let mut pid=0;
-    GetWindowThreadProcessId(hwnd,Some(&mut pid));
-    if pid==0 || pid==std::process::id() {return TRUE;}
     let Ok(handle)=OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION|PROCESS_VM_READ,false,pid) else{return TRUE;};
     let mut image=[0u16;2048];
     let count=GetModuleFileNameExW(Some(handle),None,&mut image);
@@ -230,6 +232,43 @@ pub fn device_diagnostics()->serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discovery_never_sends_gettext_to_own_windows() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use windows::Win32::Foundation::{HINSTANCE, LRESULT};
+        static GETTEXT: AtomicUsize = AtomicUsize::new(0);
+        unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+            if msg == WM_GETTEXT { GETTEXT.fetch_add(1, Ordering::SeqCst); }
+            DefWindowProcW(hwnd, msg, wp, lp)
+        }
+        unsafe {
+            let class = w!("XmuDiscoveryOwnWindowFixture");
+            let instance = HINSTANCE(windows::Win32::System::LibraryLoader::GetModuleHandleW(None).unwrap().0);
+            let definition = WNDCLASSW { lpfnWndProc: Some(window_proc), hInstance: instance,
+                lpszClassName: class, ..Default::default() };
+            assert_ne!(RegisterClassW(&definition), 0);
+            let hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, class, w!("Discovery fixture"),
+                WS_POPUP | WS_VISIBLE, -32000, -32000, 1, 1, None, None, Some(instance), None).unwrap();
+            GETTEXT.store(0, Ordering::SeqCst);
+            let mut text = [0u16; 64];
+            let _ = GetWindowTextW(hwnd, &mut text);
+            let control_messages = GETTEXT.swap(0, Ordering::SeqCst);
+            // Exercise both actual EnumWindows callbacks against a native own-
+            // process window. Any WM_GETTEXT would wait on this thread if called
+            // by a background thread while this thread was waiting on its lock.
+            let _ = crate::wechat_probe::probe();
+            let probe_messages = GETTEXT.swap(0, Ordering::SeqCst);
+            let result = discover_wechat_candidates();
+            let discovery_messages = GETTEXT.load(Ordering::SeqCst);
+            DestroyWindow(hwnd).unwrap();
+            UnregisterClassW(class, Some(instance)).unwrap();
+            assert_eq!(control_messages, 1, "native fixture must observe WM_GETTEXT");
+            assert!(result.is_ok());
+            assert_eq!(probe_messages, 0, "status probe sent WM_GETTEXT to our UI thread");
+            assert_eq!(discovery_messages, 0, "diagnostics sent WM_GETTEXT to our UI thread");
+        }
+    }
+
     #[test]
     fn startup_landscape_rebound_resets_portrait_settling() {
         use std::time::Duration;

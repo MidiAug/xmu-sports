@@ -415,6 +415,15 @@ fn icon_with_run_badge(base: &Image<'_>) -> Image<'static> {
 }
 
 fn apply_run_badge(app: &tauri::AppHandle, on: bool) {
+    let handle = app.clone();
+    // Callers may hold task_gate. Queue native UI work without waiting for a
+    // main-thread IPC command that needs that same lock.
+    if let Err(error) = app.run_on_main_thread(move || apply_run_badge_on_main(&handle, on)) {
+        log::warn!(target: "tray", "[badge_dispatch_failed] {error}");
+    }
+}
+
+fn apply_run_badge_on_main(app: &tauri::AppHandle, on: bool) {
     if let Some(win) = app.get_webview_window("main") {
         if on {
             let img = Image::new_owned(green_dot_rgba(), 16, 16);

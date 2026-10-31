@@ -16,11 +16,19 @@ struct PlansMenu { toggle: MenuItem<tauri::Wry>, next: MenuItem<tauri::Wry> }
 
 pub fn refresh_plans(app: &AppHandle) {
     if let (Some(menu),Ok(view))=(app.try_state::<PlansMenu>(),crate::booking_plans::get_booking_plans(app.clone())) {
-        let _=menu.toggle.set_enabled(!view.plans.rules.is_empty());
-        let _=menu.toggle.set_text(if view.plans.paused {"恢复长期计划"} else {"暂停长期计划"});
+        let toggle=menu.toggle.clone();
+        let next_item=menu.next.clone();
         let next=view.next.iter().filter_map(|n|n["fire_at"].as_str()).min();
         let label=if view.plans.paused {"长期计划已暂停".into()} else {next.map(|t|format!("下次开抢 {} {}",&t[..10],&t[11..16])).unwrap_or_else(||"没有启用的长期计划".into())};
-        let _=menu.next.set_text(label);
+        // The scheduler can hold task_gate here; native menu setters must not
+        // synchronously wait for an IPC handler on the main thread.
+        if let Err(error)=app.run_on_main_thread(move || {
+            let _=toggle.set_enabled(!view.plans.rules.is_empty());
+            let _=toggle.set_text(if view.plans.paused {"恢复长期计划"} else {"暂停长期计划"});
+            let _=next_item.set_text(label);
+        }) {
+            log::warn!(target:"tray","[plans_dispatch_failed] {error}");
+        }
     }
 }
 
