@@ -9,6 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::image::Image;
+#[cfg(all(test, feature = "window-soak"))]
+mod window_soak;
 use tauri::webview::PageLoadEvent;
 use tauri::{Emitter, Manager, State, WindowEvent};
 
