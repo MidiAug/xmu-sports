@@ -868,13 +868,12 @@ fn get_live_status(state: State<'_, AppState>) -> Result<LiveStatus, String> {
     let active = state.active_task.lock().map_err(|_| "任务状态不可用")?.clone();
     let snapshot = if running { active } else if arm.armed { arm.task.clone() } else { None };
     let task = match snapshot { Some(task) => Some(task), None => read_task()? };
-    let mut recent_events: Vec<RunEvent> = match &task {
-        Some(t) => run_trace::read_recent_run_events(&runs_dir(), &t.task_id, 120)?.into_iter().map(history_to_run_event).collect(),
-        None => Vec::new(),
-    };
-    recent_events.extend(run_trace::read_recent_run_events(&runs_dir(),pending_orders::TRACE_TASK,120)?.into_iter().map(history_to_run_event));
-    recent_events.sort_by(|a,b|a.ts.cmp(&b.ts));
-    if recent_events.len()>120 {recent_events.drain(..recent_events.len()-120);}
+    let operation = if running { state.active_operation.lock().unwrap_or_else(|error| error.into_inner()).clone() } else { None };
+    let active_trace = running.then(|| if operation.as_deref() == Some("recheck") {
+        pending_orders::TRACE_TASK
+    } else { task.as_ref().map(|t| t.task_id.as_str()).unwrap_or(pending_orders::TRACE_TASK) });
+    let recent_events: Vec<RunEvent> = run_trace::read_progress_events(&runs_dir(), active_trace, 120)?
+        .into_iter().map(history_to_run_event).collect();
     let mut last_event = recent_events.last().cloned();
     if let Some(event) = last_event.as_mut().filter(|event| event.action.as_deref() == Some("fail")) {
         if let Some(summary) = event.run_id.as_deref().and_then(|run| run_trace::failure_exchange(&runs_dir(), &event.task_id, run)) {
@@ -895,7 +894,7 @@ fn get_live_status(state: State<'_, AppState>) -> Result<LiveStatus, String> {
         running,
         armed,
         stopping: state.stopping.load(Ordering::SeqCst) && running,
-        operation: if running { state.active_operation.lock().unwrap_or_else(|error| error.into_inner()).clone() } else { None },
+        operation,
         fire_at: if armed {
             Some(arm.fire_at)
         } else {

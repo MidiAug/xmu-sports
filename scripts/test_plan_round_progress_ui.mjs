@@ -75,6 +75,20 @@ try {
  assert.doesNotMatch(await page.locator('.booking-target').innerText(),new RegExp(tasks[0].sport),'final result remains attached to the second frozen task');
  assert.deepEqual(await page.evaluate(()=>window.__plans.attempts.map(a=>a.status)),['succeeded','succeeded']);
  await page.screenshot({path:'artifacts/plan-round-progress/second-result-dark.png'});
+ // The host returns the single draft/next armed task separately from the latest trace.
+ for (const armed of [false,true]) {
+  const reads=await page.evaluate(()=>window.__calls.filter(c=>c.command==='get_live_status').length);
+  await page.evaluate(({task,armed})=>{
+   window.__live={...window.__live,task,armed,fire_at:armed?task.fire_at:null};window.__emit('run-changed');
+  },{task:{...tasks[0],task_id:'single-draft',plan_id:null,target_date:'2026-11-03'},armed});
+  await page.waitForFunction(reads=>window.__calls.filter(c=>c.command==='get_live_status').length>reads,reads);
+  assert.match(await page.locator('.booking-target').innerText(),new RegExp(tasks[1].sport),'returning to draft/next arm preserves latest plan result');
+  assert.doesNotMatch(await page.locator('.booking-target').innerText(),/2026-11-03/);
+ }
+ await page.locator('.nav-primary [data-tab="setup"]').click();
+ await page.locator('.nav-primary [data-tab="live"]').click();
+ await page.locator('.booking-execution.success').waitFor();
+ assert.match(await page.locator('.booking-target').innerText(),new RegExp(tasks[1].sport),'reopening progress preserves latest result');
  assert.equal(await page.evaluate(()=>window.__calls.some(c=>['arm_hang','start_http_run','cancel_my_order','launch_xmu_miniprogram'].includes(c.command))),false);
  console.log('Plan-round UI passed: two frozen targets in priority order, stable prepare stage, independent run progress, real captcha retry reset, light/dark minimum window; synthetic host only');
 } finally {await browser.close();await server.close();}

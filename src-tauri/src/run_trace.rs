@@ -983,6 +983,26 @@ fn append_events_file(path: &Path, out: &mut Vec<HistoryEvent>) -> Result<(), St
     Ok(())
 }
 
+/// The draft/next armed task is independent from the most recently executed task.
+/// During execution only that task's trace may drive the progress card.
+pub fn read_progress_events(runs_root: &Path, active_task: Option<&str>, limit: usize) -> Result<Vec<HistoryEvent>, String> {
+    if let Some(task) = active_task {
+        return read_recent_run_events(runs_root, task, limit);
+    }
+    let mut latest: Vec<HistoryEvent> = Vec::new();
+    if !runs_root.is_dir() { return Ok(latest); }
+    for entry in fs::read_dir(runs_root).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        if !entry.path().is_dir() { continue; }
+        let task = entry.file_name();
+        let events = read_recent_run_events(runs_root, &task.to_string_lossy(), limit)?;
+        if events.last().is_some_and(|event| latest.last().is_none_or(|previous| event.ts > previous.ts)) {
+            latest = events;
+        }
+    }
+    Ok(latest)
+}
+
 /// Read only the newest run, preserving short steps between frontend refreshes.
 pub fn read_recent_run_events(runs_root: &Path, task_id: &str, limit: usize) -> Result<Vec<HistoryEvent>, String> {
     let task_path = runs_root.join(task_id);
@@ -1015,20 +1035,11 @@ pub fn read_recent_run_events(runs_root: &Path, task_id: &str, limit: usize) -> 
     }
     candidates.sort_by(|a, b| b.0.cmp(&a.0));
     for (_, path) in candidates {
-        let f = File::open(&path).map_err(|e| e.to_string())?;
-        let mut recent = std::collections::VecDeque::new();
-        for line in BufReader::new(f).lines() {
-            let line = line.map_err(|e| e.to_string())?;
-            if line.trim().is_empty() {
-                continue;
-            }
-            if let Some(ev) = history_event_from_line(&line) {
-                recent.push_back(ev);
-                if recent.len() > limit.max(1) { recent.pop_front(); }
-            }
-        }
+        let mut recent = Vec::new();
+        append_events_file(&path, &mut recent)?;
         if !recent.is_empty() {
-            return Ok(recent.into_iter().collect());
+            let skip = recent.len().saturating_sub(limit.max(1));
+            return Ok(recent.into_iter().skip(skip).collect());
         }
     }
     Ok(Vec::new())
@@ -1084,6 +1095,30 @@ pub fn safe_evidence_name(run_id: &str, step: u32, reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn progress_follows_latest_execution_across_tasks_and_restart() {
+        let root = tmp_root("progress-selection");
+        for (task, ts) in [("single", "2026-10-30T07:00:00+08:00"), ("plan", "2026-11-01T07:00:00+08:00")] {
+            let dir = root.join(task).join("run");
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("events.jsonl"), json!({"ts":ts,"task_id":task,"run_id":"run","action":"done","result":"http_verified","http":{"verified":true}}).to_string()).unwrap();
+        }
+        fs::create_dir_all(root.join("next-queued-plan")).unwrap();
+        // No in-memory active task after restart; the old single draft must not win.
+        let latest = read_progress_events(&root, None, 120).unwrap();
+        assert_eq!(latest.last().unwrap().task_id, "plan");
+        assert_eq!(read_progress_events(&root, Some("single"), 120).unwrap().last().unwrap().task_id, "single");
+        assert!(read_progress_events(&root, Some("next-queued-plan"), 120).unwrap().is_empty());
+        let trace = RunTraceHandle::open(&root, "new-single", "live", json!({}), None, RunTraceConfig::default()).unwrap();
+        trace.try_event("spawn", None, "started", None, None, None, json!({}));
+        assert_eq!(read_progress_events(&root, None, 120).unwrap().last().unwrap().task_id, "new-single");
+        trace.finish("succeeded", Some("http_verified"));
+        assert_eq!(read_progress_events(&root, None, 120).unwrap().last().unwrap().task_id, "new-single");
+        clear_all_events(&root).unwrap();
+        assert!(read_progress_events(&root, None, 120).unwrap().is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn failure_summary_is_scoped_and_does_not_expose_large_responses() {
         let root = tmp_root("failure-summary");
