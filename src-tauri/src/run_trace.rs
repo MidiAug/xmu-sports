@@ -996,7 +996,11 @@ pub fn read_progress_events(runs_root: &Path, active_task: Option<&str>, limit: 
         if !entry.path().is_dir() { continue; }
         let task = entry.file_name();
         let events = read_recent_run_events(runs_root, &task.to_string_lossy(), limit)?;
-        if events.last().is_some_and(|event| latest.last().is_none_or(|previous| event.ts > previous.ts)) {
+        if events.last().is_some_and(|event| latest.last().is_none_or(|previous| {
+            let timestamp = |event: &HistoryEvent| chrono::DateTime::parse_from_rfc3339(&event.ts)
+                .map(|time| time.timestamp_millis()).unwrap_or(i64::MIN);
+            timestamp(event) > timestamp(previous)
+        })) {
             latest = events;
         }
     }
@@ -1098,7 +1102,8 @@ mod tests {
     #[test]
     fn progress_follows_latest_execution_across_tasks_and_restart() {
         let root = tmp_root("progress-selection");
-        for (task, ts) in [("single", "2026-10-30T07:00:00+08:00"), ("plan", "2026-11-01T07:00:00+08:00")] {
+        // UTC 01:00 is later than Beijing 08:00 (UTC 00:00), despite string order.
+        for (task, ts) in [("single", "2001-01-01T08:00:00+08:00"), ("plan", "2001-01-01T01:00:00Z")] {
             let dir = root.join(task).join("run");
             fs::create_dir_all(&dir).unwrap();
             fs::write(dir.join("events.jsonl"), json!({"ts":ts,"task_id":task,"run_id":"run","action":"done","result":"http_verified","http":{"verified":true}}).to_string()).unwrap();
