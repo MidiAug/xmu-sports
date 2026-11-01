@@ -135,7 +135,8 @@
 .run-flow,.run-stages { margin-top:14px; }
 .run-stage-row { min-height:46px; }
 .settings-page { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:18px; max-width:980px; align-items:stretch; }
-.settings-page > .page-heading,.settings-page > .settings-favorites,.settings-page > .msg { grid-column:1 / -1; }
+.settings-page > .page-heading,.settings-page > .msg { grid-column:1 / -1; }
+.settings-page > .settings-favorites { align-self:start; }
 .settings-page > .page-heading { margin-bottom:4px; }
 .settings-page > .preference-card { border-color:transparent; border-radius:18px; padding:24px; }
 .preference-card-heading h3 { font-size:16px; font-weight:600; }

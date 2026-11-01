@@ -104,12 +104,12 @@ export async function renderSettings(panel: Element) {
             <div id="close_mode_host"></div>
           </div>
       </section>
+      <section class="preference-card" id="startup_settings"></section>
       <section class="preference-card" id="booking_preferences">
         <div class="preference-card-heading"><h3>预约偏好</h3><p>单次预约与长期计划共用</p></div>
         <div class="settings-cell"><div><label class="settings-cell-title" for="allow_fallback">尝试邻近时段</label><p class="settings-cell-desc">目标时段锁定或已满时，继续尝试候选时段</p></div><label class="switch"><input type="checkbox" id="allow_fallback" aria-label="尝试邻近时段" /></label></div>
         <div class="settings-cell" id="fallback_order_wrap"><div><p class="settings-cell-title">邻近顺序</p><p class="settings-cell-desc">优先仍是你选的时段</p></div><div class="seg-shell"><div class="seg" id="fallback_order_seg"><button type="button" data-order="up_then_down">先更早</button><button type="button" data-order="down_then_up">先更晚</button></div></div></div>
       </section>
-      <section class="preference-card" id="startup_settings"></section>
       <section class="preference-card settings-favorites" aria-labelledby="favorite_sports_title">
         <div class="settings-favorites-header"><div><h3 id="favorite_sports_title">常用运动</h3><p id="favorite_sports_summary"></p></div><button type="button" class="favorite-edit" aria-expanded="false" aria-controls="favorite_sports_body"><span class="favorite-edit-label">编辑</span>${SVG.chevron}</button></div>
         <div id="favorite_sports_body" hidden>

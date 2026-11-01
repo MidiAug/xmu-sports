@@ -102,7 +102,7 @@
 .settings-diagnostic-note { color:var(--color-muted); font-size:11px; line-height:1.7; margin:6px 0 0; }
 .settings-page .settings-about-entry { align-self:stretch; align-items:center; }
 .settings-page > .settings-diagnostics,.settings-page > .settings-about-entry { height:96px; min-height:96px; }
-.settings-page > .settings-favorites:has(#favorite_sports_body[hidden]) { display:flex; align-items:center; height:96px; padding:20px 24px; }
+.settings-page > .settings-favorites:has(#favorite_sports_body[hidden]) { min-height:96px; padding:20px 24px; }
 .settings-page > .settings-favorites { padding:20px 24px; }
 .settings-favorites-header { width:100%; min-height:54px; }
 .settings-about-entry > span { flex:none; display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--color-control); color:var(--color-secondary-ink); font-size:24px; }
