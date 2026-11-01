@@ -134,9 +134,8 @@
 .run-card-body { margin:0 20px 20px; padding:18px 0 0; border-top:1px solid var(--color-line); }
 .run-flow,.run-stages { margin-top:14px; }
 .run-stage-row { min-height:46px; }
-.settings-page { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,1fr); gap:18px; max-width:980px; align-items:stretch; }
+.settings-page { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; max-width:980px; align-items:stretch; }
 .settings-page > .page-heading,.settings-page > .msg { grid-column:1 / -1; }
-.settings-page > .settings-favorites { align-self:start; }
 .settings-page > .page-heading { margin-bottom:4px; }
 .settings-page > .preference-card { border-color:transparent; border-radius:18px; padding:24px; }
 .preference-card-heading h3 { font-size:16px; font-weight:600; }
@@ -147,7 +146,7 @@
 .settings-page .theme-preview { height:65px; border-radius:8px; }
 .settings-page .settings-theme-cube { border-radius:12px; padding:8px; }
 .settings-page .settings-cell { padding:18px 0; }
-.settings-favorites-header h3 { font-size:15px; font-weight:600; }
+.settings-favorites-header h3 { font-size:16px; font-weight:600; }
 .settings-about-entry strong { font-size:14px; font-weight:550; }
 .settings-about-entry div > span { font-size:12px; line-height:1.7; }
 .settings-about-entry { align-self:start; min-height:88px; }

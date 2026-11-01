@@ -21,7 +21,17 @@ try {
   const card = page.locator('.settings-favorites');
   const toggle = page.locator('.favorite-edit');
   assert.equal(await page.locator('#favorite_sports_body').isVisible(), false);
-  assert.ok((await card.boundingBox()).height < 140,'collapsed favorites stays compact while allowing its narrower summary to wrap');
+  const assertAlignedRows=async()=>{
+    const pairs=[['section.preference-card:first-of-type','#startup_settings'],['#booking_preferences','.settings-favorites'],['.settings-diagnostics','.settings-about-entry']];
+    for(const [left,right] of pairs) {
+      const a=await page.locator(left).boundingBox(),b=await page.locator(right).boundingBox();
+      assert.ok(Math.abs(a.width-b.width)<1,'settings columns have equal widths');
+      assert.ok(Math.abs(a.y-b.y)<1 && Math.abs(a.height-b.height)<1,'paired cards share top and bottom edges');
+    }
+    const a=await page.locator('#booking_preferences h3').boundingBox(),b=await page.locator('#favorite_sports_title').boundingBox();
+    assert.ok(Math.abs(a.y-b.y)<1,'paired headings share the same inset');
+  };
+  await assertAlignedRows();
   assert.equal(await page.locator('.preference-card').first().locator('h3').innerText(), '外观与窗口');
   const appearance=await page.locator('.preference-card').first().boundingBox();
   const startup=await page.locator('#startup_settings').boundingBox();
@@ -98,6 +108,18 @@ try {
     assert.ok(rect.x >= box.x && rect.x + rect.width <= box.x + box.width + 1);
   }
   await page.screenshot({ path: join(output, 'expanded-narrow.png') });
+  for(const width of [960,1100]) {
+    await page.setViewportSize({width,height:960});
+    await page.locator('#allow_fallback').check();
+    await page.waitForFunction(()=>!document.querySelector('#fallback_order_wrap').hidden);
+    await assertAlignedRows();
+    await toggle.click();
+    await assertAlignedRows();
+    await page.locator('.content').evaluate(el=>el.scrollTop=0);
+    await page.screenshot({path:join(output,`aligned-collapsed-${width}.png`)});
+    await toggle.click();
+    await assertAlignedRows();
+  }
   assert.deepEqual(errors,[]);
   console.log('Settings browser checks passed: collapsed height, order, selection policy, editing, save/rollback, minimum one, keyboard and narrow layout');
 } finally { await browser.close(); }
