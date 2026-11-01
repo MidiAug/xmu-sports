@@ -11,6 +11,7 @@ import { setMsg } from "../lib/msg";
 import { log } from "../lib/log";
 import { applyTheme, currentThemePref } from "../lib/theme";
 import { SVG } from "../ui/icons";
+import { sportIcon } from "../ui/sport-icons";
 import { mountShellSelect } from "../ui/select";
 import { mountPage } from "../lib/page-lifecycle";
 import { updatePrefs } from "../lib/prefs-store";
@@ -57,6 +58,7 @@ function favoriteGridHtml(favoriteIds: Set<string>): string {
         .filter(Boolean)
         .join(" ");
       return `<button type="button" class="${cls}" data-fav-sport="${s.id}" aria-pressed="${on}">
+        <span class="sport-icon" data-sport="${s.label}" aria-hidden="true">${sportIcon(s.label)}</span>
         <span class="settings-sport-cell-label">${s.label}</span>
         <span class="settings-sport-check" aria-hidden="true">${SVG.check}</span>
       </button>`;
@@ -111,11 +113,10 @@ export async function renderSettings(panel: Element) {
         <div class="settings-cell" id="fallback_order_wrap"><div><p class="settings-cell-title">邻近顺序</p><p class="settings-cell-desc">优先仍是你选的时段</p></div><div class="seg-shell"><div class="seg" id="fallback_order_seg"><button type="button" data-order="up_then_down">先更早</button><button type="button" data-order="down_then_up">先更晚</button></div></div></div>
       </section>
       <section class="preference-card settings-favorites" aria-labelledby="favorite_sports_title">
-        <div class="settings-favorites-header"><div><h3 id="favorite_sports_title">常用运动</h3><p id="favorite_sports_summary"></p></div><button type="button" class="favorite-edit" aria-expanded="false" aria-controls="favorite_sports_body"><span class="favorite-edit-label">编辑</span>${SVG.chevron}</button></div>
-        <div id="favorite_sports_body" hidden>
-          <p class="favorite-hint">选择在预约页显示的运动，至少保留一项，修改自动保存</p>
+        <div class="settings-favorites-header"><div><h3 id="favorite_sports_title">常用运动</h3><p id="favorite_sports_summary"></p></div></div>
+        <div id="favorite_sports_body">
           ${favoriteGridHtml(favoriteIds)}
-          <p class="favorite-unavailable">${sports.filter(s => !isSportEnabled(s)).map(s => s.label).join("、")}暂未支持</p>
+          <p class="favorite-hint">至少保留一项，修改自动保存</p>
           <p class="msg" id="favorite_sports_message" role="status" aria-live="polite"></p>
         </div>
       </section>
@@ -130,15 +131,9 @@ export async function renderSettings(panel: Element) {
   `;
   void mountStartupSettings(panel.querySelector<HTMLElement>("#startup_settings")!, scope);
   const summary = panel.querySelector<HTMLElement>("#favorite_sports_summary")!;
-  const paintSummary = () => { summary.textContent = sports.filter(s => favoriteIds.has(s.id)).map(s => s.label).join("、"); };
+  const paintSummary = () => { summary.textContent = `已选 ${favoriteIds.size} 项，在预约页显示`; };
   paintSummary();
-  const edit = panel.querySelector<HTMLButtonElement>(".favorite-edit")!;
   const favoritesBody = panel.querySelector<HTMLElement>("#favorite_sports_body")!;
-  edit.onclick = () => {
-    favoritesBody.hidden = !favoritesBody.hidden;
-    edit.setAttribute("aria-expanded", String(!favoritesBody.hidden));
-    edit.querySelector('.favorite-edit-label')!.textContent = favoritesBody.hidden ? '编辑' : '完成';
-  };
   panel.querySelector<HTMLButtonElement>(".settings-about-entry")!.onclick = () => {
     void renderAbout(panel, () => { void renderSettings(panel); });
   };

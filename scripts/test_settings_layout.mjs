@@ -19,8 +19,7 @@ try {
   await page.getByRole('button',{name:'设置',exact:true}).click();
   await page.locator('.settings-page').waitFor();
   const card = page.locator('.settings-favorites');
-  const toggle = page.locator('.favorite-edit');
-  assert.equal(await page.locator('#favorite_sports_body').isVisible(), false);
+  assert.equal(await page.locator('#favorite_sports_body').isVisible(), true);
   const assertAlignedRows=async()=>{
     const pairs=[['section.preference-card:first-of-type','#startup_settings'],['#booking_preferences','.settings-favorites'],['.settings-diagnostics','.settings-about-entry']];
     for(const [left,right] of pairs) {
@@ -63,18 +62,9 @@ try {
   assert.equal(await page.locator('.settings-page h2').evaluate(el => getComputedStyle(el).userSelect), 'none');
   assert.notEqual(await page.locator('#settings_msg').evaluate(el => getComputedStyle(el).userSelect), 'none');
   await page.screenshot({ path: join(output, 'collapsed-light.png') });
-  const closedButton=await toggle.boundingBox();
-  const closedOffset=closedButton.y-(await card.boundingBox()).y;
-  await toggle.click();
-  const openButton=await toggle.boundingBox();
-  assert.equal(openButton.height,closedButton.height,'edit/done button keeps its height');
-  assert.equal(openButton.width,closedButton.width,'edit/done button keeps its width');
-  assert.ok(Math.abs(openButton.y-(await card.boundingBox()).y-closedOffset)<1,'header keeps the same internal vertical position');
-  assert.equal(await toggle.locator('svg').count(),1);
-  assert.equal(await toggle.locator('.favorite-edit-label').innerText(),'完成');
-  assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
-  assert.equal(await page.locator('[data-fav-sport]').count(), 8);
-  assert.ok((await page.locator('[data-fav-sport]').first().boundingBox()).height <= 34);
+  assert.equal(await page.locator('[data-fav-sport]').count(),8);
+  assert.equal(await page.locator('[data-fav-sport] .sport-icon svg').count(),8);
+  assert.ok((await page.locator('[data-fav-sport]').first().boundingBox()).height>=60);
   await page.clock.runFor(220);
   await page.screenshot({ path: join(output, 'expanded-light.png') });
   const buttons = page.locator('[data-fav-sport]');
@@ -82,7 +72,7 @@ try {
   // Save one change; the summary must immediately match the selected labels.
   await buttons.first().click();
   await page.waitForFunction(() => !document.querySelector('[data-fav-sport]').disabled);
-  assert.ok(!(await page.locator('#favorite_sports_summary').innerText()).includes('乒乓球'));
+  assert.match(await page.locator('#favorite_sports_summary').innerText(),new RegExp(`已选 ${await selected.count()} 项`));
   await page.evaluate(() => window.failSave = true);
   await buttons.first().click();
   await page.locator('#favorite_sports_message').filter({ hasText: '模拟保存失败' }).waitFor();
@@ -95,9 +85,9 @@ try {
   await selected.first().click();
   await page.getByText('至少保留一项常用运动', { exact: true }).waitFor();
   assert.equal(await selected.count(), 1);
-  await toggle.click();
-  await toggle.focus(); await page.keyboard.press('Enter');
-  assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+  await page.locator('[data-fav-sport][aria-pressed="false"]').first().focus(); await page.keyboard.press('Space');
+  await page.waitForFunction(()=>!document.querySelector('[data-fav-sport]').disabled);
+  assert.equal(await selected.count(),2,'keyboard toggles the focused sport');
   await page.evaluate(() => document.documentElement.dataset.shellTheme = 'dark');
   await page.clock.runFor(220);
   await page.screenshot({ path: join(output, 'expanded-dark.png') });
@@ -113,13 +103,10 @@ try {
     await page.locator('#allow_fallback').check();
     await page.waitForFunction(()=>!document.querySelector('#fallback_order_wrap').hidden);
     await assertAlignedRows();
-    await toggle.click();
-    await assertAlignedRows();
     await page.locator('.content').evaluate(el=>el.scrollTop=0);
-    await page.screenshot({path:join(output,`aligned-collapsed-${width}.png`)});
-    await toggle.click();
+    await page.screenshot({path:join(output,`aligned-grid-${width}.png`)});
     await assertAlignedRows();
   }
   assert.deepEqual(errors,[]);
-  console.log('Settings browser checks passed: collapsed height, order, selection policy, editing, save/rollback, minimum one, keyboard and narrow layout');
+  console.log('Settings browser checks passed: equal rows, visible icon grid, selection policy, save/rollback, minimum one, keyboard and narrow layout');
 } finally { await browser.close(); }

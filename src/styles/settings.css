@@ -7,25 +7,18 @@
 .settings-favorites-header h3 { margin: 0; font-size: 13px; font-weight: 550; }
 .settings-favorites-header p { margin: 6px 0 0; font-size: 12px; line-height: 1.7; color: var(--color-muted); overflow-wrap: anywhere; }
 .settings-favorites { padding: 16px 20px; }
-.favorite-edit { display: inline-flex; align-items: center; gap: 8px; flex: none; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--color-muted); font: inherit; font-size: 12px; cursor: pointer; }
-.favorite-edit-label { font-size:13px; line-height:18px; }
-.favorite-edit svg { display:block; flex:none; transition:transform .18s ease; }
-.favorite-edit[aria-expanded="true"] svg { transform:rotate(180deg); }
-.favorite-edit:hover { color: var(--color-accent); background: var(--color-nav-hover); }
-#favorite_sports_body { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--color-line); }
-.favorite-hint, .favorite-unavailable { margin: 0; color: var(--color-muted); font-size: 11px; line-height: 1.7; }
-.favorite-hint { margin-bottom: 12px; }
-.favorite-unavailable { margin-top: 12px; }
-.settings-page .settings-sport-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-.settings-page .settings-sport-cell { display: inline-flex; flex-direction: row; align-items: center; gap: 7px; position: relative; min-height: 32px; padding: 6px 12px; border: 1px solid var(--color-line-strong); border-radius: 18px; background: transparent; color: var(--color-ink); font: inherit; box-shadow: none; font-size: 12px; cursor: pointer; }
-.settings-page .settings-sport-cell:hover { border-color: var(--color-accent); }
-.settings-page .settings-sport-cell:disabled { cursor: default; opacity: 1; }
-.settings-page .settings-sport-cell.on { border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line-strong)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-panel)); }
-.settings-page .settings-sport-cell.on .settings-sport-cell-label { color: var(--color-accent); font-weight: 500; }
-.settings-sport-check { display: flex; color: var(--color-accent); visibility: hidden; }
-.settings-sport-check svg { width: 13px; height: 13px; }
-.settings-sport-cell.on .settings-sport-check { visibility: visible; }
-.settings-page .settings-sport-cell-hint { font-size: 10px; }
+#favorite_sports_body { margin-top: 16px; }
+.favorite-hint { margin: 12px 0 0; color: var(--color-muted); font-size: 11px; line-height: 1.7; }
+.settings-page .settings-sport-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.settings-page .settings-sport-cell { position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; min-height:68px; padding:10px 4px; border:1px solid var(--color-line); border-radius:12px; background:var(--color-control); color:var(--color-ink); font:inherit; font-size:12px; line-height:18px; box-shadow:none; cursor:pointer; }
+.settings-page .settings-sport-cell:hover { border-color:var(--color-accent); }
+.settings-page .settings-sport-cell:disabled { cursor:default; opacity:1; }
+.settings-page .settings-sport-cell.on { border-color:color-mix(in srgb,var(--color-accent) 48%,var(--color-line)); background:color-mix(in srgb,var(--color-accent) 6%,var(--color-panel)); }
+.settings-page .settings-sport-cell.on .settings-sport-cell-label { color:var(--color-accent); font-weight:500; }
+.settings-page .settings-sport-cell-label { white-space:nowrap; }
+.settings-sport-check { position:absolute; top:5px; right:5px; display:flex; color:var(--color-accent); visibility:hidden; }
+.settings-sport-check svg { width:11px; height:11px; }
+.settings-sport-cell.on .settings-sport-check { visibility:visible; }
 .settings-page .settings-theme-cubes { gap: 12px; }
 .settings-page .settings-theme-cube { border-radius: 9px; padding: 8px; gap: 10px; }
 .settings-page .settings-theme-cube.on { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 5%, var(--color-panel)); }
