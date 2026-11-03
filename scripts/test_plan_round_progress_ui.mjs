@@ -38,6 +38,21 @@ try {
  assert.equal(await page.locator('.plan-queue-row').count(),1,'only the second frozen task remains in the waiting list');
  assert.match(await page.locator('.plan-queue-row').innerText(),new RegExp(tasks[1].sport));
  for(const name of ['h5_entry_reused','local_eligibility','warming','reading_entry','authenticating','checking_orders']) await phase(name,'准备检查');
+ await page.evaluate(()=>{
+  const previous=window.__live.last_event;
+  const event={...previous,http:{...previous.http,request_retry:true,retry_api:'order_list',retry_code:'HTTP_FAILED',retry_attempt:1,retry_total:2,retry_after_seconds:1.25}};
+  window.__live.last_event=event;window.__live.recent_events.push(event);window.__emit('run-changed');
+ });
+ await page.waitForFunction(()=>document.querySelector('.booking-current-detail').textContent.includes('1.25 秒后重试'));
+ assert.match(await active(),/准备检查/);
+ for(const theme of ['light','dark']) {
+  await page.setViewportSize({width:960,height:600});await page.evaluate(t=>document.documentElement.dataset.shellTheme=t,theme);
+  await page.locator('#disarm_hang').focus();
+  assert.equal(await page.locator('#disarm_hang').evaluate(node=>node===document.activeElement),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.screenshot({path:`artifacts/plan-round-progress/network-retry-${theme}.png`});
+ }
+ await page.setViewportSize({width:1100,height:760});
  await phase('captcha','验证码');await phase('captcha_recognized','验证码');
  await phase('resolving_venue','实时场次');await phase('querying_slots','实时场次');
  await page.screenshot({path:'artifacts/plan-round-progress/first-running.png'});

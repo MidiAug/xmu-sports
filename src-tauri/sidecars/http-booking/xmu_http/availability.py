@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from .client import Client, Target, cell_capacity
 from .session import BookingError, discover_entry
 from .catalog import write_json
+from .retry import RequestRetry
 
 CHINA = timezone(timedelta(hours=8))
 
@@ -83,6 +84,7 @@ def query(root, sport, venue, date, force=False, now=None, *, cancelled=None):
     if not force and (date in days or date in unpublished):
         return result(True)
     client=AvailabilityClient(ticket)
+    client.retry=RequestRetry(cancelled)
     try:
         auth=client.login()
         if not auth.get("account_checked"):

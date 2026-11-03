@@ -93,8 +93,6 @@ def test_success_does_not_reset_session_budget_for_later_query(sleeps):
     ({"status": 0, "info": "尚未开放"}, "NOT_OPEN"),
     ({"status": 1, "data": []}, "SLOT_SCHEMA_CHANGED"),
     ([], "INVALID_RESPONSE"),
-    (429, "RATE_LIMITED"), (503, "SERVER_BUSY"),
-    (requests.Timeout("offline fixture"), "HTTP_FAILED"),
     (ValueError("invalid JSON fixture"), "HTTP_FAILED"),
 ])
 def test_other_failures_do_not_retry(sleeps, reply, code):
@@ -105,11 +103,10 @@ def test_other_failures_do_not_retry(sleeps, reply, code):
     assert len(calls) == 1 and sleeps == []
 
 
-def test_second_transport_failure_is_not_retried(sleeps):
-    client, calls = make_client([DENIAL, requests.ConnectionError("offline fixture")])
-    with pytest.raises(BookingError) as error:
-        client.intervals(plan()["venue"])
-    assert error.value.code == "HTTP_FAILED" and len(calls) == 2 and sleeps == [2]
+def test_parameter_recovery_then_transient_transport_recovery(sleeps):
+    client, calls = make_client([DENIAL, requests.ConnectionError("offline fixture"), SUCCESS])
+    assert client.intervals(plan()["venue"]) == interval_data()
+    assert len(calls) == 3 and sleeps == [2, 1]
 
 
 def test_stop_interrupts_retry_wait_without_another_request(sleeps):

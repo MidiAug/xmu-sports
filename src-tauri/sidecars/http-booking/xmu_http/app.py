@@ -18,6 +18,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .client import CaptchaSolver, Client, Target, pick_slot, public_plan, submit
+from .retry import RequestRetry
 from .session import BookingError, discover_entry
 
 
@@ -207,6 +208,7 @@ def authenticate(client: Client, profile=None):
         if fresh.fields == client.ticket.fields:
             raise exc
         replacement = Client(fresh)
+        replacement.retry = client.retry
         client.http.close()
         try:
             result = replacement.login()
@@ -217,10 +219,11 @@ def authenticate(client: Client, profile=None):
             raise
 
 
-def check_auth(profile=None) -> dict:
+def check_auth(profile=None, *, cancelled=None, progress=None) -> dict:
     client = None
     try:
         client = Client(discover_entry(profile))
+        client.retry = RequestRetry(cancelled, progress)
         client, result = authenticate(client, profile)
         return {"ok": True, "state": "ready", "auth_mode": "legacy_h5", "ttl_verified": False,
                 "account_fingerprint": hashlib.sha256(client.ticket.uid.encode()).hexdigest(), **result}
@@ -263,13 +266,14 @@ def run_target(target: Target, profile=None, *, commit=False, captcha_check=Fals
         exc.flow = flow
         raise
     client = Client(ticket)
+    client.retry = RequestRetry(cancelled, lambda detail: emit(phase, **detail))
     try:
         emit("authenticating")
         client, authentication = authenticate(client, profile)
         if commit and before_commit:
             emit("checking_orders")
             before_commit(client, target)
-        if commit:
+        if commit and not captcha_first:
             emit("checking_orders")
             existing = client.find_existing(target)
             if existing:

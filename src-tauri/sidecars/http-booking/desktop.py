@@ -22,6 +22,7 @@ from xmu_http.catalog import write_json
 from xmu_http.client import CaptchaSolver, Client, Target
 from xmu_http.session import BookingError, discover_entry
 from xmu_http.eligibility import check_target
+from xmu_http.retry import RequestRetry
 from xmu_http.diagnostics import Diagnostics, phase_changed
 
 PREFIX = "@@XMU_HTTP@@"
@@ -131,7 +132,8 @@ def execute(payload, cancelled, runtime=None):
                 "captcha_probe": solver.solve(__import__("base64").b64decode(payload["captcha_probe_base64"], validate=True)) if payload.get("captcha_probe_base64") else None,
                 "utf8_roundtrip": payload.get("probe_text", "")}
     if payload.get("action") == "check":
-        return check_auth()
+        return check_auth(cancelled=cancelled,
+                          progress=lambda detail: emit("progress", phase="authenticating", **detail))
     if payload.get("action") == "check_existing":
         # A separate read-only path: cannot reach run_candidates or submit.
         target = Target(**payload["target"])
@@ -140,10 +142,12 @@ def execute(payload, cancelled, runtime=None):
         if payload.get("expected_account") and payload["expected_account"] != account:
             raise BookingError("ACCOUNT_CHANGED", "查单账号与原提交账号不一致")
         client = Client(entry)
+        client.retry = RequestRetry(cancelled, lambda detail: emit("progress", phase="authenticating", **detail))
         try:
             auth = client.login()
             if not auth.get("account_checked"):
                 raise BookingError("HTTP_AUTH_UNVERIFIED", "查单尚未完成原账号核验")
+            client.retry.progress = lambda detail: emit("progress", phase="rechecking_orders", **detail)
             existing = client.find_existing(target)
             return {"ok": True, "state": "order_found" if existing else "order_not_found",
                     "account_fingerprint": account, "booking_submitted": False,
@@ -179,6 +183,7 @@ def execute(payload, cancelled, runtime=None):
             if hashlib.sha256(fresh.uid.encode()).hexdigest() != account:
                 raise BookingError("ACCOUNT_CHANGED", "查询备选时账号发生变化，未继续预约")
             fallback_client = Client(fresh)
+            fallback_client.retry = RequestRetry(cancelled, lambda detail: emit("progress", phase="discovering_fallbacks", **detail))
             try:
                 emit("progress", phase="discovering_fallbacks")
                 fallback_client.login()

@@ -22,7 +22,7 @@ def environment(monkeypatch, entries, response=None):
         if isinstance(value, Exception):
             raise value
         return value
-    def check(profile):
+    def check(profile, **kwargs):
         calls.append(("check", profile))
         return response or {"ok": True, "state": "ready",
                             "account_fingerprint": recovery.account_digest(last)}

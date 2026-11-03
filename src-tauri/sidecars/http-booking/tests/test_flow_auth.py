@@ -1,4 +1,5 @@
 from pathlib import Path
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -121,13 +122,17 @@ def expired(calls):
 
 
 def test_changed_same_account_entry_can_refresh_once(monkeypatch):
+    from xmu_http.retry import RequestRetry
     calls = []
-    client = SimpleNamespace(ticket=ticket(), login=lambda: expired(calls), http=SimpleNamespace(close=lambda: None))
+    policy = RequestRetry(threading.Event())
+    policy.used, policy.deadline = 5, 123
+    client = SimpleNamespace(ticket=ticket(), login=lambda: expired(calls), http=SimpleNamespace(close=lambda: None), retry=policy)
     replacement = SimpleNamespace(login=lambda: {"authenticated": True}, http=SimpleNamespace(close=lambda: None))
     monkeypatch.setattr(app, "discover_entry", lambda _: ticket("new"))
     monkeypatch.setattr(app, "Client", lambda _: replacement)
     new_client, result = app.authenticate(client)
     assert new_client is replacement and result["entry_refreshed"] and len(calls) == 1
+    assert replacement.retry is policy and policy.used == 5 and policy.deadline == 123
 
 
 def test_entry_refresh_cannot_switch_accounts(monkeypatch):

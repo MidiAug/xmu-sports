@@ -19,6 +19,12 @@ assert.deepEqual([...bookingProgressState(nextCandidate,nextCandidate.at(-1)).ob
 assert.equal(currentRunEvents([{...spawn, run_id:"old"}, spawn, submit, done], done).length, 3);
 assert.equal(elapsedLabel([spawn, submit, done], false), "7.2 秒");
 assert.equal(progressStep(submit), "submit");
+for (const name of ['checking_orders', 'querying_slots', 'checking_config', 'captcha', 'rechecking_orders']) {
+  const original = phase(name);
+  const waiting = {...original, http:{phase:name, request_retry:true, retry_code:'HTTP_FAILED', retry_attempt:1, retry_total:2, retry_after_seconds:1.25}};
+  assert.equal(progressStep(waiting), progressStep(original));
+  assert.match(progressMessage(waiting), /网络请求失败.*1.25 秒后重试.*第 1\/2 次/);
+}
 assert.equal(progressStep({...submit, result:"waiting_slot_retry"}), "query");
 assert.match(progressMessage({...submit, result:"waiting_slot_retry"}), /参数错误.*2 秒.*重试一次/);
 assert.match(progressMessage(done), /已查到匹配订单/);

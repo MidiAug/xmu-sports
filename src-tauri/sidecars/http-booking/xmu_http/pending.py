@@ -8,6 +8,7 @@ import re
 from .client import Client, Target
 from .catalog import write_json
 from .session import BookingError, discover_entry
+from .retry import RequestRetry
 
 
 def load_record(root, request_ref):
@@ -38,8 +39,11 @@ def load_record(root, request_ref):
 
 def recheck(root, request_ref, cancelled, progress):
     path, record, account, target = load_record(root, request_ref)
-    def emit(phase):
-        progress({"phase":phase,"request_ref":request_ref,"target":asdict(target),"read_only":True})
+    phase = "reading_entry"
+    def emit(value, **details):
+        nonlocal phase
+        phase = value
+        progress({"phase":phase,"request_ref":request_ref,"target":asdict(target),"read_only":True, **details})
     emit("reading_entry")
     if cancelled.is_set():
         raise BookingError("CANCELLED", "已停止再次查单，原预约结果仍待确认")
@@ -51,6 +55,7 @@ def recheck(root, request_ref, cancelled, progress):
     if hashlib.sha256(entry.uid.encode()).hexdigest() != account:
         raise BookingError("ACCOUNT_CHANGED", "当前账号与原提交账号不一致，未查询其他账号")
     client = Client(entry)
+    client.retry = RequestRetry(cancelled, lambda detail: emit(phase, **detail))
     try:
         emit("authenticating")
         auth = client.login()

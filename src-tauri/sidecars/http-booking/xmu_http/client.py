@@ -19,13 +19,14 @@ import requests
 
 from .session import BookingError, EntryTicket, ORIGIN
 from .diagnostics import request_timing, api_label, record_exchange, transport_error_type
+from .retry import RequestRetry, REPEATABLE_PATHS, retry_after
 
 API = ORIGIN + "/bdlp_h5_fitness_test/public/index.php"
 PAGES = ORIGIN + "/bdlp_h5_fitness_test/view/stadium/"
 ADD_ORDER_PATH = "/index/Stadium/addOrder"
 RECONCILE_DELAYS = (1, 2, 4, 8, 15)
 INTERVAL_RETRY_SECONDS = 2
-ORDER_LOOKUP_SECONDS = 8.0
+ORDER_LOOKUP_SECONDS = 30.0
 MAX_ORDER_PAGES = 3
 # 2/4 are redeemed/unredeemed historical bookings, both evidence that a matching
 # booking existed. 3 is cancelled and must never confirm the requested booking.
@@ -275,14 +276,19 @@ class Client:
         self.ticket = ticket
         self.http = http or requests.Session()
         self._interval_retry_used = False
+        self.retry = RequestRetry()
         self.http.headers.update({
             "User-Agent": USER_AGENT, "Origin": ORIGIN, "Referer": PAGES + "home.html",
             "Accept": "*/*", "X-Requested-With": "XMLHttpRequest",
         })
 
-    def post(self, path: str, fields: dict, referer: str | None = None, *, timeout=None) -> dict:
-        with request_timing(path):
-            return self._post(path, fields, referer, timeout=timeout)
+    def post(self, path: str, fields: dict, referer: str | None = None, *, timeout=None, deadline=None) -> dict:
+        def send(current):
+            with request_timing(path):
+                return self._post(path, fields, referer, timeout=current)
+        if path in REPEATABLE_PATHS:
+            return self.retry.call(send, api_label(path), timeout or (8, 20), deadline)
+        return send(timeout)
 
     def _post(self, path: str, fields: dict, referer: str | None = None, *, timeout=None) -> dict:
         started = time.monotonic()
@@ -298,9 +304,12 @@ class Client:
             if response.status_code == 401:
                 raise BookingError("SESSION_EXPIRED", "学校接口要求重新登录")
             if response.status_code == 429:
-                raise BookingError("RATE_LIMITED", "学校接口限制了请求频率，请稍后再试")
+                raise BookingError("RATE_LIMITED", "学校接口限制了请求频率，请稍后再试",
+                                   details={"http_status": 429, "retry_after_seconds": retry_after(response.headers.get("Retry-After"))})
             if response.status_code >= 500:
-                raise BookingError("SERVER_BUSY", "学校服务暂时异常，请稍后再试")
+                raise BookingError("SERVER_BUSY", "学校服务暂时异常，请稍后再试",
+                                   details={"http_status": response.status_code,
+                                            "retry_after_seconds": retry_after(response.headers.get("Retry-After"))})
             response.raise_for_status()
             if response.is_redirect:
                 raise BookingError("UNEXPECTED_REDIRECT", "接口发生了重定向，未继续发送会话")
@@ -321,8 +330,13 @@ class Client:
             raise BookingError("INVALID_RESPONSE", "体育接口响应结构不符合预期")
         return result
 
-    def require(self, path: str, fields: dict, referer: str | None = None, *, timeout=None):
-        result = self.post(path, fields, referer, timeout=timeout) if timeout else self.post(path, fields, referer)
+    def require(self, path: str, fields: dict, referer: str | None = None, *, timeout=None, deadline=None):
+        options = {}
+        if timeout is not None:
+            options["timeout"] = timeout
+        if deadline is not None:
+            options["deadline"] = deadline
+        result = self.post(path, fields, referer, **options)
         if result.get("status") != 1:
             info = str(result.get("info") or "体育接口拒绝请求")
             code = rejection_code(info, result.get("status"))
@@ -381,8 +395,8 @@ class Client:
         try:
             data = read()
         except BookingError as exc:
-            # A narrow read-only recovery, never a retry of require/post/submit.
-            # Keep the budget across open-date and captcha loops in this session.
+            # This explicit business denial has its own single recovery; transient
+            # transport failures use the shared client retry budget separately.
             if (self._interval_retry_used or exc.code != "API_REJECTED"
                     or type(exc.server_status) is not int or exc.server_status != 0
                     or str(exc).strip() != "参数错误"):
@@ -433,10 +447,12 @@ class Client:
         return {"venue": venue, "selected": selected, "referer": ref}
 
     def captcha(self, referer: str) -> bytes:
-        with request_timing("/index/index/captcha"):
-            return self._captcha(referer)
+        def read(current):
+            with request_timing("/index/index/captcha"):
+                return self._captcha(referer, timeout=current)
+        return self.retry.call(read, "captcha_image")
 
-    def _captcha(self, referer: str) -> bytes:
+    def _captcha(self, referer: str, *, timeout=(8, 20)) -> bytes:
         query = captcha_query(self.ticket.uid, str(random.random()), int(time.time()))
         started = time.monotonic()
         response = None
@@ -444,7 +460,11 @@ class Client:
         error_type = None
         try:
             response = self.http.get(API + "/index/index/captcha", params=query,
-                                     headers={"Referer": referer}, timeout=(8, 20), allow_redirects=False)
+                                     headers={"Referer": referer}, timeout=timeout, allow_redirects=False)
+            if response.status_code in {429, 500, 502, 503, 504}:
+                raise BookingError("RATE_LIMITED" if response.status_code == 429 else "SERVER_BUSY",
+                                   "验证码服务暂时不可用", details={"http_status": response.status_code,
+                                   "retry_after_seconds": retry_after(response.headers.get("Retry-After"))})
             response.raise_for_status()
             if not response.content.startswith(b"\x89PNG\r\n\x1a\n"):
                 raise BookingError("CAPTCHA_FETCH_FAILED", "验证码签名或会话验证失败，没有返回 PNG")
@@ -458,7 +478,7 @@ class Client:
         finally:
             record_exchange("/index/index/captcha", {}, response=response,
                             result={"image_received":True} if not error else None,
-                            error=error, error_type=error_type, timeout=(8, 20), secrets=[*self._diagnostic_secrets(), *query.values()],
+                            error=error, error_type=error_type, timeout=timeout, secrets=[*self._diagnostic_secrets(), *query.values()],
                             elapsed_ms=round((time.monotonic()-started)*1000), method="GET")
         return response.content
 
@@ -468,7 +488,7 @@ class Client:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise BookingError("ORDER_CHECK_TIMEOUT", "本轮查单时间已用完，不能据此认定预约不存在")
-            return self.require(path, fields, referer, timeout=(min(2, remaining), min(4, remaining)))
+            return self.require(path, fields, referer, timeout=(min(3, remaining), min(8, remaining)), deadline=deadline)
         seen = set()
         for page in range(1, MAX_ORDER_PAGES + 1):
             orders = records(read("/index/stadium/mySubscribe", {"p": str(page)}, PAGES + "mine.html"))

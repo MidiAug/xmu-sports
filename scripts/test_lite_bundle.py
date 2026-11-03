@@ -20,6 +20,7 @@ archive = CArchiveReader(str(bundle / "xmu-http-booking.exe")).open_embedded_arc
 for module in archive.toc:
     assert not module.startswith(("frida", "websockets", "cv2", "ddddocr", "xmu_http.runtime_", "xmu_vision")), module
 assert "xmu_http.captcha_ocr" in archive.toc
+assert "xmu_http.retry" in archive.toc
 tree = subprocess.run(["cargo", "tree", "--manifest-path", str(root / "src-tauri/Cargo.toml"), "-p", "xmu-sports", "--prefix", "none"], capture_output=True, text=True, check=True)
 assert not any(line.startswith("vision-") for line in tree.stdout.splitlines())
 report = {"version": config["version"], "resource_files": len(files), "worker_bytes": sum(path.stat().st_size for path in files),

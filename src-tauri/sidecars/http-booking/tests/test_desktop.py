@@ -224,7 +224,7 @@ def test_desktop_task_does_not_change_absolute_date_or_preferred_court():
 
 @pytest.mark.parametrize("status,code", [(401,"SESSION_EXPIRED"),(429,"RATE_LIMITED"),(503,"SERVER_BUSY")])
 def test_http_auth_and_server_errors_remain_distinct(status, code):
-    http = SimpleNamespace(headers={}, post=lambda *args, **kwargs: SimpleNamespace(status_code=status))
+    http = SimpleNamespace(headers={}, post=lambda *args, **kwargs: SimpleNamespace(status_code=status, headers={}))
     client = Client(EntryTicket({"uid":"1234"}, Path("fake")), http=http)
     with pytest.raises(BookingError) as error:
         client.post("/index/Index/checkLogin", {})

@@ -28,8 +28,9 @@ def test_metrics_classify_wrapped_errors_without_secrets(failure, category):
         value = metrics.snapshot()
     finally:
         metrics.leave(token)
-    assert value["http"]["login"]["errors"] == {category:2}
-    assert value["http"]["login"]["count"] == 2
+    attempts = 2 if category == "invalid_json" else 6
+    assert value["http"]["login"]["errors"] == {category:attempts}
+    assert value["http"]["login"]["count"] == attempts
     assert "secret" not in json.dumps(value)
 
 

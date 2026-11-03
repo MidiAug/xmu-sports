@@ -125,6 +125,11 @@ export function progressMessage(event: RunEvent): string {
   if (event.action === "login_recovery") return "打开体育小程序，准备新的场馆预约入口";
   const phase = event.http?.phase ?? event.result ?? "";
   let message = PHASES[phase]?.[1] ?? `流程状态：${phase || event.action || "未提供说明"}`;
+  if (event.http?.request_retry) {
+    const reason = event.http.retry_code === "RATE_LIMITED" ? "请求受限"
+      : event.http.retry_code === "SERVER_BUSY" ? "服务暂时异常" : "网络请求失败";
+    return `${message}：${reason}，${event.http.retry_after_seconds ?? 0} 秒后重试（第 ${event.http.retry_attempt}/${event.http.retry_total} 次）`;
+  }
   if (["waiting_order_sync", "rechecking_orders", "order_check_retry", "order_reconciled"].includes(phase)
       && event.http?.check_attempt !== undefined && event.http?.check_total !== undefined)
     message += `（第 ${event.http.check_attempt}/${event.http.check_total} 轮）`;

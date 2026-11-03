@@ -87,7 +87,8 @@ def recover_auth(*, expected_account=None, cancelled=None, progress=None, timeou
                 last_seen = changed
                 emit("validating_login_entry")
                 check_cancel()
-                result = check_auth(entry.profile)
+                result = check_auth(entry.profile, cancelled=cancelled,
+                                    progress=lambda detail: emit("validating_login_entry", **detail))
                 check_cancel()
                 if result.get("account_fingerprint") != fingerprint:
                     raise BookingError("ACCOUNT_CHANGED", "验证期间登录账号发生变化")
