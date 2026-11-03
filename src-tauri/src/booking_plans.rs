@@ -1063,6 +1063,18 @@ mod tests {
         freeze_round(&mut plans, at("2026-10-29T07:00:00+08:00"), &crate::ShellPrefs::default());
         assert_eq!(plans.attempts.len(),2,"editing priority must not duplicate or reorder the frozen round");
         let frozen = plans.clone();
+        for second_outcome in [Ok("http_verified".into()), Err("HTTP_FAILED".into())] {
+            let mut round = frozen.clone();
+            apply_outcome(&mut round, &first_task, &Ok("http_verified".into()));
+            let completed = serde_json::to_value(&round.attempts[0]).unwrap();
+            round.attempts[1].status = "running".into();
+            // The delayed attempt stays running until recovery has a final result.
+            assert_eq!(serde_json::to_value(&round.attempts[0]).unwrap(), completed);
+            apply_outcome(&mut round, &second_task, &second_outcome);
+            assert_eq!(serde_json::to_value(&round.attempts[0]).unwrap(), completed);
+            assert_eq!(round.attempts[0].status, "succeeded");
+            assert_eq!(round.attempts[1].task.task_id, second_task.task_id);
+        }
         for outcome in [Ok("http_verified".into()), Err("SLOT_OCCUPIED".into())] {
             let mut round = frozen.clone();
             apply_outcome(&mut round,&first_task,&outcome);

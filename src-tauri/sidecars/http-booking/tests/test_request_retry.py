@@ -169,18 +169,20 @@ def test_long_retry_after_is_not_shortened_or_slept(monkeypatch):
     assert error.value.code == "SERVER_BUSY" and len(calls) == 1 and not delays
 
 
-def booking_transport(monkeypatch, tmp_path, fail_path, *, uncertain=False, create_order=True, failures=1, skip=0):
+def booking_transport(monkeypatch, tmp_path, fail_path, *, uncertain=False, create_order=True, failures=1, skip=0,
+                      goal=None, order_book=None):
     """Run real client/booking/journal code with only requests.Session replaced."""
     calls = Counter()
-    http = requests.Session()
+    http = requests.sessions.Session()
     http.cookies.set("PHPSESSID", "offline")
-    goal = target()
-    sent = [False]
+    goal = goal or target()
+    order_book = [] if order_book is None else order_book
     def post(url, **kwargs):
         path = url.removeprefix(API)
         calls[path] += 1
         if path == ADD_ORDER_PATH:
-            sent[0] = True
+            if create_order:
+                order_book.append(goal)
             if uncertain:
                 raise requests.ReadTimeout("response lost after server received request")
         if path == fail_path and skip < calls[path] <= skip + failures:
@@ -193,11 +195,12 @@ def booking_transport(monkeypatch, tmp_path, fail_path, *, uncertain=False, crea
         elif path.endswith("getInterval"):
             data = interval_data()
         elif path.endswith("mySubscribe"):
-            data = [{"uid": "1234", "order_id": 42, "stadium_name": goal.venue,
-                     "project_name": goal.sport, "audit_status": 1}] if sent[0] and create_order else []
+            data = [{"uid": "1234", "order_id": 42 + index, "stadium_name": booked.venue,
+                     "project_name": booked.sport, "audit_status": 1} for index, booked in enumerate(order_book)]
         elif path.endswith("subDetails"):
+            booked = order_book[int(kwargs["data"]["order_id"]) - 42]
             data = {"uid": "1234", "audit_status": 1, "details": [
-                {"date": goal.date, "interval_time": goal.time + "–21:00", "area_name": "02"}]}
+                {"date": booked.date, "interval_time": booked.time + "–21:00", "area_name": "02"}]}
         else:
             data = {"info": {}}
         response = requests.Response()

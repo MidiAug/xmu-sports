@@ -103,9 +103,7 @@ fn request_with_worker(
         let _ = trace.try_event("http_phase", Some("http_network_retry_started"), "network_retry_started", None, None, None,
             json!({"http":{"phase":"network_retry_started"}}));
         let _ = app.emit("run-changed", ());
-        let mut next = payload;
-        next["expected_account"] = json!(account);
-        next["network_retry"] = json!(true);
+        let next = network_retry_payload(payload, &account);
         let mut replacement = Worker::spawn(&worker_path(app)?, false, false)?;
         let mut result = request_once(app, run_gen, next, trace, &mut replacement)?;
         // Preserve the original binding if the retry cannot even discover a
@@ -125,6 +123,12 @@ fn request_with_worker(
 fn claim_network_retry(used: &std::sync::atomic::AtomicU64, generation: u64) -> bool {
     use std::sync::atomic::Ordering;
     used.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |previous| (previous < generation).then_some(generation)).is_ok()
+}
+
+fn network_retry_payload(mut frozen: Value, account: &str) -> Value {
+    frozen["expected_account"] = json!(account);
+    frozen["network_retry"] = json!(true);
+    frozen
 }
 
 fn network_retry_allowed(payload: &Value, result: &Value) -> bool {
@@ -494,6 +498,24 @@ mod tests {
         json!({"ok":false,"state":"failed","code":"HTTP_FAILED","account_fingerprint":"a".repeat(64),
             "details":{"api":"order_list","error_type":"read_timeout"},
             "execution_proof":{"version":1,"stage":"pre_submission_network","add_order_calls":0}})
+    }
+
+    #[test]
+    fn delayed_network_retry_keeps_only_the_failed_frozen_booking() {
+        for first_is_plan in [false, true] {
+            let first = json!({"action":"book","run_id":"first-completed-run",
+                "task":{"task_id":"first-completed-task","plan_id":if first_is_plan {Some("first-plan")} else {None},
+                    "sport":"健身房","target_date":"2026-11-04"}});
+            let second = json!({"action":"book","run_id":"second-pending-run",
+                "task":{"task_id":"second-pending-task","plan_id":if first_is_plan {None} else {Some("second-plan")},
+                    "sport":"乒乓球","target_date":"2026-11-04","prefer_court":"02"}});
+            let next = network_retry_payload(second.clone(), &"a".repeat(64));
+            assert_eq!(next["task"], second["task"]);
+            assert_eq!(next["run_id"], second["run_id"]);
+            assert_ne!(next["task"], first["task"]);
+            assert_eq!(next["network_retry"], true);
+            assert_eq!(next["expected_account"], "a".repeat(64));
+        }
     }
 
     #[test]
