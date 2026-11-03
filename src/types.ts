@@ -62,6 +62,7 @@ export type RunEvent = {
     elapsed_ms?: number; remaining_seconds?: number; candidate_index?: number;
     check_attempt?: number; check_total?: number; retry_after_seconds?: number;
     request_retry?: boolean; retry_api?: string; retry_attempt?: number; retry_total?: number; retry_code?: string;
+    retry_at?: string;
     target?: { sport?: string; venue?: string; date?: string; time?: string; end?: string; court?: string | null } } | null;
   ts: string;
   task_id: string;

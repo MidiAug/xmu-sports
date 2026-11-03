@@ -247,6 +247,7 @@ pub struct AppState {
     pub arm_gen: AtomicU64,
     /// 每次启动 / 取消 native 跑递增，作废旧循环
     pub run_gen: AtomicU64,
+    pub network_retry_gen: AtomicU64,
     pub native_running: AtomicBool,
     pub stopping: AtomicBool,
     task_gate: Mutex<()>,
@@ -1232,6 +1233,7 @@ pub fn run() {
         .manage(AppState {
             arm_gen: AtomicU64::new(0),
             run_gen: AtomicU64::new(0),
+            network_retry_gen: AtomicU64::new(0),
             native_running: AtomicBool::new(false),
             stopping: AtomicBool::new(false),
             task_gate: Mutex::new(()),

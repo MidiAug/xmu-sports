@@ -318,7 +318,8 @@ class Client:
             error_type = transport_error_type(exc)
             error = "timeout" if isinstance(exc, requests.Timeout) else "connection" if isinstance(exc, requests.ConnectionError) else "invalid_json" if isinstance(exc, ValueError) else "http_error"
             # Do not expose request objects, cookies or signed login fields.
-            raise BookingError("HTTP_FAILED", "体育接口请求失败或响应不是 JSON") from exc
+            raise BookingError("HTTP_FAILED", "体育接口请求失败或响应不是 JSON",
+                               details={"api": api_label(path), "error_type": error_type}) from exc
         except BookingError as exc:
             error = exc.code
             raise
@@ -471,7 +472,8 @@ class Client:
         except requests.RequestException as exc:
             error_type = transport_error_type(exc)
             error = "timeout" if isinstance(exc, requests.Timeout) else "http_error"
-            raise BookingError("CAPTCHA_FETCH_FAILED", "验证码请求失败") from exc
+            raise BookingError("CAPTCHA_FETCH_FAILED", "验证码请求失败",
+                               details={"api": "captcha_image", "error_type": error_type}) from exc
         except BookingError as exc:
             error = exc.code
             raise

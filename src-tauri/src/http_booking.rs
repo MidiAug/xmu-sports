@@ -78,6 +78,84 @@ impl PreparedWorker {
 }
 
 fn request_with_worker(
+    app:&tauri::AppHandle, run_gen:u64, payload:Value,
+    trace:&run_trace::RunTraceHandle, worker:&mut Worker,
+)->Result<Value,String> {
+    let original = request_once(app, run_gen, payload.clone(), trace, worker)?;
+    let state = app.state::<crate::AppState>();
+    let booking = state.active_operation.lock().map_err(|_| "任务状态不可用")?
+        .as_deref().is_some_and(|operation| matches!(operation, "booking" | "scheduled"));
+    let eligible = booking && network_retry_allowed(&payload, &original)
+        && run_control::run_still_active(app, run_gen)
+        && claim_network_retry(&state.network_retry_gen, run_gen);
+    let account = original["account_fingerprint"].as_str().unwrap_or_default().to_owned();
+    let result = retry_network_once(original, eligible, || {
+        let retry_at = chrono::Local::now().fixed_offset() + chrono::Duration::seconds(300);
+        let _ = trace.try_event("http_phase", Some("http_waiting_network_retry"), "waiting_network_retry", None, None, None,
+            json!({"http":{"phase":"waiting_network_retry","retry_at":retry_at.to_rfc3339(),"retry_after_seconds":300}}));
+        let _ = app.emit("run-changed", ());
+        crate::scheduled_run::wait_until(retry_at, || run_control::run_still_active(app, run_gen))
+    }, || {
+        if !run_control::run_still_active(app, run_gen) {return Err("已取消".into());}
+        if let Some(task) = state.active_task.lock().map_err(|_| "任务状态不可用")?.as_ref() {
+            crate::booking_eligibility::check_logged(task, chrono::Local::now().fixed_offset())?;
+        }
+        let _ = trace.try_event("http_phase", Some("http_network_retry_started"), "network_retry_started", None, None, None,
+            json!({"http":{"phase":"network_retry_started"}}));
+        let _ = app.emit("run-changed", ());
+        let mut next = payload;
+        next["expected_account"] = json!(account);
+        next["network_retry"] = json!(true);
+        let mut replacement = Worker::spawn(&worker_path(app)?, false, false)?;
+        let mut result = request_once(app, run_gen, next, trace, &mut replacement)?;
+        // Preserve the original binding if the retry cannot even discover a
+        // ticket; later auth recovery must not silently select another account.
+        if result["account_fingerprint"].is_null() {result["account_fingerprint"] = json!(account);}
+        Ok(result)
+    });
+    if let Err(error) = &result {
+        let cancelled = error == "已取消";
+        let _ = trace.try_event(if cancelled {"cancelled"} else {"fail"}, Some("http_network_retry_result"),
+            if cancelled {"cancelled"} else {error}, None, None, None, json!({}));
+        let _ = app.emit("run-changed", ());
+    }
+    result
+}
+
+fn claim_network_retry(used: &std::sync::atomic::AtomicU64, generation: u64) -> bool {
+    use std::sync::atomic::Ordering;
+    used.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |previous| (previous < generation).then_some(generation)).is_ok()
+}
+
+fn network_retry_allowed(payload: &Value, result: &Value) -> bool {
+    let proof = &result["execution_proof"];
+    let details = &result["details"];
+    let transient = match result["code"].as_str() {
+        Some("HTTP_FAILED" | "CAPTCHA_FETCH_FAILED") => matches!(details["error_type"].as_str(),
+            Some("connect_timeout" | "read_timeout" | "timeout" | "connection")),
+        Some("SERVER_BUSY" | "RATE_LIMITED") => matches!(details["http_status"].as_u64(), Some(429 | 500 | 502 | 503 | 504)),
+        _ => false,
+    };
+    matches!(payload["action"].as_str(), Some("check" | "book"))
+        && result["ok"] != true && !matches!(result["state"].as_str(), Some("unknown" | "submitted"))
+        && transient && details["retry_after_seconds"].as_f64().unwrap_or(0.0) <= 300.0
+        && result["account_fingerprint"].as_str().is_some_and(crate::pending_orders::valid_reference)
+        && (payload["expected_account"].is_null() || payload["expected_account"] == result["account_fingerprint"])
+        && proof["version"] == 1 && proof["stage"] == "pre_submission_network" && proof["add_order_calls"] == 0
+        && result["request_ref"].is_null()
+}
+
+fn retry_network_once(original: Value, eligible: bool,
+    wait: impl FnOnce() -> Result<(), String>, retry: impl FnOnce() -> Result<Value, String>,
+) -> Result<Value, String> {
+    if !eligible {return Ok(original);}
+    wait()?;
+    let mut result = retry()?;
+    result["network_batch_retried"] = json!(true);
+    Ok(result)
+}
+
+fn request_once(
     app:&tauri::AppHandle, run_gen:u64, mut payload:Value,
     trace:&run_trace::RunTraceHandle, worker:&mut Worker,
 )->Result<Value,String> {
@@ -306,7 +384,7 @@ pub(crate) fn run(
     app: &tauri::AppHandle, run_gen: u64, task: &BookingTask,
     trace: &run_trace::RunTraceHandle, prepare: bool, expected_account: Option<&str>, warmed:Option<&mut PreparedWorker>,
 ) -> Result<String, String> {
-    let payload=json!({"action": if prepare {"prepare"} else {"book"}, "task": task, "expected_account": expected_account});
+    let mut payload=json!({"action": if prepare {"prepare"} else {"book"}, "task": task, "expected_account": expected_account});
     let result=match warmed {
         Some(warmed)=>{
             if !warmed.worker.alive() {
@@ -316,6 +394,7 @@ pub(crate) fn run(
         },
         None=>request(app,run_gen,payload.clone(),trace)?,
     };
+    if result["network_batch_retried"] == true {payload["network_retry"] = json!(true);}
     let initial_failure=json!({"code":result["code"],"phase":result["phase"],
         "api":result["details"]["api"],"diagnostics":result["diagnostics"]});
     let result=recover_pre_submit(result,expected_account,
@@ -410,6 +489,77 @@ pub(crate) fn auth_failure(trace: &run_trace::RunTraceHandle, result: &Value) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn network_failure() -> Value {
+        json!({"ok":false,"state":"failed","code":"HTTP_FAILED","account_fingerprint":"a".repeat(64),
+            "details":{"api":"order_list","error_type":"read_timeout"},
+            "execution_proof":{"version":1,"stage":"pre_submission_network","add_order_calls":0}})
+    }
+
+    #[test]
+    fn network_retry_waits_once_and_returns_the_second_failure_without_recursing() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let result = retry_network_once(network_failure(), true,
+            || {calls.borrow_mut().push("wait"); Ok(())},
+            || {calls.borrow_mut().push("retry"); Ok(network_failure())}).unwrap();
+        assert_eq!(*calls.borrow(), vec!["wait", "retry"]);
+        assert_eq!(result["code"], "HTTP_FAILED");
+        assert_eq!(result["network_batch_retried"], true);
+        let success = retry_network_once(network_failure(), true, ||Ok(()), ||Ok(json!({"ok":true,"verified":true}))).unwrap();
+        assert_eq!(success["verified"], true);
+    }
+
+    #[test]
+    fn stopping_during_the_five_minute_wait_prevents_another_worker() {
+        let error = retry_network_once(network_failure(), true, ||Err("已取消".into()),
+            ||panic!("stopped wait must not restart booking")).unwrap_err();
+        assert_eq!(error, "已取消");
+    }
+
+    #[test]
+    fn one_shared_network_delay_per_execution_generation() {
+        let used = std::sync::atomic::AtomicU64::new(0);
+        assert!(claim_network_retry(&used, 1));
+        assert!(!claim_network_retry(&used, 1), "login and booking share one delay");
+        assert!(claim_network_retry(&used, 3));
+        assert!(!claim_network_retry(&used, 2), "obsolete execution cannot claim another run's budget");
+    }
+
+    #[test]
+    fn only_bound_positive_no_send_network_results_can_wait_five_minutes() {
+        let payload = json!({"action":"book","expected_account":"a".repeat(64)});
+        let original = network_failure();
+        assert!(network_retry_allowed(&payload, &original));
+        assert!(network_retry_allowed(&json!({"action":"check"}), &original));
+        for code in ["SLOT_OCCUPIED", "FALLBACKS_EXHAUSTED", "SESSION_EXPIRED", "ACCOUNT_CHANGED", "SUBMIT_UNKNOWN", "HTTP_WORKER_ERROR"] {
+            let mut result = original.clone(); result["code"] = json!(code);
+            assert!(!network_retry_allowed(&payload, &result), "{code}");
+        }
+        for patch in [json!({"ok":true}), json!({"state":"unknown"}), json!({"state":"submitted"}),
+            json!({"request_ref":"b".repeat(64)}), json!({"execution_proof":null}),
+            json!({"account_fingerprint":"b".repeat(64)}), json!({"details":{"error_type":"tls"}}),
+            json!({"details":{"error_type":"invalid_json"}}),
+            json!({"execution_proof":{"version":1,"stage":"pre_submission_network","add_order_calls":1}})] {
+            let mut result = original.clone();
+            result.as_object_mut().unwrap().extend(patch.as_object().unwrap().clone());
+            assert!(!network_retry_allowed(&payload, &result), "{patch}");
+        }
+        for action in ["prepare", "my_orders", "cancel_order", "recheck_pending"] {
+            assert!(!network_retry_allowed(&json!({"action":action}), &original));
+        }
+        let unchanged = retry_network_once(original.clone(), false, ||panic!("no wait"), ||panic!("no restart")).unwrap();
+        assert_eq!(unchanged, original);
+    }
+
+    #[test]
+    fn five_minute_retry_respects_longer_server_cooldown() {
+        let mut result = network_failure();
+        result["code"] = json!("RATE_LIMITED");
+        result["details"] = json!({"http_status":429,"retry_after_seconds":300});
+        assert!(network_retry_allowed(&json!({"action":"book"}), &result));
+        result["details"]["retry_after_seconds"] = json!(301);
+        assert!(!network_retry_allowed(&json!({"action":"book"}), &result));
+    }
 
     #[test]
     fn expired_fallback_preserves_specific_home_navigation_failure() {

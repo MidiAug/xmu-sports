@@ -60,6 +60,7 @@ fn native_window_soak() {
     let completed = result.clone();
     tauri::Builder::default().any_thread()
         .manage(AppState { arm_gen: AtomicU64::new(0), run_gen: AtomicU64::new(0),
+            network_retry_gen: AtomicU64::new(0),
             native_running: AtomicBool::new(false), stopping: AtomicBool::new(false),
             task_gate: Mutex::new(()), active_task: Mutex::new(None), active_operation: Mutex::new(None) })
         .manage(Samples { count: AtomicUsize::new(0), errors: Mutex::new(Vec::new()) })

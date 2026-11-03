@@ -1,6 +1,8 @@
 import type { RunEvent } from "../types";
 
 const PHASES: Record<string, [string, string]> = {
+  waiting_network_retry: ["auth", "网络请求多次失败，等待5分钟后再试一次；可随时停止"],
+  network_retry_started: ["auth", "开始第二轮网络恢复，重新核验原账号与预约目标"],
   pre_submit_auth_recovering: ["auth", "正式执行时登录再次失效；已确认尚未提交，恢复原账号登录"],
   pre_submit_auth_restored: ["auth", "原账号已重新核验，沿用原任务继续一次，保留原请求去重标识"],
   worker_model_warming: ["auth", "提前启动请求进程并加载本地验证码模型，不提交预约"],
@@ -98,7 +100,7 @@ export function bookingProgressState(events: RunEvent[], last: RunEvent | null) 
   const phases = events.filter(event => event.action === "http_phase");
   let start = 0;
   for (let i = 0; i < phases.length; i++) {
-    if (["captcha_retry", "selecting_candidate"].includes(phases[i].http?.phase ?? phases[i].result ?? "")) start = i;
+    if (["captcha_retry", "selecting_candidate", "waiting_network_retry", "network_retry_started"].includes(phases[i].http?.phase ?? phases[i].result ?? "")) start = i;
   }
   const observed = new Set(phases.slice(start).map(progressStep));
   // A captcha denial restarts fresh slot checks; the original account checks still belong to this attempt.
@@ -125,6 +127,12 @@ export function progressMessage(event: RunEvent): string {
   if (event.action === "login_recovery") return "打开体育小程序，准备新的场馆预约入口";
   const phase = event.http?.phase ?? event.result ?? "";
   let message = PHASES[phase]?.[1] ?? `流程状态：${phase || event.action || "未提供说明"}`;
+  if (phase === "waiting_network_retry" && event.http?.retry_at) {
+    const seconds = Math.max(0, Math.ceil((Date.parse(event.http.retry_at) - Date.now()) / 1000));
+    if (Number.isFinite(seconds)) return seconds > 0
+      ? `网络请求多次失败，${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒后再试一次；可随时停止`
+      : "网络恢复等待结束，正在准备重新尝试";
+  }
   if (event.http?.request_retry) {
     const reason = event.http.retry_code === "RATE_LIMITED" ? "请求受限"
       : event.http.retry_code === "SERVER_BUSY" ? "服务暂时异常" : "网络请求失败";

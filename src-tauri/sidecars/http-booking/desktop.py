@@ -132,8 +132,12 @@ def execute(payload, cancelled, runtime=None):
                 "captcha_probe": solver.solve(__import__("base64").b64decode(payload["captcha_probe_base64"], validate=True)) if payload.get("captcha_probe_base64") else None,
                 "utf8_roundtrip": payload.get("probe_text", "")}
     if payload.get("action") == "check":
-        return check_auth(cancelled=cancelled,
-                          progress=lambda detail: emit("progress", phase="authenticating", **detail))
+        checked = check_auth(cancelled=cancelled,
+                             progress=lambda detail: emit("progress", phase="authenticating", **detail))
+        if (payload.get("expected_account") and checked.get("account_fingerprint")
+                and checked["account_fingerprint"] != payload["expected_account"]):
+            raise BookingError("ACCOUNT_CHANGED", "等待网络恢复期间账号发生变化，未继续原预约")
+        return checked
     if payload.get("action") == "check_existing":
         # A separate read-only path: cannot reach run_candidates or submit.
         target = Target(**payload["target"])
@@ -203,7 +207,8 @@ def execute(payload, cancelled, runtime=None):
     return run_candidates(target, fallbacks=fallbacks, commit=payload.get("action") != "prepare",
                           captcha_first=True,
                           captcha_check=payload.get("action") == "prepare", solver=solver,
-                          watch_seconds=5, eligibility=check_target, idempotency_key=payload["run_id"], expected_account=account,
+                          watch_seconds=5, eligibility=check_target,
+                          idempotency_key=payload["run_id"] + ("-network-retry" if payload.get("network_retry") is True else ""), expected_account=account,
                           before_commit=before_commit,
                           request_context={"source_run_id":payload["run_id"],"source_task_id":task.get("task_id")},
                           cancelled=cancelled, progress=lambda value: emit("progress", **value))
@@ -264,9 +269,29 @@ def handle_request(line, runtime=None, readonly=False):
         result["account_fingerprint"] = payload["expected_account"]
         result["execution_proof"] = {"version":1,"stage":"pre_submission_auth","add_order_calls":0,
                                      "captcha_calls":0,"journal_created":False}
+    if pre_submit_network_proof(result, payload, LAST_SUBMISSION):
+        result["account_fingerprint"] = payload.get("expected_account") or result["account_fingerprint"]
+        result["execution_proof"] = {"version":1,"stage":"pre_submission_network","add_order_calls":0}
     diagnostics.leave(diagnostic_token)
     emit("result", **result)
     return 0
+
+
+def pre_submit_network_proof(result, payload, submission):
+    if (payload.get("action") not in {"check", "book"} or result.get("ok")
+            or result.get("state") in {"unknown", "submitted"} or submission or result.get("request_ref")):
+        return False
+    account = payload.get("expected_account") or result.get("account_fingerprint")
+    if not isinstance(account, str) or not re.fullmatch(r"[0-9a-f]{64}", account):
+        return False
+    http = result.get("diagnostics", {}).get("http", {})
+    if http.get("submit", {}).get("count", 0):
+        return False
+    details = result.get("details") or {}
+    return ((result.get("code") in {"HTTP_FAILED", "CAPTCHA_FETCH_FAILED"}
+             and details.get("error_type") in {"connect_timeout", "read_timeout", "timeout", "connection"})
+            or (result.get("code") in {"SERVER_BUSY", "RATE_LIMITED"}
+                and details.get("http_status") in {429, 500, 502, 503, 504}))
 
 
 def pre_submit_auth_proof(result, payload, submission):

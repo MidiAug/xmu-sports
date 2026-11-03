@@ -53,6 +53,27 @@ try {
   await page.screenshot({path:`artifacts/plan-round-progress/network-retry-${theme}.png`});
  }
  await page.setViewportSize({width:1100,height:760});
+ await page.evaluate(()=>{
+  const previous=window.__live.last_event;
+  const event={...previous,result:'waiting_network_retry',http:{phase:'waiting_network_retry',retry_at:new Date(Date.now()+300000).toISOString()}};
+  window.__live.last_event=event;window.__live.recent_events.push(event);window.__emit('run-changed');
+ });
+ await page.waitForFunction(()=>document.querySelector('.booking-current-detail').textContent.includes('后再试一次'));
+ assert.equal(await page.locator('.booking-execution.running').count(),1,'five-minute recovery stays within this running booking');
+ for(const theme of ['light','dark']) {
+  await page.setViewportSize({width:960,height:600});await page.evaluate(t=>document.documentElement.dataset.shellTheme=t,theme);
+  await page.locator('#disarm_hang').focus();
+  assert.equal(await page.locator('#disarm_hang').evaluate(node=>node===document.activeElement),true);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.screenshot({path:`artifacts/plan-round-progress/five-minute-network-wait-${theme}.png`});
+ }
+ const waitingDetail=await page.locator('.booking-current-detail').first().innerText();
+ await page.clock.fastForward(6000);
+ await page.waitForFunction(text=>document.querySelector('.booking-current-detail').textContent!==text,waitingDetail);
+ assert.match(await page.locator('.booking-current-detail').first().innerText(),/4 分.*后再试一次/);
+ await page.setViewportSize({width:1100,height:760});
+ await phase('network_retry_started','准备检查');
+ assert.equal(await page.locator('.booking-track li.done').count(),0,'second network round starts with fresh checks');
  await phase('captcha','验证码');await phase('captcha_recognized','验证码');
  await phase('resolving_venue','实时场次');await phase('querying_slots','实时场次');
  await page.screenshot({path:'artifacts/plan-round-progress/first-running.png'});

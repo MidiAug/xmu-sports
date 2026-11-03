@@ -19,6 +19,21 @@ assert.deepEqual([...bookingProgressState(nextCandidate,nextCandidate.at(-1)).ob
 assert.equal(currentRunEvents([{...spawn, run_id:"old"}, spawn, submit, done], done).length, 3);
 assert.equal(elapsedLabel([spawn, submit, done], false), "7.2 秒");
 assert.equal(progressStep(submit), "submit");
+const networkWaiting = phase('waiting_network_retry');
+assert.equal(progressStep(networkWaiting),'auth');
+assert.match(progressMessage(networkWaiting),/5分钟后再试一次.*停止/);
+for (const name of ['waiting_network_retry','network_retry_started']) {
+  const restart = phase(name);
+  assert.deepEqual([...bookingProgressState([...actualFlow,restart],restart).observed],['auth']);
+}
+const actualNow = Date.now;
+try {
+  Date.now=()=>Date.parse('2026-11-03T07:01:00+08:00');
+  const waiting={...networkWaiting,http:{phase:'waiting_network_retry',retry_at:'2026-11-03T07:06:00+08:00'}};
+  assert.match(progressMessage(waiting),/5 分 0 秒后再试一次/);
+  Date.now=()=>Date.parse('2026-11-03T07:06:01+08:00');
+  assert.match(progressMessage(waiting),/正在准备重新尝试/);
+} finally { Date.now=actualNow; }
 for (const name of ['checking_orders', 'querying_slots', 'checking_config', 'captcha', 'rechecking_orders']) {
   const original = phase(name);
   const waiting = {...original, http:{phase:name, request_retry:true, retry_code:'HTTP_FAILED', retry_attempt:1, retry_total:2, retry_after_seconds:1.25}};
