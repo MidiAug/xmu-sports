@@ -4,8 +4,8 @@
 .settings-page,.plans-page,.live-page { width:100%; margin:0 auto; gap:18px; }
 .task-fields { min-width:0; margin:0; padding:0; border:0; }
 .task-fields:disabled { opacity:.65; }
-.setup-page .fire-delay-input { appearance:textfield; width:0; min-width:0; height:100%; box-sizing:border-box; flex:1; text-align:center; background:transparent; border:0; outline:none; box-shadow:none; font:inherit; font-size:13px; }
-.setup-page .fire-delay-input:focus-visible { outline:none; box-shadow:none; }
+.fire-delay-input { appearance:textfield; width:0; min-width:0; height:100%; box-sizing:border-box; flex:1; text-align:center; background:transparent; border:0; outline:none; box-shadow:none; font:inherit; font-size:13px; }
+.fire-delay-input:focus-visible { outline:none; box-shadow:none; }
 .fire-delay-input::-webkit-inner-spin-button,.fire-delay-input::-webkit-outer-spin-button { appearance:none; margin:0; }
 .fire-delay-stepper:focus-within { border-color:var(--color-line); box-shadow:none; }
 .booking-field-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; }
@@ -16,10 +16,6 @@
 .booking-field-heading:has(.availability-warning) { flex-wrap:wrap; }
 .booking-field-heading:has(.availability-warning) .availability-panel { display:contents; }
 .booking-field-heading .availability-warning { flex-basis:100%; }
-.task-advanced > summary { cursor:pointer; list-style:none; align-items:center; }
-.task-advanced > summary::-webkit-details-marker { display:none; }
-.task-advanced > summary:before { content:""; width:5px; height:5px; border-right:1.5px solid var(--color-muted); border-bottom:1.5px solid var(--color-muted); transform:rotate(-45deg); flex:none; }
-.task-advanced[open] > summary:before { transform:rotate(45deg); }
 .task-action-copy #task_action_reason { color:var(--color-danger); }
 .task-action-copy #task_action_reason:empty { display:none; }
 #task_plan_link { margin:6px 0 0 -8px; height:28px; font-size:12px; }

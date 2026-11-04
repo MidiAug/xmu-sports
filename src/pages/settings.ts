@@ -1,3 +1,4 @@
+import { addMinutesHm, FIRE_TIME_MIN } from "../lib/time";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import type { CloseMode, FallbackOrder, ShellPrefs, ShellThemePref } from "../types";
@@ -109,6 +110,8 @@ export async function renderSettings(panel: Element) {
       <section class="preference-card" id="startup_settings"></section>
       <section class="preference-card" id="booking_preferences">
         <div class="preference-card-heading"><h3>预约偏好</h3><p>单次预约与长期计划共用</p></div>
+        <div class="settings-cell"><div><p class="settings-cell-title">定时执行时间</p><p class="settings-cell-desc">北京时间，最早 07:00</p></div><div class="stepper" role="group" aria-label="定时执行时间"><button type="button" class="stepper-btn" id="fire_prev" aria-label="减一分钟">−</button><span id="fire_time" class="stepper-value" aria-live="polite"></span><button type="button" class="stepper-btn" id="fire_next" aria-label="加一分钟">+</button></div></div>
+        <div class="settings-cell"><div><label class="settings-cell-title" for="fire_delay">延迟执行（秒）</label><p class="settings-cell-desc">在设定时间后延迟 0–300 秒开始</p></div><div class="stepper fire-delay-stepper" role="group" aria-label="延迟执行秒数"><button type="button" class="stepper-btn" id="delay_prev" aria-label="减少一秒">−</button><input class="stepper-value fire-delay-input" id="fire_delay" type="number" min="0" max="300" step="1" inputmode="numeric" /><button type="button" class="stepper-btn" id="delay_next" aria-label="增加一秒">+</button></div></div>
         <div class="settings-cell"><div><label class="settings-cell-title" for="allow_fallback">尝试邻近时段</label><p class="settings-cell-desc">目标时段锁定或已满时，继续尝试候选时段</p></div><label class="switch"><input type="checkbox" id="allow_fallback" aria-label="尝试邻近时段" /></label></div>
         <div class="settings-cell" id="fallback_order_wrap"><div><p class="settings-cell-title">邻近顺序</p><p class="settings-cell-desc">优先仍是你选的时段</p></div><div class="seg-shell"><div class="seg" id="fallback_order_seg"><button type="button" data-order="up_then_down">先更早</button><button type="button" data-order="down_then_up">先更晚</button></div></div></div>
       </section>
@@ -159,8 +162,23 @@ export async function renderSettings(panel: Element) {
   const fallback = panel.querySelector<HTMLInputElement>("#allow_fallback")!;
   const fallbackOrder = panel.querySelector<HTMLElement>("#fallback_order_wrap")!;
   const orderButtons = panel.querySelectorAll<HTMLButtonElement>("[data-order]");
+  const fireTime = panel.querySelector<HTMLElement>("#fire_time")!;
+  const fireDelay = panel.querySelector<HTMLInputElement>("#fire_delay")!;
+  const firePrev = panel.querySelector<HTMLButtonElement>("#fire_prev")!;
+  const fireNext = panel.querySelector<HTMLButtonElement>("#fire_next")!;
+  const delayPrev = panel.querySelector<HTMLButtonElement>("#delay_prev")!;
+  const delayNext = panel.querySelector<HTMLButtonElement>("#delay_next")!;
   let savingBookingPrefs = false;
   const paintBookingPrefs = () => {
+    const hm = prefs.booking_fire_time ?? FIRE_TIME_MIN;
+    const delay = prefs.booking_delay_seconds ?? 0;
+    fireTime.textContent = hm;
+    fireDelay.value = String(delay);
+    fireDelay.disabled = savingBookingPrefs;
+    firePrev.disabled = savingBookingPrefs || hm <= FIRE_TIME_MIN;
+    fireNext.disabled = savingBookingPrefs || hm >= "23:59";
+    delayPrev.disabled = savingBookingPrefs || delay <= 0;
+    delayNext.disabled = savingBookingPrefs || delay >= 300;
     fallback.checked = prefs.allow_time_fallback ?? false;
     fallback.setAttribute("aria-disabled", String(savingBookingPrefs));
     fallbackOrder.hidden = !fallback.checked;
@@ -187,6 +205,18 @@ export async function renderSettings(panel: Element) {
       savingBookingPrefs = false;
       if (scope.current()) paintBookingPrefs();
     }
+  };
+  firePrev.onclick = () => { void saveBookingPrefs({booking_fire_time:addMinutesHm(prefs.booking_fire_time ?? FIRE_TIME_MIN, -1)}); };
+  fireNext.onclick = () => { void saveBookingPrefs({booking_fire_time:addMinutesHm(prefs.booking_fire_time ?? FIRE_TIME_MIN, 1)}); };
+  delayPrev.onclick = () => { void saveBookingPrefs({booking_delay_seconds:Math.max(0, (prefs.booking_delay_seconds ?? 0) - 1)}); };
+  delayNext.onclick = () => { void saveBookingPrefs({booking_delay_seconds:Math.min(300, (prefs.booking_delay_seconds ?? 0) + 1)}); };
+  fireDelay.onchange = () => {
+    if (!fireDelay.validity.valid || !Number.isInteger(fireDelay.valueAsNumber)) {
+      setMsg(msg, "执行延迟须为 0–300 的整数秒", "err");
+      paintBookingPrefs();
+      return;
+    }
+    void saveBookingPrefs({booking_delay_seconds:fireDelay.valueAsNumber});
   };
   fallback.onchange = () => { void saveBookingPrefs({allow_time_fallback:fallback.checked}); };
   orderButtons.forEach(button => { button.onclick = () => {

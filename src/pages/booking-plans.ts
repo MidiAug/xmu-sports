@@ -1,3 +1,4 @@
+import type { ShellPrefs } from "../types";
 import { invoke } from "@tauri-apps/api/core";
 import { sports, isSportEnabled } from "../lib/catalog";
 import { mountPage } from "../lib/page-lifecycle";
@@ -16,11 +17,18 @@ import { skipPlanOnce, restorePlanSkip } from "../ui/plan-skip";
 const escape = (text: string) => text.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 export async function renderBookingPlans(panel: Element, options?: { focusPlanId?: string }) {
   const scope = mountPage(panel);
+  const prefs = await invoke<ShellPrefs>("get_shell_prefs").catch(() => ({} as ShellPrefs));
+  if (!scope.current()) return;
+  const delay = prefs.booking_delay_seconds ?? 0;
+  const hm = prefs.booking_fire_time ?? "07:00";
+  const fire = new Date(Date.parse(`2000-01-01T${hm}:00Z`) + delay * 1000).toISOString();
+  const fireLabel = fire.slice(11, delay % 60 ? 19 : 16);
+  const fireDay = fire.startsWith("2000-01-01") ? "前一天" : "运动当天";
   let view: BookingPlansView;
   let editing = false, saving = false;
   let updateEditorStatus: (() => void) | undefined;
   panel.innerHTML = `<div class="page-stack plans-page">
-    <div class="page-heading"><div><h2>长期计划</h2><p>安排每周运动，前一天 07:00 自动预约</p></div><button type="button" class="btn primary" id="plan_add" disabled>新增计划</button></div>
+    <div class="page-heading"><div><h2>长期计划</h2><p>安排每周运动，${fireDay} ${fireLabel} 自动预约</p></div><button type="button" class="btn primary" id="plan_add" disabled>新增计划</button></div>
     <section id="plan_attention" class="plan-attention" aria-label="需要处理" hidden></section>
     <section class="plans-summary" aria-label="自动预约状态"><div class="plan-state"><div class="plan-state-heading"><span class="plan-state-dot" aria-hidden="true"></span><strong id="plans_state">正在读取计划</strong><span id="plans_count"></span></div><p id="plans_health" class="plan-secondary"></p></div><div class="plan-next"><span id="plans_next_label">下次开抢</span><strong id="plans_next">正在读取</strong><p id="plans_exercise"></p></div><button type="button" class="btn ghost" id="plans_pause" hidden></button></section>
     <div id="plans_startup" class="plan-startup-hint" hidden><span>登录电脑后继续自动预约</span><button type="button" class="btn text" id="plans_enable_startup">开启自启</button></div>
@@ -191,7 +199,7 @@ export async function renderBookingPlans(panel: Element, options?: { focusPlanId
     let slot = existing ? `${existing.start}|${existing.end}` : `${venue.time_slots[0].start}|${venue.time_slots[0].end}`;
     editor.innerHTML = `<form class="plan-editor"><div class="plan-editor-main"><h3>${existing ? "编辑计划" : "新增计划"}</h3><div class="plan-fields"><label>运动<div id="plan_sport"></div></label><label>场馆<div id="plan_venue"></div></label><label>时段<div id="plan_slot"></div></label></div>
       <fieldset><legend>去运动的星期</legend><div class="plan-presets"><button type="button" data-days="1,2,3,4,5,6,7">每天</button><button type="button" data-days="1,2,3,4,5">工作日</button><button type="button" data-days="6,7">周末</button></div><div class="plan-weekdays">${days.map((d, i) => `<button type="button" data-day="${i + 1}" aria-label="周${d}" aria-pressed="${selected.has(i + 1)}">${d}</button>`).join("")}</div></fieldset>
-      </div><aside class="plan-editor-summary"><span class="plan-editor-eyebrow">前一天自动开抢</span><strong class="plan-editor-fire">07:00</strong><p class="plan-preview" id="plan_preview"></p><p class="plan-preview" id="plan_paused_hint" hidden>自动计划已暂停，保存后仍需点击“恢复计划”。</p><p class="msg" id="plan_form_msg" role="status"></p><div class="plan-actions"><button type="submit" class="btn primary"></button><button type="button" class="btn ghost" id="plan_cancel">取消</button></div><p class="plan-editor-condition">预约时保持电脑唤醒、联网</p></aside></form>`;
+      </div><aside class="plan-editor-summary"><span class="plan-editor-eyebrow">${fireDay}自动开抢</span><strong class="plan-editor-fire">${fireLabel}</strong><p class="plan-preview" id="plan_preview"></p><p class="plan-preview" id="plan_paused_hint" hidden>自动计划已暂停，保存后仍需点击“恢复计划”。</p><p class="msg" id="plan_form_msg" role="status"></p><div class="plan-actions"><button type="submit" class="btn primary"></button><button type="button" class="btn ghost" id="plan_cancel">取消</button></div><p class="plan-editor-condition">预约时保持电脑唤醒、联网</p></aside></form>`;
     updateEditorStatus = () => {
       editor.querySelector<HTMLElement>("#plan_paused_hint")!.hidden = !view.plans.paused;
       editor.querySelector<HTMLButtonElement>('[type="submit"]')!.textContent = existing || view.plans.paused ? "保存计划" : "保存并启用";

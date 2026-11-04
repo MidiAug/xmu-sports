@@ -14,13 +14,11 @@ import { formatMonthDayWeekday, formatTargetDateHuman } from "../lib/format-huma
 import { setMsg } from "../lib/msg";
 import {
   FIRE_TIME_MIN,
-  addMinutesHm,
   bookingDateOptions,
   plannedFireAt,
   defaultFireTimeHm,
   defaultTargetDateISO,
   fireHmFromIso,
-  hmToMinutes,
   isSelectableTargetDate,
   targetDateHint,
   waitsExtraDay,
@@ -78,7 +76,10 @@ export async function renderSetup(panel: Element) {
     saved?.target_date && (locked || isSelectableTargetDate(saved.target_date))
       ? saved.target_date
       : defaultTargetDateISO();
-  const fireHm = saved ? fireHmFromIso(saved.fire_at, saved.fire_delay_seconds ?? 0) : defaultFireTimeHm();
+  const fireTime = locked && saved
+    ? fireHmFromIso(saved.fire_at, saved.fire_delay_seconds ?? 0)
+    : bookingPrefs?.booking_fire_time ?? (saved ? fireHmFromIso(saved.fire_at, saved.fire_delay_seconds ?? 0) : defaultFireTimeHm());
+  const fireDelay = locked && saved ? saved.fire_delay_seconds ?? 0 : bookingPrefs?.booking_delay_seconds ?? saved?.fire_delay_seconds ?? 0;
   const savedSport = saved ? findSport(saved.sport) : undefined;
   const defaultSport =
     (savedSport &&
@@ -119,7 +120,6 @@ export async function renderSetup(panel: Element) {
   let busy = Boolean(liveStatusCache?.armed || liveStatusCache?.running);
   let starting = false;
   let targetDate = date;
-  let fireTime = fireHm;
 
   panel.innerHTML = `
     <div class="page-stack setup-page">
@@ -144,35 +144,6 @@ export async function renderSetup(panel: Element) {
           <div id="slot_host"></div>
         </div>
         <div class="booking-preferences"><div class="settings-cell" id="court_cell"><p class="settings-cell-title">场地偏好</p><div id="court_host"></div></div>
-      <details class="task-advanced"><summary><strong>更多选项</strong></summary>
-      <div class="settings-group">
-        <div class="settings-group-body">
-          <div class="settings-cell">
-            <div>
-              <p class="settings-cell-title">定时执行时间</p>
-              <p class="settings-cell-desc">北京时间，最早 07:00；凌晨选今天或明天在今天执行，选后天在明天执行</p>
-            </div>
-            <div class="stepper" role="group" aria-label="定时执行时间">
-              <button type="button" class="stepper-btn" id="fire_prev" aria-label="减一分钟">−</button>
-              <span id="fire_time" class="stepper-value" aria-live="polite">${fireHm}</span>
-              <button type="button" class="stepper-btn" id="fire_next" aria-label="加一分钟">+</button>
-            </div>
-          </div>
-          <div class="settings-cell">
-            <div>
-              <label class="settings-cell-title" for="fire_delay">延迟执行（秒）</label>
-              <p class="settings-cell-desc">在上面的时间后延迟 0–300 秒开始预约，例如 10 秒即 07:00:10；查单与提交仍需要时间</p>
-            </div>
-            <div class="stepper fire-delay-stepper" role="group" aria-label="延迟执行秒数">
-              <button type="button" class="stepper-btn" id="delay_prev" aria-label="减少一秒">−</button>
-              <input class="stepper-value fire-delay-input" id="fire_delay" type="number" min="0" max="300" step="1" inputmode="numeric" value="${saved?.fire_delay_seconds ?? 0}" />
-              <button type="button" class="stepper-btn" id="delay_next" aria-label="增加一秒">+</button>
-            </div>
-          </div>
-          <div class="settings-cell"><div><p class="settings-cell-title">候选时段</p><p class="settings-cell-desc">${allowFallback ? fallbackOrder === "up_then_down" ? "已开启 · 先更早" : "已开启 · 先更晚" : "未开启"}，单次与长期计划共用</p></div><button type="button" class="btn ghost" data-tab="settings">预约偏好</button></div>
-        </div>
-      </div>
-      </details>
         </div>
       </section>
       </fieldset>
@@ -196,12 +167,6 @@ export async function renderSetup(panel: Element) {
   const slotHost = panel.querySelector("#slot_host") as HTMLElement;
   const dateOptionsEl = panel.querySelector("#date_options") as HTMLElement;
   let dateOptionsDay = "";
-  const fireTimeEl = panel.querySelector("#fire_time") as HTMLElement;
-  const firePrevBtn = panel.querySelector("#fire_prev") as HTMLButtonElement;
-  const fireNextBtn = panel.querySelector("#fire_next") as HTMLButtonElement;
-  const fireDelayEl = panel.querySelector("#fire_delay") as HTMLInputElement;
-  const delayPrevBtn = panel.querySelector<HTMLButtonElement>("#delay_prev")!;
-  const delayNextBtn = panel.querySelector<HTMLButtonElement>("#delay_next")!;
   const msgEl = panel.querySelector("#setup_msg");
   const availabilityHost = panel.querySelector("#availability_panel") as HTMLElement;
   let availability: Availability | null = null;
@@ -416,36 +381,6 @@ export async function renderSetup(panel: Element) {
     },
     { label: "时段", kind: "slot" },
   );
-  const advanced = panel.querySelector<HTMLDetailsElement>(".task-advanced")!;
-  const scroller = panel.closest<HTMLElement>(".content")!;
-  let advancedScrollFrame = 0;
-  const revealAdvanced = () => {
-    window.cancelAnimationFrame(advancedScrollFrame);
-    if (!advanced.open) return;
-    const from = scroller.scrollTop;
-    const bottom = () => scroller.scrollHeight - scroller.clientHeight;
-    if (bottom() <= from + 1) return;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      scroller.scrollTop = bottom();
-      return;
-    }
-    const started = performance.now();
-    const step = (now: number) => {
-      const progress = Math.min(1, (now - started) / 500);
-      const eased = progress < .5 ? 4 * progress ** 3 : 1 - (-2 * progress + 2) ** 3 / 2;
-      scroller.scrollTop = from + (bottom() - from) * eased;
-      if (progress < 1) advancedScrollFrame = window.requestAnimationFrame(step);
-    };
-    advancedScrollFrame = window.requestAnimationFrame(step);
-  };
-  // Availability messages can change the form height after opening the options.
-  const advancedLayout = new ResizeObserver(revealAdvanced);
-  advanced.addEventListener("toggle", () => {
-    if (advanced.open) { advancedLayout.observe(advanced.closest(".booking-form-card")!); revealAdvanced(); }
-    else { advancedLayout.disconnect(); window.cancelAnimationFrame(advancedScrollFrame); }
-  });
-  scope.onDispose(() => { advancedLayout.disconnect(); window.cancelAnimationFrame(advancedScrollFrame); });
-
   function sportOptions(): SelectOption[] {
     return selectable.map(s => ({ value: s.ocr_label, label: s.label }));
   }
@@ -568,22 +503,6 @@ export async function renderSetup(panel: Element) {
     return previousDate !== targetDate;
   }
 
-  function syncFirePrevState() {
-    const atMin = hmToMinutes(fireTime) <= hmToMinutes(FIRE_TIME_MIN);
-    const atMax = hmToMinutes(fireTime) >= hmToMinutes("23:59");
-    firePrevBtn.disabled = atMin;
-    firePrevBtn.setAttribute("aria-disabled", String(atMin));
-    fireNextBtn.disabled = atMax;
-    fireNextBtn.setAttribute("aria-disabled", String(atMax));
-  }
-
-  function shiftFireTime(delta: number) {
-    fireTime = addMinutesHm(fireTime, delta);
-    fireTimeEl.textContent = fireTime;
-    syncFirePrevState();
-    scheduleSave();
-  }
-
   dateOptionsEl.addEventListener("click", event => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>("[data-date]");
     const value = button?.dataset.date;
@@ -593,23 +512,7 @@ export async function renderSetup(panel: Element) {
     scheduleSave();
     scheduleAvailability();
   });
-  firePrevBtn.addEventListener("click", () => shiftFireTime(-1));
-  fireNextBtn.addEventListener("click", () => shiftFireTime(1));
-  function syncDelayButtons() {
-    delayPrevBtn.disabled = fireDelayEl.valueAsNumber <= 0;
-    delayNextBtn.disabled = fireDelayEl.valueAsNumber >= 300;
-  }
-  function shiftDelay(delta: number) {
-    const current = Number.isFinite(fireDelayEl.valueAsNumber) ? Math.trunc(fireDelayEl.valueAsNumber) : 0;
-    fireDelayEl.value = String(Math.min(300, Math.max(0, current + delta)));
-    syncDelayButtons(); scheduleSave();
-  }
-  delayPrevBtn.onclick = () => shiftDelay(-1);
-  delayNextBtn.onclick = () => shiftDelay(1);
-  fireDelayEl.addEventListener("input", () => { syncDelayButtons(); scheduleSave(); });
-  syncDelayButtons();
   syncDateOptions();
-  syncFirePrevState();
 
   function readTask(): BookingTask {
     const [start, end] = slotSelect.getValue().split("|");
@@ -621,8 +524,8 @@ export async function renderSetup(panel: Element) {
       sport: sportSelect.getValue(),
       venue: venueSelect.getValue().trim(),
       target_date,
-      fire_at: plannedFireAt(target_date, fire, fireDelayEl.valueAsNumber),
-      fire_delay_seconds: fireDelayEl.valueAsNumber,
+      fire_at: plannedFireAt(target_date, fire, fireDelay),
+      fire_delay_seconds: fireDelay,
       target_time_start: start,
       target_time_end: end,
       allow_time_fallback: allowFallback,
@@ -643,7 +546,7 @@ export async function renderSetup(panel: Element) {
     return /^\d{4}-\d{2}-\d{2}$/.test(targetDate) && (busy || isSelectableTargetDate(targetDate))
       && Number.isFinite(Date.parse(`${targetDate}T00:00:00+08:00`))
       && /^([01]\d|2[0-3]):[0-5]\d$/.test(fireTime) && fireTime >= FIRE_TIME_MIN
-      && fireDelayEl.validity.valid && Number.isInteger(fireDelayEl.valueAsNumber);
+      && Number.isInteger(fireDelay) && fireDelay >= 0 && fireDelay <= 300;
   }
 
   function updateSummary() {

@@ -181,7 +181,13 @@ pub struct ShellPrefs {
     pub allow_time_fallback: bool,
     #[serde(default = "default_time_fallback_order")]
     pub time_fallback_order: String,
+    #[serde(default = "default_booking_fire_time")]
+    pub booking_fire_time: String,
+    #[serde(default)]
+    pub booking_delay_seconds: u32,
 }
+
+fn default_booking_fire_time() -> String { "07:00".into() }
 
 fn default_true() -> bool {
     true
@@ -199,6 +205,8 @@ impl Default for ShellPrefs {
             autostart_hidden: true,
             allow_time_fallback: false,
             time_fallback_order: default_time_fallback_order(),
+            booking_fire_time: default_booking_fire_time(),
+            booking_delay_seconds: 0,
         }
     }
 }
@@ -291,12 +299,16 @@ fn load_shell_prefs() -> ShellPrefs {
     };
     let Ok(value) = serde_json::from_str::<Value>(&raw) else { return ShellPrefs::default(); };
     let Ok(mut prefs) = serde_json::from_value::<ShellPrefs>(value.clone()) else { return ShellPrefs::default(); };
-    if value.get("allow_time_fallback").is_none() || value.get("time_fallback_order").is_none() {
+    if ["allow_time_fallback", "time_fallback_order", "booking_fire_time", "booking_delay_seconds"].iter().any(|key| value.get(key).is_none()) {
         let legacy = read_task().ok().flatten();
         migrate_booking_prefs(&mut prefs, &value, legacy.as_ref());
         if let Err(error) = save_shell_prefs_disk(&prefs) {
             log::warn!(target: "prefs", "[booking_preferences_migration_failed] {error}");
         }
+    }
+    if validate_booking_timing(&prefs).is_err() {
+        prefs.booking_fire_time = default_booking_fire_time();
+        prefs.booking_delay_seconds = 0;
     }
     prefs
 }
@@ -307,6 +319,16 @@ fn migrate_booking_prefs(prefs: &mut ShellPrefs, raw: &Value, legacy: Option<&Bo
     }
     if raw.get("time_fallback_order").is_none() {
         prefs.time_fallback_order = legacy.map(|task| task.time_fallback_order.clone()).unwrap_or_else(default_time_fallback_order);
+    }
+    if raw.get("booking_delay_seconds").is_none() {
+        prefs.booking_delay_seconds = legacy.map(|task| task.fire_delay_seconds).unwrap_or(0).min(300);
+    }
+    if raw.get("booking_fire_time").is_none() {
+        prefs.booking_fire_time = legacy.and_then(|task| parse_fire_at(&task.fire_at).ok().map(|fire| {
+            let base = fire.with_timezone(&chrono::FixedOffset::east_opt(28800).unwrap())
+                - chrono::Duration::seconds(task.fire_delay_seconds as i64);
+            base.format("%H:%M").to_string()
+        })).filter(|hm| hm.as_str() >= "07:00").unwrap_or_else(default_booking_fire_time);
     }
 }
 
@@ -1122,11 +1144,26 @@ fn get_shell_prefs() -> Result<ShellPrefs, String> {
 }
 
 #[tauri::command]
-fn save_shell_prefs(prefs: ShellPrefs) -> Result<(), String> {
+fn save_shell_prefs(app: tauri::AppHandle, prefs: ShellPrefs) -> Result<(), String> {
     if !matches!(prefs.time_fallback_order.as_str(), "up_then_down" | "down_then_up") {
         return Err("请选择有效的候选时段顺序".into());
     }
-    save_shell_prefs_disk(&prefs)
+    validate_booking_timing(&prefs)?;
+    let previous = load_shell_prefs();
+    let timing_changed = previous.booking_fire_time != prefs.booking_fire_time
+        || previous.booking_delay_seconds != prefs.booking_delay_seconds;
+    save_shell_prefs_disk(&prefs)?;
+    if timing_changed { booking_plans::changed(&app); }
+    Ok(())
+}
+
+fn validate_booking_timing(prefs: &ShellPrefs) -> Result<(), String> {
+    let hm = chrono::NaiveTime::parse_from_str(&prefs.booking_fire_time, "%H:%M")
+        .map_err(|_| "定时执行时间须为07:00–23:59")?;
+    if hm.format("%H:%M").to_string() != prefs.booking_fire_time || prefs.booking_fire_time.as_str() < "07:00" || prefs.booking_delay_seconds > 300 {
+        return Err("定时执行时间须为07:00–23:59，延迟须为0–300秒".into());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1434,6 +1471,28 @@ mod task_snapshot_tests {
         let mut empty = ShellPrefs::default();
         migrate_booking_prefs(&mut empty, &serde_json::json!({}), None);
         assert!(!empty.allow_time_fallback);
+    }
+    #[test]
+    fn shared_timing_migrates_base_time_without_counting_delay_twice() {
+        let legacy: BookingTask = serde_json::from_value(serde_json::json!({"task_id":"legacy",
+            "sport":"羽毛球","venue":"场馆","target_date":"2026-11-02","fire_at":"2026-11-01T07:04:10+08:00",
+            "fire_delay_seconds":190,"target_time_start":"09:00","target_time_end":"10:00"})).unwrap();
+        let mut prefs = ShellPrefs::default();
+        migrate_booking_prefs(&mut prefs, &serde_json::json!({"allow_time_fallback":false,"time_fallback_order":"down_then_up"}), Some(&legacy));
+        assert_eq!(prefs.booking_fire_time, "07:01");
+        assert_eq!(prefs.booking_delay_seconds, 190);
+        let raw = serde_json::to_value(ShellPrefs::default()).unwrap();
+        let mut explicit = ShellPrefs::default();
+        migrate_booking_prefs(&mut explicit, &raw, Some(&legacy));
+        assert_eq!(explicit.booking_fire_time, "07:00");
+        assert_eq!(explicit.booking_delay_seconds, 0);
+        for hm in ["06:59", "7:00", "24:00", "invalid"] {
+            prefs.booking_fire_time = hm.into();
+            assert!(validate_booking_timing(&prefs).is_err());
+        }
+        prefs.booking_fire_time = "07:00".into();
+        prefs.booking_delay_seconds = 301;
+        assert!(validate_booking_timing(&prefs).is_err());
     }
     #[test]
     fn closing_with_plans_requires_confirmation_even_before_a_run_starts() {

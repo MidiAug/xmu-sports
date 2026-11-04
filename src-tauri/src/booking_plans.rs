@@ -126,14 +126,14 @@ fn validate(rules: &[Plan]) -> Result<(), String> {
     Ok(())
 }
 
-pub fn next_date(rule: &Plan, plans: &Plans, now: DateTime<FixedOffset>) -> NaiveDate {
+pub fn next_date(rule: &Plan, plans: &Plans, now: DateTime<FixedOffset>, prefs: &crate::ShellPrefs) -> NaiveDate {
     let first = NaiveDate::parse_from_str(&rule.first_date, "%Y-%m-%d").unwrap_or(now.date_naive());
-    let days = if now.time() < NaiveTime::from_hms_opt(7, 0, 0).unwrap() { 1 } else { 2 };
-    let start = (now.date_naive() + Duration::days(days)).max(first);
+    let start = now.date_naive().max(first);
     (0..)
         .map(|offset| start + Duration::days(offset))
         .find(|date| {
-            rule.weekdays.contains(&date.weekday().number_from_monday())
+            fire_at(*date, prefs) > now
+                && rule.weekdays.contains(&date.weekday().number_from_monday())
                 && !plans.attempts.iter().any(|a| {
                     a.account == rule.account
                         && a.sport == rule.sport
@@ -143,23 +143,23 @@ pub fn next_date(rule: &Plan, plans: &Plans, now: DateTime<FixedOffset>) -> Naiv
         .unwrap()
 }
 
-fn fire_at(date: NaiveDate) -> DateTime<FixedOffset> {
+fn fire_at(date: NaiveDate, prefs: &crate::ShellPrefs) -> DateTime<FixedOffset> {
     FixedOffset::east_opt(28800)
         .unwrap()
         .from_local_datetime(
-            &(date - Duration::days(1)).and_time(NaiveTime::from_hms_opt(7, 0, 0).unwrap()),
+            &(date - Duration::days(1)).and_time(NaiveTime::parse_from_str(&prefs.booking_fire_time, "%H:%M").unwrap()),
         )
-        .unwrap()
+        .unwrap() + Duration::seconds(prefs.booking_delay_seconds as i64)
 }
 
-fn skip_date(rule: &Plan, plans: &Plans, now: DateTime<FixedOffset>) -> NaiveDate {
+fn skip_date(rule: &Plan, plans: &Plans, now: DateTime<FixedOffset>, prefs: &crate::ShellPrefs) -> NaiveDate {
     plans.attempts.iter().find(|a| a.status == "queued" && a.task.plan_id.as_deref() == Some(&rule.id)
-        && a.task.target_date > now.date_naive().to_string())
+        && a.task.target_date >= now.date_naive().to_string())
         .and_then(|a| NaiveDate::parse_from_str(&a.task.target_date, "%Y-%m-%d").ok())
-        .unwrap_or_else(|| next_date(rule, plans, now))
+        .unwrap_or_else(|| next_date(rule, plans, now, prefs))
 }
 
-fn task(rule: &Plan, date: NaiveDate) -> crate::BookingTask {
+fn task(rule: &Plan, date: NaiveDate, prefs: &crate::ShellPrefs) -> crate::BookingTask {
     let catalog = catalog();
     let sport = catalog["sports"]
         .as_array()
@@ -175,17 +175,17 @@ fn task(rule: &Plan, date: NaiveDate) -> crate::BookingTask {
         .unwrap();
     serde_json::from_value(json!({"task_id":format!("plan-{}-{date}",rule.id),"plan_id":rule.id,
         "sport":sport["ocr_label"],"venue":venue["ocr_label"],"target_date":date.to_string(),
-        "fire_at":fire_at(date).to_rfc3339(),"target_time_start":rule.start,"target_time_end":rule.end,
-        "executor":"http"})).unwrap()
+        "fire_at":fire_at(date, prefs).to_rfc3339(),"target_time_start":rule.start,"target_time_end":rule.end,
+        "fire_delay_seconds":prefs.booking_delay_seconds,"executor":"http"})).unwrap()
 }
 
-fn changed(app: &tauri::AppHandle) {
+pub(crate) fn changed(app: &tauri::AppHandle) {
     crate::tray::refresh_plans(app);
     crate::sync_run_badge(app, &app.state::<crate::AppState>());
     let _ = app.emit("plans-changed", ());
 }
 
-fn has_upcoming(plans: &Plans, now: DateTime<FixedOffset>) -> bool {
+fn has_upcoming(plans: &Plans, now: DateTime<FixedOffset>, prefs: &crate::ShellPrefs) -> bool {
     if plans.paused || plans.attempts.iter().any(|a| a.status == "unconfirmed") {
         return false;
     }
@@ -194,19 +194,21 @@ fn has_upcoming(plans: &Plans, now: DateTime<FixedOffset>) -> bool {
     }
     let tomorrow = now.date_naive() + Duration::days(1);
     plans.rules.iter().filter(|p| p.enabled).any(|rule| {
-        let fire = fire_at(skip_date(rule, plans, now));
+        let fire = fire_at(skip_date(rule, plans, now, prefs), prefs);
         fire >= now && fire.date_naive() <= tomorrow
     })
 }
 
 pub fn upcoming(app: &tauri::AppHandle) -> bool {
+    let prefs = &crate::load_shell_prefs();
     let Some(state) = app.try_state::<Store>() else { return false; };
     let Ok(locked) = state.0.lock() else { return false; };
-    locked.as_ref().is_ok_and(|plans| has_upcoming(plans, china_now()))
+    locked.as_ref().is_ok_and(|plans| has_upcoming(plans, china_now(), prefs))
 }
 
 #[tauri::command]
 pub fn get_booking_plans(app: tauri::AppHandle) -> Result<PlanView, String> {
+    let prefs = &crate::load_shell_prefs();
     let state = app.state::<Store>();
     let locked = state.0.lock().map_err(|_| "计划状态不可用")?;
     let plans = locked.as_ref().map_err(Clone::clone)?;
@@ -216,8 +218,11 @@ pub fn get_booking_plans(app: tauri::AppHandle) -> Result<PlanView, String> {
         .iter()
         .filter(|p| p.enabled)
         .map(|p| {
-            let date = skip_date(p, plans, now);
-            json!({"id":p.id,"date":date.to_string(),"fire_at":fire_at(date).to_rfc3339()})
+            let date = skip_date(p, plans, now, prefs);
+            let frozen = plans.attempts.iter().find(|a| a.status == "queued"
+                && a.task.plan_id.as_deref() == Some(&p.id) && a.task.target_date == date.to_string());
+            let fire = frozen.map(|a| a.task.fire_at.clone()).unwrap_or_else(|| fire_at(date, prefs).to_rfc3339());
+            json!({"id":p.id,"date":date.to_string(),"fire_at":fire})
         })
         .collect();
     Ok(PlanView {
@@ -233,6 +238,7 @@ pub fn save_booking_plans(
     mut rules: Vec<Plan>,
     paused: bool,
 ) -> Result<(), String> {
+    let prefs = &crate::load_shell_prefs();
     validate(&rules)?;
     let state = app.state::<Store>();
     let mut locked = state.0.lock().map_err(|_| "计划状态不可用")?;
@@ -250,13 +256,8 @@ pub fn save_booking_plans(
             .find(|old| old.id == rule.id)
             .map(|old| old.first_date.clone())
             .unwrap_or_else(|| {
-                (now.date_naive()
-                    + Duration::days(if now.time() < NaiveTime::from_hms_opt(7, 0, 0).unwrap() {
-                        1
-                    } else {
-                        2
-                    }))
-                .to_string()
+                (0..=2).map(|days| now.date_naive() + Duration::days(days))
+                    .find(|date| fire_at(*date, prefs) > now).unwrap().to_string()
             });
     }
     let mut next = plans.clone();
@@ -305,6 +306,7 @@ pub fn save_booking_plans(
 
 #[tauri::command]
 pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<String, String> {
+    let prefs = &crate::load_shell_prefs();
     let state = app.state::<Store>();
     let mut locked = state.0.lock().map_err(|_| "计划状态不可用")?;
     let plans = locked.as_mut().map_err(|e| e.clone())?;
@@ -313,10 +315,10 @@ pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<String, St
         .iter()
         .find(|p| p.id == id)
         .ok_or("计划不存在")?;
-    let date = skip_date(rule, plans, china_now());
+    let date = skip_date(rule, plans, china_now(), prefs);
     let attempt = Attempt {
         reversible_skip: true,
-        task: task(rule, date),
+        task: task(rule, date, prefs),
         sport: rule.sport.clone(),
         account: rule.account.clone(),
         status: "skipped".into(),
@@ -343,11 +345,12 @@ pub fn skip_booking_plan(app: tauri::AppHandle, id: String) -> Result<String, St
 
 #[tauri::command]
 pub fn restore_booking_plan(app: tauri::AppHandle, id: String, date: String) -> Result<(), String> {
+    let prefs = &crate::load_shell_prefs();
     let state = app.state::<Store>();
     let mut locked = state.0.lock().map_err(|_| "计划状态不可用")?;
     let plans = locked.as_mut().map_err(|e| e.clone())?;
     let mut next = plans.clone();
-    restore_skip(&mut next, &id, &date, china_now())?;
+    restore_skip(&mut next, &id, &date, china_now(), prefs)?;
     persist(&next)?;
     *plans = next;
     drop(locked);
@@ -355,9 +358,9 @@ pub fn restore_booking_plan(app: tauri::AppHandle, id: String, date: String) -> 
     Ok(())
 }
 
-fn restore_skip(plans: &mut Plans, id: &str, date: &str, now: DateTime<FixedOffset>) -> Result<(), String> {
+fn restore_skip(plans: &mut Plans, id: &str, date: &str, now: DateTime<FixedOffset>, prefs: &crate::ShellPrefs) -> Result<(), String> {
     let day = NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| "运动日期无效")?;
-    if fire_at(day) <= now { return Err("本次开抢时间已过，无法恢复".into()); }
+    if fire_at(day, prefs) <= now { return Err("本次开抢时间已过，无法恢复".into()); }
     let rule = plans.rules.iter().find(|p| p.id == id).ok_or("计划已删除，无法恢复")?;
     let index = plans.attempts.iter().position(|a| a.task.plan_id.as_deref() == Some(id)
         && a.task.target_date == date && a.status == "skipped" && a.reversible_skip)
@@ -542,11 +545,13 @@ pub fn finish(app: &tauri::AppHandle, task: &crate::BookingTask, outcome: &Resul
 }
 
 pub fn stop_round(app: &tauri::AppHandle) -> Result<(), String> {
+    let prefs = &crate::load_shell_prefs();
     let state = app.state::<Store>();
     let mut locked = state.0.lock().map_err(|_| "计划状态不可用")?;
     let plans = locked.as_mut().map_err(|e| e.clone())?;
     let now = china_now();
-    let date = now.date_naive() + Duration::days(1);
+    let today = now.date_naive();
+    let date = if fire_at(today, prefs).date_naive() == today { today } else { today + Duration::days(1) };
     let mut next = plans.clone();
     for attempt in next
         .attempts
@@ -557,10 +562,10 @@ pub fn stop_round(app: &tauri::AppHandle) -> Result<(), String> {
         attempt.message = "已停止本轮".into();
     }
     for rule in &plans.rules {
-        if rule.enabled && next_date(rule, plans, now) == date {
+        if rule.enabled && next_date(rule, plans, now, prefs) == date {
             next.attempts.push(Attempt {
                 reversible_skip: false,
-                task: task(rule, date),
+                task: task(rule, date, prefs),
                 sport: rule.sport.clone(),
                 account: rule.account.clone(),
                 status: "skipped".into(),
@@ -597,25 +602,26 @@ pub fn stop_booking_round(app: tauri::AppHandle) -> Result<(), String> {
 fn due_plan(
     plans: &Plans,
     now: DateTime<FixedOffset>,
+    prefs: &crate::ShellPrefs,
 ) -> Option<(Plan, NaiveDate, DateTime<FixedOffset>)> {
     if plans.paused {
         return None;
     }
     plans.rules.iter().filter(|p| p.enabled).find_map(|p| {
-        let date = next_date(p, plans, now);
-        let fire = fire_at(date);
+        let date = next_date(p, plans, now, prefs);
+        let fire = fire_at(date, prefs);
         (now >= fire - Duration::seconds(60) && now < fire).then(|| (p.clone(), date, fire))
     })
 }
 
 fn freeze_round(plans: &mut Plans, now: DateTime<FixedOffset>, prefs: &crate::ShellPrefs) {
-    if let Some((_, date, _)) = due_plan(plans, now) {
+    if let Some((_, date, _)) = due_plan(plans, now, prefs) {
         let round: Vec<_> = plans
             .rules
             .iter()
-            .filter(|p| p.enabled && next_date(p, plans, now) == date)
+            .filter(|p| p.enabled && next_date(p, plans, now, prefs) == date)
             .map(|p| {
-                let mut frozen = task(p, date);
+                let mut frozen = task(p, date, prefs);
                 crate::apply_booking_prefs(&mut frozen, prefs);
                 Attempt {
                     reversible_skip: false,
@@ -636,7 +642,8 @@ fn expire_queued(plans: &mut Plans, now: DateTime<FixedOffset>) -> bool {
     for attempt in plans
         .attempts
         .iter_mut()
-        .filter(|a| a.status == "queued" && a.task.target_date <= now.date_naive().to_string())
+        .filter(|a| a.status == "queued" && crate::parse_fire_at(&a.task.fire_at)
+            .is_ok_and(|fire| fire.date_naive() < now.date_naive()))
     {
         attempt.status = "missed".into();
         attempt.message = "已错过当天开抢，未追溯提交".into();
@@ -646,6 +653,7 @@ fn expire_queued(plans: &mut Plans, now: DateTime<FixedOffset>) -> bool {
 }
 
 fn tick(app: &tauri::AppHandle) -> Result<(), String> {
+    let prefs = &crate::load_shell_prefs();
     let runtime = app.state::<crate::AppState>();
     let _gate = runtime.task_gate.lock().map_err(|_| "任务状态不可用")?;
     if crate::child_running(&runtime)
@@ -665,14 +673,14 @@ fn tick(app: &tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
     let mut next = plans.clone();
-    if due_plan(&next, now).is_some() {
-        freeze_round(&mut next, now, &crate::load_shell_prefs());
+    if due_plan(&next, now, prefs).is_some() {
+        freeze_round(&mut next, now, prefs);
     }
     let date = (now.date_naive() + Duration::days(1)).to_string();
     let due = next
         .attempts
         .iter()
-        .position(|a| a.status == "queued" && a.task.target_date == date);
+        .position(|a| a.status == "queued" && a.task.target_date >= now.date_naive().to_string() && a.task.target_date <= date);
     if let Some(index) = due {
         if crate::load_arm().armed {
             return Ok(());
@@ -718,6 +726,7 @@ fn tick(app: &tauri::AppHandle) -> Result<(), String> {
 }
 
 fn remind(app: &tauri::AppHandle) {
+    let prefs = &crate::load_shell_prefs();
     let state = app.state::<Store>();
     let Ok(mut locked) = state.0.lock() else {
         return;
@@ -730,8 +739,9 @@ fn remind(app: &tauri::AppHandle) {
     }
     let wechat_running = crate::wechat_probe::probe().running;
     let now = china_now();
-    let date = now.date_naive() + Duration::days(1);
-    let fire = fire_at(date);
+    let today = now.date_naive();
+    let date = if fire_at(today, prefs) > now { today } else { today + Duration::days(1) };
+    let fire = fire_at(date, prefs);
     let key = format!("{}-wechat", now.date_naive());
     if now >= fire - Duration::minutes(5)
         && now < fire
@@ -739,7 +749,7 @@ fn remind(app: &tauri::AppHandle) {
         && plans
             .rules
             .iter()
-            .any(|p| p.enabled && next_date(p, plans, now) == date)
+            .any(|p| p.enabled && next_date(p, plans, now, prefs) == date)
         && !wechat_running
     {
         plans.notified.push(key);
@@ -841,22 +851,22 @@ mod tests {
         p.first_date = "2026-11-01".into();
         p.weekdays = vec![1, 2, 3, 4, 5, 6, 7];
         let mut plans = Plans { rules: vec![p.clone()], ..Plans::default() };
-        assert!(has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")), "tomorrow's opening lights the badge");
-        assert!(!has_upcoming(&plans, at("2026-10-29T23:59:59+08:00")), "distant opening stays quiet");
-        assert!(has_upcoming(&plans, at("2026-10-31T06:00:00+08:00")), "today's future opening lights the badge");
+        assert!(has_upcoming(&plans, at("2026-10-30T12:00:00+08:00"), &crate::ShellPrefs::default()), "tomorrow's opening lights the badge");
+        assert!(!has_upcoming(&plans, at("2026-10-29T23:59:59+08:00"), &crate::ShellPrefs::default()), "distant opening stays quiet");
+        assert!(has_upcoming(&plans, at("2026-10-31T06:00:00+08:00"), &crate::ShellPrefs::default()), "today's future opening lights the badge");
         plans.paused = true;
-        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00"), &crate::ShellPrefs::default()));
         plans.paused = false;
         plans.rules[0].enabled = false;
-        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00"), &crate::ShellPrefs::default()));
         plans.rules[0].enabled = true;
-        plans.attempts.push(Attempt { reversible_skip: false, task: task(&p, NaiveDate::from_ymd_opt(2026, 11, 1).unwrap()), sport:p.sport.clone(), account:p.account.clone(), status:"unconfirmed".into(), message:String::new() });
-        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+        plans.attempts.push(Attempt { reversible_skip: false, task: task(&p, NaiveDate::from_ymd_opt(2026, 11, 1).unwrap(), &crate::ShellPrefs::default()), sport:p.sport.clone(), account:p.account.clone(), status:"unconfirmed".into(), message:String::new() });
+        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00"), &crate::ShellPrefs::default()));
         plans.attempts[0].status = "queued".into();
         plans.rules.clear();
-        assert!(has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")), "frozen queue remains active without rules");
+        assert!(has_upcoming(&plans, at("2026-10-30T12:00:00+08:00"), &crate::ShellPrefs::default()), "frozen queue remains active without rules");
         plans.attempts[0].status = "skipped".into();
-        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00")));
+        assert!(!has_upcoming(&plans, at("2026-10-30T12:00:00+08:00"), &crate::ShellPrefs::default()));
     }
 
     #[test]
@@ -864,25 +874,25 @@ mod tests {
         let rule = catalog_rule();
         let date = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
         let now = at("2026-10-29T06:30:00+08:00");
-        let skipped = Attempt { reversible_skip: true, task:task(&rule,date), sport:rule.sport.clone(), account:rule.account.clone(), status:"skipped".into(), message:String::new() };
+        let skipped = Attempt { reversible_skip: true, task:task(&rule,date, &crate::ShellPrefs::default()), sport:rule.sport.clone(), account:rule.account.clone(), status:"skipped".into(), message:String::new() };
         let mut plans = Plans { rules:vec![rule.clone()], attempts:vec![skipped.clone()], paused:true, ..Plans::default() };
-        assert_ne!(next_date(&rule, &plans, now), date);
-        restore_skip(&mut plans, &rule.id, "2026-10-30", now).unwrap();
-        assert_eq!(next_date(&rule, &plans, now), date);
+        assert_ne!(next_date(&rule, &plans, now, &crate::ShellPrefs::default()), date);
+        restore_skip(&mut plans, &rule.id, "2026-10-30", now, &crate::ShellPrefs::default()).unwrap();
+        assert_eq!(next_date(&rule, &plans, now, &crate::ShellPrefs::default()), date);
         assert!(plans.paused, "restoring does not resume globally paused plans");
         assert!(plans.rules[0].enabled);
         assert!(plans.attempts.is_empty());
-        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now).is_err());
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now, &crate::ShellPrefs::default()).is_err());
         plans.attempts.push(skipped.clone());
-        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", at("2026-10-29T07:00:00+08:00")).is_err());
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", at("2026-10-29T07:00:00+08:00"), &crate::ShellPrefs::default()).is_err());
         plans.attempts[0].reversible_skip = false;
-        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now).is_err(), "reconciled and round-stopped records cannot be restored");
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now, &crate::ShellPrefs::default()).is_err(), "reconciled and round-stopped records cannot be restored");
         plans.attempts[0] = skipped.clone();
         plans.rules[0].account = "b".repeat(64);
-        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now).is_err());
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now, &crate::ShellPrefs::default()).is_err());
         plans.rules[0] = rule.clone();
         plans.attempts.push(Attempt { status:"unconfirmed".into(), reversible_skip:false, ..skipped });
-        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now).is_err(), "another order record must never be erased");
+        assert!(restore_skip(&mut plans, &rule.id, "2026-10-30", now, &crate::ShellPrefs::default()).is_err(), "another order record must never be erased");
         assert_eq!(plans.attempts.len(),2);
     }
 
@@ -891,7 +901,7 @@ mod tests {
         let rule = catalog_rule();
         let date = NaiveDate::from_ymd_opt(2026, 10, 30).unwrap();
         let mut plans = Plans { attempts:["已跳过这一次", "已人工核对，本项不再自动补约", "已停止本轮"].into_iter().map(|message| Attempt {
-            reversible_skip:false, task:task(&rule,date), sport:rule.sport.clone(), account:rule.account.clone(), status:"skipped".into(), message:message.into()
+            reversible_skip:false, task:task(&rule,date, &crate::ShellPrefs::default()), sport:rule.sport.clone(), account:rule.account.clone(), status:"skipped".into(), message:message.into()
         }).collect(), ..Plans::default() };
         migrate_skips(&mut plans);
         assert_eq!(plans.attempts.iter().map(|a|a.reversible_skip).collect::<Vec<_>>(),vec![true,false,false]);
@@ -907,16 +917,16 @@ mod tests {
         let mut p = rule();
         let plans = Plans::default();
         assert_eq!(
-            next_date(&p, &plans, at("2026-10-29T00:30:00+08:00")).to_string(),
+            next_date(&p, &plans, at("2026-10-29T00:30:00+08:00"), &crate::ShellPrefs::default()).to_string(),
             "2026-10-30"
         );
         assert_eq!(
-            fire_at(next_date(&p, &plans, at("2026-10-29T00:30:00+08:00"))),
+            fire_at(next_date(&p, &plans, at("2026-10-29T00:30:00+08:00"), &crate::ShellPrefs::default()), &crate::ShellPrefs::default()),
             at("2026-10-29T07:00:00+08:00")
         );
         p.weekdays = vec![1];
         assert_eq!(
-            next_date(&p, &plans, at("2026-12-31T12:00:00+08:00")).to_string(),
+            next_date(&p, &plans, at("2026-12-31T12:00:00+08:00"), &crate::ShellPrefs::default()).to_string(),
             "2027-01-04"
         );
     }
@@ -934,9 +944,9 @@ mod tests {
             status: "unconfirmed".into(),
             message: "".into(),
         });
-        assert_eq!(next_date(&p, &plans, now).to_string(), "2026-10-31");
+        assert_eq!(next_date(&p, &plans, now, &crate::ShellPrefs::default()).to_string(), "2026-10-31");
         plans.attempts[0].account = "b".repeat(64);
-        assert_eq!(next_date(&p, &plans, now).to_string(), "2026-10-30");
+        assert_eq!(next_date(&p, &plans, now, &crate::ShellPrefs::default()).to_string(), "2026-10-30");
     }
     fn catalog_rule() -> Plan {
         let catalog = catalog();
@@ -987,34 +997,34 @@ mod tests {
             ..Plans::default()
         };
         let now = at("2026-10-29T06:59:00+08:00");
-        assert!(due_plan(&plans, at("2026-10-29T06:58:59+08:00")).is_none());
-        assert_eq!(due_plan(&plans, now).unwrap().0.id, first.id);
+        assert!(due_plan(&plans, at("2026-10-29T06:58:59+08:00"), &crate::ShellPrefs::default()).is_none());
+        assert_eq!(due_plan(&plans, now, &crate::ShellPrefs::default()).unwrap().0.id, first.id);
         plans.attempts.push(Attempt {
             reversible_skip: false,
-            task: task(&first, next_date(&first, &plans, now)),
+            task: task(&first, next_date(&first, &plans, now, &crate::ShellPrefs::default()), &crate::ShellPrefs::default()),
             sport: first.sport.clone(),
             account: first.account.clone(),
             status: "succeeded".into(),
             message: "".into(),
         });
         assert_eq!(
-            due_plan(&plans, now)
+            due_plan(&plans, now, &crate::ShellPrefs::default())
                 .unwrap()
                 .0
                 .id,
             second.id
         );
         plans.paused = true;
-        assert!(due_plan(&plans, now).is_none());
+        assert!(due_plan(&plans, now, &crate::ShellPrefs::default()).is_none());
         plans.paused = false;
         plans.rules[1].enabled = false;
-        assert!(due_plan(&plans, now).is_none());
+        assert!(due_plan(&plans, now, &crate::ShellPrefs::default()).is_none());
     }
     #[test]
     fn unknown_or_unverified_submission_pauses_queue_but_slot_failure_can_continue() {
         let p = catalog_rule();
         let now = at("2026-10-29T07:00:00+08:00");
-        let task = task(&p, next_date(&p, &Plans::default(), now));
+        let task = task(&p, next_date(&p, &Plans::default(), now, &crate::ShellPrefs::default()), &crate::ShellPrefs::default());
         for (outcome, paused, status) in [
             (Err("SUBMIT_UNKNOWN".into()), true, "unconfirmed"),
             (Ok("http_submitted".into()), true, "unconfirmed"),
@@ -1091,7 +1101,7 @@ mod tests {
             apply_outcome(&mut round,&first_task,&Err(code.into()));
             assert!(round.paused);
             assert_eq!(round.attempts[1].status,"queued");
-            assert!(due_plan(&round,at("2026-10-29T07:00:03+08:00")).is_none());
+            assert!(due_plan(&round,at("2026-10-29T07:00:03+08:00"), &crate::ShellPrefs::default()).is_none());
         }
     }
 
@@ -1118,7 +1128,7 @@ mod tests {
         assert!(expire_queued(&mut plans, at("2026-10-30T00:00:00+08:00")));
         assert!(plans.attempts.iter().all(|a| a.status == "missed"));
         assert_eq!(
-            next_date(&first, &plans, at("2026-10-30T00:00:00+08:00")).to_string(),
+            next_date(&first, &plans, at("2026-10-30T00:00:00+08:00"), &crate::ShellPrefs::default()).to_string(),
             "2026-10-31"
         );
     }
@@ -1147,7 +1157,7 @@ mod tests {
         assert_eq!(plans.attempts[0].status, "unconfirmed");
         let restored: Plans =
             serde_json::from_str(&serde_json::to_string(&plans).unwrap()).unwrap();
-        assert!(due_plan(&restored, now).is_none());
+        assert!(due_plan(&restored, now, &crate::ShellPrefs::default()).is_none());
     }
 
     #[test]
@@ -1170,11 +1180,11 @@ mod tests {
             assert!(recover_interrupted(&mut restored, &arm, now));
             assert!(restored.attempts.iter().all(|a| a.status == "missed"));
             assert!(!restored.paused);
-            assert!(due_plan(&restored, now).is_none());
+            assert!(due_plan(&restored, now, &crate::ShellPrefs::default()).is_none());
             let mut no_snapshot = Plans {rules:restored.rules.clone(), ..Plans::default()};
             freeze_round(&mut no_snapshot, now, &crate::ShellPrefs::default());
             assert!(no_snapshot.attempts.is_empty());
-            assert_eq!(next_date(&no_snapshot.rules[0], &no_snapshot, now).to_string(), "2026-11-02");
+            assert_eq!(next_date(&no_snapshot.rules[0], &no_snapshot, now, &crate::ShellPrefs::default()).to_string(), "2026-11-02");
         }
         let mut unknown = plans.clone();
         recover_interrupted(&mut unknown, &crate::ArmFile::default(), at("2026-10-31T20:50:19+08:00"));
@@ -1203,20 +1213,42 @@ mod tests {
         let plans = Plans { rules: vec![catalog_rule()], ..Plans::default() };
         let restored: Plans = serde_json::from_slice(&serde_json::to_vec(&plans).unwrap()).unwrap();
         let now = at("2026-10-29T06:59:00+08:00");
-        assert!(due_plan(&restored, now).is_some());
+        assert!(due_plan(&restored, now, &crate::ShellPrefs::default()).is_some());
         let paused = Plans { paused: true, ..restored };
         let restored: Plans = serde_json::from_slice(&serde_json::to_vec(&paused).unwrap()).unwrap();
-        assert!(due_plan(&restored, now).is_none());
+        assert!(due_plan(&restored, now, &crate::ShellPrefs::default()).is_none());
     }
 
+    #[test]
+    fn shared_timing_controls_due_window_and_preserves_frozen_tasks() {
+        let rule = catalog_rule();
+        let prefs = crate::ShellPrefs { booking_fire_time:"07:02".into(), booking_delay_seconds:10, ..Default::default() };
+        let mut plans = Plans { rules:vec![rule.clone()], ..Default::default() };
+        assert!(due_plan(&plans, at("2026-10-29T07:01:09+08:00"), &prefs).is_none());
+        assert!(due_plan(&plans, at("2026-10-29T07:01:10+08:00"), &prefs).is_some());
+        freeze_round(&mut plans, at("2026-10-29T07:01:10+08:00"), &prefs);
+        assert_eq!(plans.attempts[0].task.fire_at, "2026-10-29T07:02:10+08:00");
+        assert_eq!(plans.attempts[0].task.fire_delay_seconds, 10);
+        freeze_round(&mut plans, at("2026-10-29T07:01:20+08:00"), &crate::ShellPrefs::default());
+        assert_eq!(plans.attempts.len(), 1);
+        assert_eq!(plans.attempts[0].task.fire_at, "2026-10-29T07:02:10+08:00");
+        assert!(due_plan(&Plans {rules:vec![rule.clone()],..Default::default()}, at("2026-10-29T07:02:10+08:00"), &prefs).is_none());
+        let late = crate::ShellPrefs { booking_fire_time:"23:59".into(), booking_delay_seconds:300, ..Default::default() };
+        let mut midnight = Plans {rules:vec![rule],..Default::default()};
+        freeze_round(&mut midnight, at("2026-10-30T00:03:00+08:00"), &late);
+        assert_eq!(midnight.attempts.len(),1);
+        assert_eq!(midnight.attempts[0].task.target_date,"2026-10-30");
+        assert_eq!(midnight.attempts[0].task.fire_at,"2026-10-30T00:04:00+08:00");
+        assert!(!expire_queued(&mut midnight, at("2026-10-30T00:03:10+08:00")));
+    }
     #[test]
     fn skip_date_matches_the_queued_target_then_moves_past_running() {
         let rule = catalog_rule();
         let mut plans = Plans { rules: vec![rule.clone()], ..Plans::default() };
         let now = at("2026-10-29T06:59:00+08:00");
         freeze_round(&mut plans, now, &crate::ShellPrefs::default());
-        assert_eq!(skip_date(&rule, &plans, now).to_string(), "2026-10-30");
+        assert_eq!(skip_date(&rule, &plans, now, &crate::ShellPrefs::default()).to_string(), "2026-10-30");
         plans.attempts[0].status = "running".into();
-        assert_eq!(skip_date(&rule, &plans, now).to_string(), "2026-10-31");
+        assert_eq!(skip_date(&rule, &plans, now, &crate::ShellPrefs::default()).to_string(), "2026-10-31");
     }
 }

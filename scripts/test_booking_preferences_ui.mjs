@@ -36,6 +36,23 @@ try {
   await page.keyboard.press('Enter');
   await page.waitForFunction(()=>window.__prefs.time_fallback_order==='up_then_down');
   assert.deepEqual(await page.evaluate(()=>window.__prefs.venue_slot_prefs),{});
+  assert.equal(await page.locator('#fire_time').innerText(),'07:00');
+  assert.equal(await page.locator('#fire_prev').isDisabled(),true);
+  await page.locator('#fire_next').focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>window.__prefs.booking_fire_time==='07:01');
+  await page.locator('#fire_delay').fill('10');
+  await page.locator('#fire_delay').press('Tab');
+  await page.waitForFunction(()=>window.__prefs.booking_delay_seconds===10);
+  await page.locator('#fire_delay').fill('301');
+  await page.locator('#fire_delay').press('Tab');
+  assert.equal(await page.locator('#fire_delay').inputValue(),'10');
+  assert.equal(await page.evaluate(()=>window.__prefs.booking_delay_seconds),10);
+  await page.evaluate(()=>window.failSave=true);
+  await page.locator('#fire_next').click();
+  await page.locator('#settings_msg').filter({hasText:'模拟保存失败'}).waitFor();
+  assert.equal(await page.locator('#fire_time').innerText(),'07:01');
+  await page.evaluate(()=>window.failSave=false);
   for(const [theme,width,height] of [['light',1100,760],['dark',960,600]]) {
     await page.setViewportSize({width,height});
     await page.locator(`[data-theme="${theme}"]`).click();
@@ -46,11 +63,11 @@ try {
     await page.screenshot({path:`${output}/${theme}-${width}.png`});
   }
   await page.locator('[data-tab="setup"]').first().click();
-  await page.locator('#fire_delay').waitFor({state:'attached'});
-  assert.equal(await page.locator('#allow_fallback').count(),0,'setup uses shared settings rather than a second switch');
-  await page.locator('.task-advanced summary').click();
-  await page.locator('#fire_delay').fill('3');
-  await page.waitForFunction(()=>window.__task?.fire_delay_seconds===3);
+  await page.locator('#setup_primary').waitFor();
+  assert.equal(await page.locator('#allow_fallback,#fire_delay,.task-advanced').count(),0,'setup has no shared preference controls');
+  await page.locator('#slot_host [data-value]').first().click();
+  await page.waitForFunction(()=>window.__task?.fire_delay_seconds===10);
+  assert.match(await page.evaluate(()=>window.__task.fire_at),/T07:01:10/);
   assert.equal(await page.evaluate(()=>window.__task.allow_time_fallback),true);
   assert.equal(await page.evaluate(()=>window.__task.time_fallback_order),'up_then_down');
   assert.equal((await page.evaluate(()=>window.__calls)).some(c=>['start_http_run','arm_hang'].includes(c.command)),false);
