@@ -203,3 +203,49 @@
 .live-plan-queue .queue-overview-only { border-bottom:0; }
 .live-plan-queue:not(:has(.plan-queue-row)):not(:has(.plan-queue-actions > *)) .plan-queue-actions { display:none; }
 .live-plan-queue:not(:has(.plan-queue-row)) .plan-queue-items { display:none; }
+
+.booking-round { overflow:hidden; border:1px solid var(--color-line); border-radius:18px; background:var(--color-panel); }
+.round-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:24px 24px 16px; }
+.round-heading h3 { margin:6px 0; font-size:23px; font-weight:600; line-height:1.4; color:var(--color-ink); }
+.round-heading p { margin:0; font-size:12px; color:var(--color-muted); }
+.round-count { display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex:none; }
+.round-count strong { font-size:32px; line-height:1.1; font-weight:600; color:var(--color-ok); }
+.round-count > span { font-size:11px; color:var(--color-muted); }
+.round-totals { display:flex; flex-wrap:wrap; gap:8px; padding:0 24px 22px; font-size:11px; }
+.round-totals > span { border-radius:6px; background:var(--color-control); padding:4px 8px; color:var(--color-muted); }
+.round-totals .round-ok { background:color-mix(in srgb,var(--color-ok) 9%,var(--color-panel)); color:var(--color-ok); }
+.round-totals .round-failed { background:color-mix(in srgb,var(--color-danger) 7%,var(--color-panel)); color:var(--color-danger); }
+.round-items { padding:0 24px; }
+.round-item { border-top:1px solid var(--color-line); }
+.round-item > summary { display:flex; align-items:center; gap:12px; padding:20px 0; cursor:pointer; list-style:none; border-radius:8px; }
+.round-item > summary::-webkit-details-marker { display:none; }
+.round-item > summary:focus-visible { outline:none; box-shadow:inset 0 -2px var(--color-accent); }
+.round-sport { flex:none; display:grid; place-items:center; width:42px; height:46px; border-radius:12px; background:var(--color-control); }
+.round-sport svg { width:24px; height:24px; }
+.round-item-copy { flex:1; min-width:0; display:grid; gap:4px; }
+.round-item-copy strong { font-size:14px; color:var(--color-ink); }
+.round-item-copy > span { font-size:13px; font-variant-numeric:tabular-nums; color:var(--color-secondary-ink); }
+.round-item-copy small { font-size:11px; color:var(--color-muted); overflow-wrap:anywhere; }
+.round-item-result { flex:none; font-size:12px; color:var(--color-muted); }
+.round-item-result[data-result="succeeded"],.round-item-result[data-result="existing"] { color:var(--color-ok); }
+.round-item-result[data-result="failed"] { color:var(--color-danger); }
+.round-chevron { flex:none; width:14px; color:var(--color-muted); }
+.round-chevron svg { width:14px; height:14px; }
+.round-item[open] > summary .round-chevron { transform:rotate(180deg); }
+.round-item-detail { padding:0 0 16px; font-size:12px; color:var(--color-muted); }
+.round-item-detail:empty { padding:0; }
+.live-workspace .round-item-detail .booking-execution { border:0; border-radius:12px; background:var(--color-control); box-shadow:none; }
+.live-workspace .round-item-detail .booking-execution-head { padding:16px; }
+.round-item-detail .booking-current-detail { margin:0 16px 16px; }
+.live-workspace .round-item-detail .booking-target { margin:0 16px; }
+.round-item-detail .booking-failure-details { margin-left:16px; margin-right:16px; }
+.round-item-detail .booking-details { margin-left:16px; margin-right:16px; }
+.round-detail-note { padding:12px; line-height:1.7; background:var(--color-control); border-radius:8px; }
+.booking-round > footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 24px; border-top:1px solid var(--color-line); font-size:11px; color:var(--color-muted); }
+.booking-round > footer .btn { display:flex; align-items:center; gap:6px; font-size:12px; padding-right:0; }
+.booking-round > footer svg { width:13px; height:13px; }
+.live-board:has(.booking-round) { grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); }
+.live-workspace > .task-busy-note[hidden] { display:none; }
+@media(max-width:800px) { .live-board:has(.booking-round) { grid-template-columns:minmax(0,1fr); } }
+
+.booking-round.finished .round-count strong,.booking-round.pending .round-count strong { color:var(--color-muted); }

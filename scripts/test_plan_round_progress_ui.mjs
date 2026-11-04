@@ -83,6 +83,8 @@ try {
   const event={...window.__live.last_event,action:'done',result:'http_verified',http:{...window.__live.last_event.http,verified:true}};
   window.__plans.attempts[0].status='succeeded';window.__live={...window.__live,running:false,last_event:event,recent_events:[...window.__live.recent_events,event]};window.__emit('plans-changed');window.__emit('run-changed');
  });
+ await page.locator('.booking-round').waitFor();
+ await page.locator('.round-item > summary').first().click();
  await page.locator('.booking-execution.success').waitFor();
  await page.evaluate(task=>{
   const event={task_id:task.task_id,run_id:'round-run-b',ts:new Date(Date.now()).toISOString(),action:'http_phase',result:'authenticating',http:{phase:'authenticating',target:{sport:task.sport,venue:task.venue,date:task.target_date,time:task.target_time_start,end:task.target_time_end}}};
@@ -106,6 +108,8 @@ try {
   window.__plans.attempts[1].status='succeeded';window.__next.forEach(n=>{n.date='2026-11-02';n.fire_at='2026-11-01T07:00:00+08:00';});
   window.__live={...window.__live,running:false,last_event:event,recent_events:[...window.__live.recent_events,event]};window.__emit('plans-changed');window.__emit('run-changed');
  });
+ await page.locator('.booking-round').waitFor();
+ await page.locator('.round-item > summary').nth(1).click();
  await page.locator('.booking-execution.success').waitFor();
  assert.match(await page.locator('.booking-target').innerText(),new RegExp(tasks[1].sport));
  assert.doesNotMatch(await page.locator('.booking-target').innerText(),new RegExp(tasks[0].sport),'final result remains attached to the second frozen task');
@@ -123,8 +127,8 @@ try {
  }
  await page.locator('.nav-primary [data-tab="setup"]').click();
  await page.locator('.nav-primary [data-tab="live"]').click();
- await page.locator('.booking-execution.success').waitFor();
- assert.match(await page.locator('.booking-target').innerText(),new RegExp(tasks[1].sport),'reopening progress preserves latest result');
+ await page.locator('.booking-round').waitFor();
+ assert.equal(await page.locator('.round-item-result[data-result="succeeded"]').count(),2,'reopening progress preserves both results');
  assert.equal(await page.evaluate(()=>window.__calls.some(c=>['arm_hang','start_http_run','cancel_my_order','launch_xmu_miniprogram'].includes(c.command))),false);
  console.log('Plan-round UI passed: two frozen targets in priority order, stable prepare stage, independent run progress, real captcha retry reset, light/dark minimum window; synthetic host only');
 } finally {await browser.close();await server.close();}
