@@ -549,11 +549,23 @@ pub fn stop_round(app: &tauri::AppHandle) -> Result<(), String> {
     let state = app.state::<Store>();
     let mut locked = state.0.lock().map_err(|_| "计划状态不可用")?;
     let plans = locked.as_mut().map_err(|e| e.clone())?;
-    let now = china_now();
-    let today = now.date_naive();
-    let date = if fire_at(today, prefs).date_naive() == today { today } else { today + Duration::days(1) };
     let mut next = plans.clone();
-    for attempt in next
+    stop_pending_round(&mut next, china_now(), prefs);
+    persist(&next)?;
+    *plans = next;
+    drop(locked);
+    changed(app);
+    Ok(())
+}
+
+fn stop_pending_round(plans: &mut Plans, now: DateTime<FixedOffset>, prefs: &crate::ShellPrefs) {
+    let today = now.date_naive();
+    // Settings only affect future freezes; stopping must follow the actual queue.
+    let date = plans.attempts.iter().find(|a| a.status == "running")
+        .or_else(|| plans.attempts.iter().find(|a| a.status == "queued"))
+        .and_then(|a| NaiveDate::parse_from_str(&a.task.target_date, "%Y-%m-%d").ok())
+        .unwrap_or_else(|| if fire_at(today, prefs).date_naive() == today { today } else { today + Duration::days(1) });
+    for attempt in plans
         .attempts
         .iter_mut()
         .filter(|a| a.task.target_date == date.to_string() && a.status == "queued")
@@ -563,7 +575,7 @@ pub fn stop_round(app: &tauri::AppHandle) -> Result<(), String> {
     }
     for rule in &plans.rules {
         if rule.enabled && next_date(rule, plans, now, prefs) == date {
-            next.attempts.push(Attempt {
+            plans.attempts.push(Attempt {
                 reversible_skip: false,
                 task: task(rule, date, prefs),
                 sport: rule.sport.clone(),
@@ -573,11 +585,6 @@ pub fn stop_round(app: &tauri::AppHandle) -> Result<(), String> {
             });
         }
     }
-    persist(&next)?;
-    *plans = next;
-    drop(locked);
-    changed(app);
-    Ok(())
 }
 
 #[tauri::command]
@@ -1240,6 +1247,36 @@ mod tests {
         assert_eq!(midnight.attempts[0].task.target_date,"2026-10-30");
         assert_eq!(midnight.attempts[0].task.fire_at,"2026-10-30T00:04:00+08:00");
         assert!(!expire_queued(&mut midnight, at("2026-10-30T00:03:10+08:00")));
+    }
+
+    #[test]
+    fn stopping_the_round_uses_frozen_dates_after_timing_changes() {
+        let first = catalog_rule();
+        let data = catalog();
+        let sport = data["sports"].as_array().unwrap().iter().find(|s| s["enabled"] != false && s["id"] != first.sport).unwrap();
+        let venue = &sport["venues"][0];
+        let slot = &venue["time_slots"][0];
+        let second = Plan { id:uuid::Uuid::new_v4().to_string(), sport:sport["id"].as_str().unwrap().into(),
+            venue:venue["id"].as_str().unwrap().into(), start:slot["start"].as_str().unwrap().into(),
+            end:slot["end"].as_str().unwrap().into(), ..first.clone() };
+        let normal = crate::ShellPrefs::default();
+        let late = crate::ShellPrefs { booking_fire_time:"23:59".into(), booking_delay_seconds:300, ..Default::default() };
+        for (prefs, changed, now) in [(&normal, &late, at("2026-10-29T06:59:00+08:00")),
+            (&late, &normal, at("2026-10-30T00:03:00+08:00"))] {
+            for status in ["queued", "running", "succeeded"] {
+                let mut plans = Plans { rules:vec![first.clone(), second.clone()], ..Default::default() };
+                validate(&plans.rules).unwrap();
+                freeze_round(&mut plans, now, prefs);
+                assert_eq!(plans.attempts.len(), 2);
+                plans.attempts[0].status = status.into();
+                let frozen = plans.attempts[1].task.clone();
+                stop_pending_round(&mut plans, now, changed);
+                assert_eq!(plans.attempts[0].status, if status == "queued" {"skipped"} else {status});
+                assert_eq!(plans.attempts[1].status, "skipped");
+                assert_eq!(plans.attempts[1].task.fire_at, frozen.fire_at);
+                assert_eq!(plans.attempts[1].task.target_date, frozen.target_date);
+            }
+        }
     }
     #[test]
     fn skip_date_matches_the_queued_target_then_moves_past_running() {
