@@ -26,6 +26,19 @@ fn foreground(window: &tauri::WebviewWindow) -> bool {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() == window.hwnd().unwrap() }
 }
 
+fn memory_target(window: &tauri::WebviewWindow) -> i32 {
+    let (sender, receiver) = mpsc::channel();
+    window.with_webview(move |platform| {
+        use windows::core::Interface;
+        use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL};
+        let view = unsafe { platform.controller().CoreWebView2().unwrap() }.cast::<ICoreWebView2_19>().unwrap();
+        let mut level = COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL(0);
+        unsafe { view.MemoryUsageTargetLevel(&mut level).unwrap(); }
+        sender.send(level.0).unwrap();
+    }).unwrap();
+    receiver.recv_timeout(Duration::from_secs(5)).expect("memory target query stalled")
+}
+
 #[test]
 #[ignore = "interactive isolated WebView2 soak; requires XMU_SOAK_URL and a fresh XMU_SPORTS_DATA"]
 fn native_window_soak() {
@@ -124,6 +137,11 @@ fn native_window_soak() {
                         "hidden" | "idle" => main.hide().unwrap(),
                         _ => unreachable!(),
                     }
+                    crate::window_memory::set_background(&handle, matches!(phase, "hidden" | "idle" | "minimized"));
+                    let expected_memory = i32::from(matches!(phase, "hidden" | "idle" | "minimized"));
+                    let target = memory_target(&main);
+                    assert_eq!(target, expected_memory);
+                    record(&report, serde_json::json!({"phase":phase,"memory_target":target}));
                     if phase == "foreground" && phase_secs >= 60 {
                         record(&report, serde_json::json!({"phase":phase,"waiting_for_focus":true}));
                         let waiting = Instant::now();
@@ -201,6 +219,7 @@ fn native_window_soak() {
                         let restoring = Instant::now();
                         // Exercise the same implementation as reopening from tray.
                         tray::show_main(&handle);
+                        assert_eq!(memory_target(&main), 0);
                         main.eval(r#"(async()=>{const errors=[];try{
                             await window.__TAURI_INTERNALS__.invoke('get_live_status');
                             document.querySelector('[data-tab="plans"]').click();

@@ -200,6 +200,7 @@ def test_accepted_order_is_preserved_when_read_only_verification_fails(tmp_path)
     assert len(client.posts) == 1
     cached = json.loads(next(tmp_path.glob("*.json")).read_text(encoding="utf-8"))
     assert cached["state"] == "submitted"
+    assert cached["verification_error"]["code"] == "HTTP_FAILED"
 
 
 def test_incomplete_submission_record_blocks_a_second_send(tmp_path):

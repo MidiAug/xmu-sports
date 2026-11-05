@@ -27,6 +27,9 @@ impl Worker {
     }
 
     fn spawn_command(mut cmd:Command,persistent:bool)->Result<Self,String> {
+        // OCR uses elementwise NumPy preprocessing and single-thread ORT inference.
+        // OpenBLAS otherwise allocates an unused pool and hundreds of MiB of commit.
+        cmd.env("OPENBLAS_NUM_THREADS", "1").env("OMP_NUM_THREADS", "1");
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
         #[cfg(windows)] {
             use std::os::windows::process::CommandExt;
@@ -112,6 +115,17 @@ mod tests {
         assert!(matches!(worker.receive(Duration::from_secs(30)),Err(RecvTimeoutError::Disconnected)));
         assert_eq!(worker.failure_code("HTTP_WORKER_ERROR"),"SUBMIT_UNKNOWN");
         assert_eq!(worker.send(&mut json!({"action":"book"})).unwrap_err(),"SUBMIT_UNKNOWN");
+    }
+
+    #[test]
+    fn worker_limits_blas_threads_only_in_its_child_environment() {
+        let original = std::env::var_os("OPENBLAS_NUM_THREADS");
+        let mut worker = fixture("$request=[Console]::ReadLine()|ConvertFrom-Json; [Console]::WriteLine('@@XMU_HTTP@@'+(@{kind='result';rpc_id=$request.rpc_id;blas=$env:OPENBLAS_NUM_THREADS;omp=$env:OMP_NUM_THREADS}|ConvertTo-Json -Compress))");
+        worker.send(&mut json!({"action":"warm"})).unwrap();
+        let reply = worker.receive(Duration::from_secs(30)).unwrap();
+        assert_eq!(reply["blas"], "1");
+        assert_eq!(reply["omp"], "1");
+        assert_eq!(std::env::var_os("OPENBLAS_NUM_THREADS"), original);
     }
 }
 

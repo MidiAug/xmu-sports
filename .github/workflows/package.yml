@@ -64,6 +64,8 @@ jobs:
         run: npm run tauri:build
       - name: Audit frozen worker
         run: src-tauri/sidecars/http-booking/.venv/Scripts/python.exe scripts/test_lite_bundle.py
+      - name: Verify frozen OCR and read-only guard
+        run: src-tauri/sidecars/http-booking/.venv/Scripts/python.exe scripts/test_http_worker_smoke.py
       - name: Installer upgrade decisions
         run: npm run test:installer
       - name: Generate checksums and provenance

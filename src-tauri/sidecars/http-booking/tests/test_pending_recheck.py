@@ -13,6 +13,31 @@ from xmu_http.session import BookingError, EntryTicket
 from test_http_booking import target
 
 
+def test_accepted_submit_timeout_is_confirmed_through_its_original_journal(monkeypatch, tmp_path):
+    from xmu_http.client import submit
+    from test_http_booking import FakeClient, FakeSolver, plan
+    class AcceptedWithFailedRead(FakeClient):
+        def find_existing(self, goal):
+            if self.accepted:
+                raise BookingError("HTTP_FAILED", "read timeout", details={"error_type":"read_timeout"})
+            return None
+    sender = AcceptedWithFailedRead([{"status":1,"info":"accepted"}])
+    original = submit(sender, target(court=None), plan(), FakeSolver(), tmp_path/"requests")
+    assert original["ok"] and not original["verified"] and len(sender.posts) == 1
+    path = tmp_path/"requests"/(original["request_ref"]+".json")
+    before = json.loads(path.read_text(encoding="utf-8"))
+    expected = before["submitted_target"]
+    calls = fake_reader(monkeypatch, {"verified":True,"order_id":42,"court":expected["court"]})
+    monkeypatch.setattr(desktop,"data_root",lambda:tmp_path)
+    monkeypatch.setattr(desktop,"run_candidates",lambda *a,**kw:pytest.fail("recheck must not book"))
+    result = desktop.execute({"action":"recheck_pending","request_ref":original["request_ref"]}, threading.Event())
+    after = json.loads(path.read_text(encoding="utf-8"))
+    assert result["verified"] and not result["booking_submitted"] and len(sender.posts) == 1
+    assert asdict(calls[2]) == expected
+    assert after["target"] == before["target"] and after["submitted_target"] == expected
+    assert after["account_fingerprint"] == before["account_fingerprint"]
+
+
 @pytest.fixture
 def record(tmp_path):
     reference="a"*64

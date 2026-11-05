@@ -10,9 +10,12 @@ $Destination = Join-Path $TaskRoot 'src-tauri\resources\http-booking'
 $Interpreter = Join-Path $SourceRoot '.venv\Scripts\python.exe'
 $BuildRoot = Join-Path $TaskRoot 'artifacts\http-desktop-build'
 $Stamp = Join-Path $Destination '.source.sha256'
+$ReadmePath = Join-Path $Destination 'README.md'
+$BundleReadme = if (Test-Path -LiteralPath $ReadmePath) { [IO.File]::ReadAllBytes($ReadmePath) } else { $null }
 $SourceFiles = @($PSCommandPath, (Join-Path $SourceRoot 'desktop.py'), (Join-Path $SourceRoot 'requirements.txt'))
 $SourceFiles += @(Get-ChildItem -LiteralPath (Join-Path $SourceRoot 'xmu_http') -Filter '*.py' | Sort-Object Name | ForEach-Object { $_.FullName })
 $SourceFiles += @(Get-ChildItem -LiteralPath (Join-Path $SourceRoot 'xmu_http\captcha_assets') -File | Sort-Object Name | ForEach-Object { $_.FullName })
+$SourceFiles += @(Get-ChildItem -LiteralPath (Join-Path $SourceRoot 'pyinstaller-hooks') -File | Sort-Object Name | ForEach-Object { $_.FullName })
 $DigestInput = ($SourceFiles | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }) -join ''
 $Digest = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($DigestInput))).Replace('-', '')
 if ((Test-Path -LiteralPath (Join-Path $Destination 'xmu-http-booking.exe')) -and
@@ -33,8 +36,10 @@ if ($UseInstalledDependencies) {
 }
 $OrtRoot = (& $Interpreter -c "import onnxruntime; from pathlib import Path; print(Path(onnxruntime.__file__).parent)").Trim()
 if ($LASTEXITCODE -ne 0) { throw 'ONNX Runtime location unavailable' }
+$env:OPENBLAS_NUM_THREADS = '1'
+$env:OMP_NUM_THREADS = '1'
 # Include licenses, but not ORT's sample models, mobile tool data or benchmarks.
-& $Interpreter -m PyInstaller --noconfirm --clean --onedir --name xmu-http-booking --distpath (Join-Path $BuildRoot 'dist') --workpath (Join-Path $BuildRoot 'work') --specpath $BuildRoot --collect-all ccl_chromium_reader --collect-binaries onnxruntime --hidden-import onnxruntime.capi.onnxruntime_pybind11_state --exclude-module frida --exclude-module websockets --exclude-module cv2 --exclude-module ddddocr --exclude-module xmu_http.runtime_entry --exclude-module xmu_http.runtime_probe --exclude-module xmu_http.runtime_wire --exclude-module tkinter --exclude-module matplotlib --add-data "$(Join-Path $OrtRoot 'LICENSE');onnxruntime" --add-data "$(Join-Path $OrtRoot 'Privacy.md');onnxruntime" --add-data "$(Join-Path $OrtRoot 'ThirdPartyNotices.txt');onnxruntime" --add-data "$(Join-Path $SourceRoot 'xmu_http\captcha_assets');xmu_http/captcha_assets" (Join-Path $SourceRoot 'desktop.py')
+& $Interpreter -m PyInstaller --noconfirm --clean --onedir --name xmu-http-booking --distpath (Join-Path $BuildRoot 'dist') --workpath (Join-Path $BuildRoot 'work') --specpath $BuildRoot --collect-all ccl_chromium_reader --additional-hooks-dir (Join-Path $SourceRoot 'pyinstaller-hooks') --hidden-import onnxruntime.capi.onnxruntime_pybind11_state --exclude-module PIL.AvifImagePlugin --exclude-module PIL._avif --exclude-module frida --exclude-module websockets --exclude-module cv2 --exclude-module ddddocr --exclude-module xmu_http.runtime_entry --exclude-module xmu_http.runtime_probe --exclude-module xmu_http.runtime_wire --exclude-module tkinter --exclude-module matplotlib --add-data "$(Join-Path $OrtRoot 'LICENSE');onnxruntime" --add-data "$(Join-Path $OrtRoot 'Privacy.md');onnxruntime" --add-data "$(Join-Path $OrtRoot 'ThirdPartyNotices.txt');onnxruntime" --add-data "$(Join-Path $SourceRoot 'xmu_http\captcha_assets');xmu_http/captcha_assets" (Join-Path $SourceRoot 'desktop.py')
 if ($LASTEXITCODE -ne 0) { throw 'HTTP worker build failed' }
 # Replace generated resources so legacy DLLs cannot survive an overlay copy.
 $ExpectedDestination = [IO.Path]::GetFullPath((Join-Path $TaskRoot 'src-tauri\resources\http-booking'))
@@ -42,5 +47,6 @@ if ([IO.Path]::GetFullPath($Destination) -ne $ExpectedDestination) { throw 'Unsa
 if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
 New-Item -ItemType Directory -Path $Destination -Force | Out-Null
 Copy-Item -Path (Join-Path $BuildRoot 'dist\xmu-http-booking\*') -Destination $Destination -Recurse -Force
+if ($null -ne $BundleReadme) { [IO.File]::WriteAllBytes($ReadmePath, $BundleReadme) }
 [IO.File]::WriteAllText($Stamp, $Digest, [Text.Encoding]::UTF8)
 Write-Host '[ok] HTTP worker bundled; end users do not need Python'

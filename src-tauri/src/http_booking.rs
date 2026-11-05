@@ -386,11 +386,11 @@ fn recheck_after_refresh_failure(
 
 pub(crate) fn run(
     app: &tauri::AppHandle, run_gen: u64, task: &BookingTask,
-    trace: &run_trace::RunTraceHandle, prepare: bool, expected_account: Option<&str>, warmed:Option<&mut PreparedWorker>,
+    trace: &run_trace::RunTraceHandle, prepare: bool, expected_account: Option<&str>, warmed:Option<PreparedWorker>,
 ) -> Result<String, String> {
     let mut payload=json!({"action": if prepare {"prepare"} else {"book"}, "task": task, "expected_account": expected_account});
     let result=match warmed {
-        Some(warmed)=>{
+        Some(mut warmed)=>{
             if !warmed.worker.alive() {
                 warmed.recheck(app,run_gen,trace,task,expected_account.ok_or("HTTP_AUTH_UNVERIFIED")?)?;
             }
@@ -415,6 +415,22 @@ pub(crate) fn run(
             // process is never reset; use a fresh process after explicit proof.
             request(app,run_gen,payload,trace)
         })?;
+    let result = if prepare { result } else {
+        confirm_submission(result,
+            |seconds, attempt| {
+                let retry_at = chrono::Local::now().fixed_offset() + chrono::Duration::seconds(seconds as i64);
+                let _ = trace.try_event("http_phase", Some("http_waiting_order_sync"), "waiting_order_sync", None, None, None,
+                    json!({"http":{"phase":"waiting_order_sync","retry_after_seconds":seconds,
+                        "check_attempt":attempt,"check_total":3}}));
+                let _ = app.emit("run-changed", ());
+                crate::scheduled_run::wait_until(retry_at, || run_control::run_still_active(app, run_gen))
+            },
+            |reference| {
+                if !run_control::run_still_active(app, run_gen) { return Err("已取消".into()); }
+                let mut worker = Worker::spawn(&worker_path(app)?, true, true)?;
+                request_once(app, run_gen, json!({"action":"recheck_pending","request_ref":reference}), trace, &mut worker)
+            })
+    };
     let root = crate::data_root().join("http-booking");
     let _ = crate::atomic_fs::write_atomic(&root.join(format!("{}.json", trace.run_id())),
                                           serde_json::to_string_pretty(&result).unwrap_or_default().as_bytes());
@@ -428,6 +444,69 @@ pub(crate) fn run(
                            None, None, None, json!({"http": result}));
     if result["ok"] == true { Ok(code.into()) }
     else if code == "CANCELLED" { Err("已取消".into()) } else { Err(code.into()) }
+}
+
+fn confirm_submission(mut original: Value,
+    mut wait: impl FnMut(u64, usize) -> Result<(), String>,
+    mut lookup: impl FnMut(&str) -> Result<Value, String>,
+) -> Value {
+    // Preserve an explicit login/rate-limit/protocol failure from initial
+    // verification, including server Retry-After, rather than restarting reads.
+    if original["verification_error"].is_object() && !order_lookup_retryable(&original["verification_error"]) {
+        return original;
+    }
+    let last_error = original["details"]["reconciliation"]["last_error"].as_str()
+        .or_else(|| original["reconciliation"]["last_error"].as_str());
+    if matches!(last_error, Some("ACCOUNT_MISMATCH" | "ACCOUNT_CHANGED" | "SESSION_EXPIRED" | "RATE_LIMITED")) {
+        return original;
+    }
+    let pending = (original["state"] == "submitted" && original["verified"] != true)
+        || matches!(original["code"].as_str(), Some("SUBMIT_UNKNOWN" | "RESULT_UNCONFIRMED"));
+    let Some(reference) = original["request_ref"].as_str()
+        .filter(|reference| pending && crate::pending_orders::valid_reference(reference)).map(str::to_owned)
+        else { return original; };
+    let mut summary = json!({"checks_attempted":0,"stopped_by_user":false});
+    for (index, seconds) in [15, 30, 60].into_iter().enumerate() {
+        if let Err(code) = wait(seconds, index + 1) {
+            summary["stopped_by_user"] = json!(code == "已取消");
+            summary["last_error"] = json!(code);
+            break;
+        }
+        summary["checks_attempted"] = json!(index + 1);
+        let checked = match lookup(&reference) {
+            Ok(result) => result,
+            Err(code) => {
+                summary["stopped_by_user"] = json!(code == "已取消");
+                summary["last_error"] = json!(code);
+                break;
+            }
+        };
+        if checked["ok"] == true && checked["verified"] == true && !checked["order_id"].is_null() {
+            for key in ["order_id", "date", "time", "court"] {
+                if let Some(value) = checked.get(key) { original[key] = value.clone(); }
+            }
+            original["ok"] = json!(true);
+            original["state"] = json!("submitted");
+            original["verified"] = json!(true);
+            original["reconciled"] = json!(true);
+            original["phase"] = json!("order_reconciled");
+            original["message"] = json!("已自动查到匹配预约并确认成功，未重复下单");
+            original.as_object_mut().unwrap().remove("code");
+            break;
+        }
+        summary["last_error"] = checked["code"].clone();
+        summary["stopped_by_user"] = json!(checked["code"] == "CANCELLED");
+        if !order_lookup_retryable(&checked) { break; }
+    }
+    original["auto_recheck"] = summary;
+    original
+}
+
+fn order_lookup_retryable(result: &Value) -> bool {
+    result["code"] == "RESULT_UNCONFIRMED"
+        || (result["code"] == "HTTP_FAILED" && matches!(result["details"]["error_type"].as_str(),
+            Some("connect_timeout" | "read_timeout" | "timeout" | "connection")))
+        || (result["code"] == "SERVER_BUSY" && result["details"]["retry_after_seconds"].as_f64().unwrap_or(0.0) == 0.0)
 }
 
 fn recover_pre_submit(
@@ -493,6 +572,93 @@ pub(crate) fn auth_failure(trace: &run_trace::RunTraceHandle, result: &Value) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pending_submission(accepted: bool) -> Value {
+        json!({"ok":accepted,"state":if accepted {"submitted"} else {"unknown"},"verified":false,
+            "code":if accepted {"ACCEPTED_UNVERIFIED"} else {"SUBMIT_UNKNOWN"},
+            "verification_error":if accepted {json!({"code":"HTTP_FAILED","details":{"error_type":"read_timeout"}})} else {Value::Null},
+            "request_ref":"a".repeat(64),"target":{"court":"02","date":"2026-11-06"},
+            "diagnostics":{"http":{"submit":{"count":1}}}})
+    }
+
+    #[test]
+    fn automatic_confirmation_retries_only_reads_and_keeps_original_submission() {
+        for accepted in [false, true] {
+            let original = pending_submission(accepted);
+            let calls = std::cell::RefCell::new(Vec::new());
+            let mut attempts = 0;
+            let result = confirm_submission(original.clone(), |seconds, attempt| {
+                calls.borrow_mut().push((seconds, attempt)); Ok(())
+            }, |reference| {
+                assert_eq!(reference, "a".repeat(64));
+                attempts += 1;
+                Ok(if attempts == 1 {json!({"code":"HTTP_FAILED","details":{"error_type":"read_timeout"}})}
+                    else {json!({"ok":true,"verified":true,"order_id":42,"court":"02"})})
+            });
+            assert_eq!(*calls.borrow(), [(15, 1), (30, 2)]);
+            assert_eq!(result["verified"], true);
+            assert_eq!(result["state"], "submitted");
+            assert!(result.get("code").is_none());
+            assert_eq!(result["target"], original["target"]);
+            assert_eq!(result["diagnostics"], original["diagnostics"]);
+        }
+    }
+
+    #[test]
+    fn automatic_confirmation_is_bounded_and_preserves_acceptance_on_failure() {
+        let original = pending_submission(true);
+        let mut reads = 0;
+        let result = confirm_submission(original.clone(), |_, _| Ok(()), |_| {
+            reads += 1; Ok(json!({"ok":false,"code":"RESULT_UNCONFIRMED"}))
+        });
+        assert_eq!(reads, 3);
+        assert_eq!(result["auto_recheck"]["checks_attempted"], 3);
+        for key in ["state", "ok", "verified", "request_ref", "target"] {assert_eq!(result[key], original[key]);}
+    }
+
+    #[test]
+    fn automatic_confirmation_stops_without_erasing_the_submission() {
+        let original = pending_submission(true);
+        let result = confirm_submission(original.clone(), |_, _| Err("已取消".into()), |_| panic!("stopped"));
+        assert_eq!(result["auto_recheck"]["stopped_by_user"], true);
+        assert_eq!(result["state"], "submitted");
+        assert_eq!(result["verified"], false);
+        for code in ["ACCOUNT_CHANGED", "SESSION_EXPIRED", "RATE_LIMITED", "INVALID_JSON", "HTTP_WORKER_ERROR", "CANCELLED"] {
+            let mut reads = 0;
+            let result = confirm_submission(original.clone(), |_, _| Ok(()), |_| {
+                reads += 1; Ok(json!({"ok":false,"code":code}))
+            });
+            assert_eq!(reads, 1);
+            assert_eq!(result["auto_recheck"]["last_error"], code);
+            assert_eq!(result["ok"], true);
+            assert_eq!(result["verified"], false);
+        }
+    }
+
+    #[test]
+    fn automatic_confirmation_skips_confirmed_presend_and_unbound_results() {
+        for result in [json!({"ok":true,"verified":true,"state":"submitted","request_ref":"a".repeat(64)}),
+            json!({"ok":false,"state":"not_submitted","code":"HTTP_FAILED","request_ref":"a".repeat(64)}),
+            json!({"ok":true,"state":"already_reserved"}),json!({"code":"SUBMIT_UNKNOWN"}),
+            json!({"code":"SUBMIT_UNKNOWN","request_ref":"../other-account"})] {
+            let checked = confirm_submission(result.clone(), |_, _| panic!("must not wait"), |_| panic!("must not query"));
+            assert_eq!(checked, result);
+        }
+    }
+
+    #[test]
+    fn automatic_confirmation_respects_initial_login_failures_and_server_cooldown() {
+        for error in [json!({"code":"RATE_LIMITED","details":{"retry_after_seconds":300}}),
+            json!({"code":"SERVER_BUSY","details":{"retry_after_seconds":300}}),
+            json!({"code":"SESSION_EXPIRED"}), json!({"code":"INVALID_JSON"})] {
+            let mut result = pending_submission(true);
+            result["verification_error"] = error;
+            assert_eq!(confirm_submission(result.clone(), |_, _| panic!("initial terminal error"), |_| panic!("must not read")), result);
+        }
+        let mut result = pending_submission(false);
+        result["details"] = json!({"reconciliation":{"last_error":"RATE_LIMITED"}});
+        assert_eq!(confirm_submission(result.clone(), |_, _| panic!("initial rate limit"), |_| panic!("must not read")), result);
+    }
 
     fn network_failure() -> Value {
         json!({"ok":false,"state":"failed","code":"HTTP_FAILED","account_fingerprint":"a".repeat(64),

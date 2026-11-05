@@ -8,6 +8,19 @@
 !define XMU_STARTUP_APPROVED_KEY "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
 !endif
 
+!define XMU_HTTP_BUILD_ROOT "${__FILEDIR__}\..\resources\http-booking"
+
+; Python distributions use different names for the same support libraries.
+; Remove a known old name only when the new bundle does not ship that file.
+!macro XMU_REMOVE_RETIRED_HTTP_FILE relative_path
+  !if /FileExists "${XMU_HTTP_BUILD_ROOT}\${relative_path}"
+  !else
+    ${If} ${FileExists} "$INSTDIR\http-booking\${relative_path}"
+      Delete "$INSTDIR\http-booking\${relative_path}"
+    ${EndIf}
+  !endif
+!macroend
+
 !macro XMU_UPDATE_STARTUP
   ReadRegStr $R8 HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"
   ${If} "$R8" != ""
@@ -51,8 +64,21 @@
   ${If} "$INSTDIR" != ""
   ${AndIf} ${FileExists} "$INSTDIR\${MAINBINARYNAME}.exe"
     ClearErrors
+    ; Only the legacy hook runtime needs wholesale replacement. Current HTTP
+    ; dependencies are overlaid by NSIS so an upgrade no longer deletes them all.
     ${If} ${FileExists} "$INSTDIR\http-booking\xmu-http-booking.exe"
-      RMDir /r "$INSTDIR\http-booking\_internal"
+      ${If} ${FileExists} "$INSTDIR\http-booking\_internal\frida.dll"
+      ${OrIf} ${FileExists} "$INSTDIR\http-booking\_internal\frida\_frida.pyd"
+        RMDir /r "$INSTDIR\http-booking\_internal"
+      ${EndIf}
+      !insertmacro XMU_REMOVE_RETIRED_HTTP_FILE "_internal\onnxruntime\capi\onnxruntime.dll"
+      !insertmacro XMU_REMOVE_RETIRED_HTTP_FILE "_internal\PIL\_avif.cp312-win_amd64.pyd"
+      !insertmacro XMU_REMOVE_RETIRED_HTTP_FILE "_internal\libcrypto-3.dll"
+      !insertmacro XMU_REMOVE_RETIRED_HTTP_FILE "_internal\libssl-3.dll"
+      !insertmacro XMU_REMOVE_RETIRED_HTTP_FILE "_internal\libffi-8.dll"
+      !insertmacro XMU_REMOVE_RETIRED_HTTP_FILE "_internal\libcrypto-3-x64.dll"
+      !insertmacro XMU_REMOVE_RETIRED_HTTP_FILE "_internal\libssl-3-x64.dll"
+      !insertmacro XMU_REMOVE_RETIRED_HTTP_FILE "_internal\ffi.dll"
     ${EndIf}
     ${If} ${FileExists} "$INSTDIR\ocr\README.md"
       RMDir /r "$INSTDIR\ocr"

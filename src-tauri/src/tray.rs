@@ -84,6 +84,7 @@ pub fn setup_tray(app: &AppHandle) -> Result<(), String> {
 
 pub fn show_main<R: Runtime>(app: &AppHandle<R>) {
     if let Some(win) = app.get_webview_window("main") {
+        crate::window_memory::set_background(app, false);
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();

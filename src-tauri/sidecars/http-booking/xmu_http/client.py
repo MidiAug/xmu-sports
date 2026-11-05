@@ -703,7 +703,8 @@ def submit(client: Client, target: Target, plan: dict | None, solver: CaptchaSol
                     time.sleep(delay)
                     try:
                         existing = client.find_existing(sent_target)
-                    except BookingError:
+                    except BookingError as exc:
+                        result["verification_error"] = exc.public()
                         break
                     if existing:
                         result.update(existing)

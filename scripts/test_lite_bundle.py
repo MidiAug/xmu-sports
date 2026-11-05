@@ -14,6 +14,7 @@ bundle = Path(sys.argv[1]).resolve() if len(sys.argv)>1 else root / "src-tauri/r
 files = [path for path in bundle.rglob("*") if path.is_file()]
 for path in files:
     assert not any(part.lower().startswith(("frida", "cv2", "ddddocr", "websockets", "rapidocr", "vision-pack")) for part in path.relative_to(bundle).parts), path
+    assert path.name.lower() not in {"onnxruntime.dll", "_avif.cp312-win_amd64.pyd"}, path
 models = [path for path in files if path.suffix == ".onnx"]
 assert [p.name for p in models] == ["common_old.onnx"], models
 archive = CArchiveReader(str(bundle / "xmu-http-booking.exe")).open_embedded_archive("PYZ.pyz")

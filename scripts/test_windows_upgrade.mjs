@@ -66,6 +66,17 @@ for(const file of ["xmu-sports.exe","ocr/personal.txt","http-booking/_internal/p
 lines.push('!insertmacro XMU_REMOVE_OBSOLETE_COMPONENTS',`StrCpy $INSTDIR "${join(root,"partial-install")}"`);
 for(const file of ["xmu-sports.exe","http-booking/xmu-http-booking.exe"]){const path=join(root,"partial-install",file);mkdirSync(resolve(path,".."),{recursive:true});writeFileSync(path,"partial install");}
 lines.push('!insertmacro XMU_REMOVE_OBSOLETE_COMPONENTS',`WriteINIStr "${result}" "cleanup" "completed" "1"`);
+lines.push(`StrCpy $INSTDIR "${join(root,"current-http-upgrade")}"`);
+const currentRuntime=["xmu-sports.exe","http-booking/xmu-http-booking.exe","http-booking/_internal/python312.dll",
+  "http-booking/_internal/onnxruntime/capi/onnxruntime_pybind11_state.pyd","http-booking/_internal/onnxruntime/capi/onnxruntime_providers_shared.dll",
+  "http-booking/_internal/xmu_http/captcha_assets/common_old.onnx","http-booking/_internal/personal.txt",
+  "http-booking/requests/journal.json","tasks/task.json","runs/run.json"];
+const libraryVariants=["libcrypto-3.dll","libssl-3.dll","libffi-8.dll","libcrypto-3-x64.dll","libssl-3-x64.dll","ffi.dll"];
+for(const name of libraryVariants){if(existsSync(join("src-tauri/resources/http-booking/_internal",name)))currentRuntime.push(`http-booking/_internal/${name}`);}
+const retired=["http-booking/_internal/onnxruntime/capi/onnxruntime.dll","http-booking/_internal/PIL/_avif.cp312-win_amd64.pyd",
+  ...libraryVariants.filter(name=>!existsSync(join("src-tauri/resources/http-booking/_internal",name))).map(name=>`http-booking/_internal/${name}`)];
+for(const file of [...currentRuntime,...retired]){const path=join(root,"current-http-upgrade",file);mkdirSync(resolve(path,".."),{recursive:true});writeFileSync(path,"current runtime sentinel");}
+lines.push('!insertmacro XMU_REMOVE_OBSOLETE_COMPONENTS','!insertmacro XMU_REMOVE_OBSOLETE_COMPONENTS');
 const startupPath=join(root,"startup path with spaces");
 lines.push(`StrCpy $INSTDIR "${startupPath}"`,
  '!insertmacro XMU_UPDATE_STARTUP','ReadRegStr $R8 HKCU "${XMU_STARTUP_RUN_KEY}" "${PRODUCTNAME}"',`WriteINIStr "${result}" "startup" "fresh" $R8`,
@@ -98,4 +109,6 @@ assert.equal(existsSync(join(root,"previous-brand-shortcuts/XMU Sport.lnk")),fal
 for(const file of ["http-booking/_internal","ocr","vision-pack"]){assert.equal(existsSync(join(root,"lite-upgrade",file)),false,`obsolete component removed: ${file}`);}
 for(const file of ["tasks/task.json","runs/run.json","http-booking/requests/journal.json","http-booking/xmu-http-booking.exe"]){assert.equal(readFileSync(join(root,"lite-upgrade",file),"utf8"),"test sentinel",`user data preserved: ${file}`);}
 for(const file of ["ocr/personal.txt","http-booking/_internal/personal.txt"]){assert.equal(readFileSync(join(root,"unowned-resources",file),"utf8"),"keep","unowned directories preserved");}
+for(const file of currentRuntime){assert.equal(readFileSync(join(root,"current-http-upgrade",file),"utf8"),"current runtime sentinel",`current runtime/data preserved: ${file}`);}
+for(const file of retired){assert.equal(existsSync(join(root,"current-http-upgrade",file)),false,`retired library removed: ${file}`);}
 console.log("NSIS upgrade checks passed: upgrade/repair/downgrade, paths, shortcuts, obsolete component removal and preservation of tasks, runs, request journals and unowned folders");

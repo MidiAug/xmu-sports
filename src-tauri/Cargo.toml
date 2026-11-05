@@ -59,6 +59,15 @@ winreg = "0.55.0"
 tauri-plugin-single-instance = "=2.4.0"
 tauri-plugin-notification = "=2.3.3"
 
+[target.'cfg(windows)'.dependencies]
+webview2-com = "=0.38.2"
+
 [lib]
 name = "xmu_sports_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+strip = true

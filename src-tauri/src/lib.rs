@@ -26,6 +26,7 @@ mod http_booking;
 mod availability;
 mod my_orders;
 mod worker_process;
+mod window_memory;
 mod pending_orders;
 mod worker_diagnostic;
 mod normal_login;
@@ -693,7 +694,7 @@ fn spawn_task_with_schedule(
                     let _ = app.emit("arm-changed", ());
                     booking_eligibility::check_logged(&task, Local::now().fixed_offset())?;
                 }
-                return http_booking::run(&app, run_gen, &task, &trace, prepare_http, Some(&prepared_account),warmed.as_mut());
+                return http_booking::run(&app, run_gen, &task, &trace, prepare_http, Some(&prepared_account),warmed);
             }
         })();
         // A cancellation during the scheduled wait has no worker result to write it.
@@ -1171,7 +1172,9 @@ fn hide_to_tray(app: tauri::AppHandle) -> Result<(), String> {
     let win = app
         .get_webview_window("main")
         .ok_or_else(|| "无 main 窗口".to_string())?;
-    win.hide().map_err(|e| e.to_string())
+    win.hide().map_err(|e| e.to_string())?;
+    window_memory::set_background(&app, true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1357,7 +1360,10 @@ pub fn run() {
             );
             Ok(())
         })
-        .on_page_load(move |_webview, payload| {
+        .on_page_load(move |webview, payload| {
+            if matches!(payload.event(), PageLoadEvent::Finished) && webview.label() == "main" {
+                window_memory::set_background(webview.app_handle(), !webview.window().is_visible().unwrap_or(true));
+            }
             let event = match payload.event() {
                 PageLoadEvent::Started => "started",
                 PageLoadEvent::Finished => "finished",
@@ -1370,6 +1376,10 @@ pub fn run() {
             );
         })
         .on_window_event(move |window, event| {
+            if window.label() == "main" && matches!(event, WindowEvent::Resized(_) | WindowEvent::Focused(true)) {
+                let background = !window.is_visible().unwrap_or(true) || window.is_minimized().unwrap_or(false);
+                window_memory::set_background(window.app_handle(), background);
+            }
             if let WindowEvent::Focused(true) = event {
                 if !first_focus_win.swap(true, Ordering::SeqCst) {
                     log::info!(
@@ -1388,6 +1398,7 @@ pub fn run() {
                     CloseAction::Tray => {
                         api.prevent_close();
                         let _ = window.hide();
+                        window_memory::set_background(window.app_handle(), true);
                     }
                     CloseAction::Confirm => {
                         api.prevent_close();
